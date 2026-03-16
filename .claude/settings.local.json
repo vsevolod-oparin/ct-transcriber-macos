@@ -8,7 +8,10 @@
       "Bash(xcodegen generate:*)",
       "Bash(xcodebuild:*)",
       "Bash",
-      "Read"
+      "Read",
+      "WebFetch(domain:z.ai)",
+      "WebFetch(domain:chat.z.ai)",
+      "WebFetch(domain:api.z.ai)"
     ]
   }
 }

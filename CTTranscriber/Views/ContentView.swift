@@ -3,6 +3,7 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(SettingsManager.self) private var settingsManager
     @State private var viewModel: ChatViewModel?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
 
@@ -25,7 +26,9 @@ struct ContentView: View {
         .frame(minWidth: 700, minHeight: 500)
         .task {
             if viewModel == nil {
-                viewModel = ChatViewModel(modelContext: modelContext)
+                let vm = ChatViewModel(modelContext: modelContext)
+                vm.settingsManager = settingsManager
+                viewModel = vm
             }
         }
     }
@@ -34,4 +37,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self], inMemory: true)
+        .environment(SettingsManager())
 }

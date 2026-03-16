@@ -15,13 +15,19 @@ final class SettingsManager {
         self.settings = SettingsStorage.load()
     }
 
-    // MARK: - API Key accessors (Keychain-backed)
+    // MARK: - Active provider convenience
 
-    func apiKey(for provider: LLMSettings.LLMProvider) -> String {
+    var activeProvider: ProviderConfig? {
+        settings.llm.activeProvider
+    }
+
+    // MARK: - API Key accessors (Keychain-backed, keyed by provider ID)
+
+    func apiKey(for provider: ProviderConfig) -> String {
         KeychainService.load(key: keychainKey(for: provider)) ?? ""
     }
 
-    func setApiKey(_ key: String, for provider: LLMSettings.LLMProvider) {
+    func setApiKey(_ key: String, for provider: ProviderConfig) {
         if key.isEmpty {
             KeychainService.delete(key: keychainKey(for: provider))
         } else {
@@ -29,8 +35,8 @@ final class SettingsManager {
         }
     }
 
-    private func keychainKey(for provider: LLMSettings.LLMProvider) -> String {
-        "apikey-\(provider.rawValue)"
+    private func keychainKey(for provider: ProviderConfig) -> String {
+        "apikey-\(provider.id.uuidString)"
     }
 
     // MARK: - Theme

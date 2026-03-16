@@ -3,9 +3,9 @@ import Foundation
 // MARK: - Settings Model
 
 struct AppSettings: Codable, Equatable {
-    var general = GeneralSettings()
-    var transcription = TranscriptionSettings()
-    var llm = LLMSettings()
+    var general: GeneralSettings
+    var transcription: TranscriptionSettings
+    var llm: LLMSettings
 }
 
 // MARK: - General
@@ -52,34 +52,44 @@ struct TranscriptionSettings: Codable, Equatable {
 
 // MARK: - LLM
 
+/// API protocol type — determines request/response format.
+enum LLMApiType: String, Codable, CaseIterable, Identifiable {
+    case openaiCompatible = "OpenAI Compatible"
+    case anthropic = "Anthropic"
+
+    var id: String { rawValue }
+}
+
+/// A single LLM provider configuration — fully user-editable.
+struct ProviderConfig: Codable, Equatable, Identifiable {
+    var id: UUID
+    var name: String
+    var apiType: LLMApiType
+    var baseURL: String
+    var completionsPath: String
+    var modelsPath: String
+    var defaultModel: String
+    var fallbackModels: [String]
+    var temperature: Double
+    var maxTokens: Int
+    /// Additional HTTP headers sent with every request (e.g., {"anthropic-version": "2023-06-01"}).
+    var extraHeaders: [String: String]
+
+    var isValid: Bool {
+        !name.isEmpty && !baseURL.isEmpty && !completionsPath.isEmpty && !defaultModel.isEmpty
+            && temperature >= 0.0 && temperature <= 2.0 && maxTokens >= 1
+    }
+}
+
 struct LLMSettings: Codable, Equatable {
-    enum LLMProvider: String, Codable, CaseIterable, Identifiable {
-        case openai = "OpenAI"
-        case anthropic = "Anthropic"
-        case deepseek = "DeepSeek"
-        case qwen = "Qwen"
+    var activeProviderID: UUID
+    var providers: [ProviderConfig]
 
-        var id: String { rawValue }
-
-        var defaultBaseURL: String {
-            switch self {
-            case .openai: "https://api.openai.com"
-            case .anthropic: "https://api.anthropic.com"
-            case .deepseek: "https://api.deepseek.com"
-            case .qwen: "https://dashscope.aliyuncs.com/compatible-mode"
-            }
-        }
+    var activeProvider: ProviderConfig? {
+        providers.first { $0.id == activeProviderID }
     }
 
-    var provider: LLMProvider = .openai
-    var baseURL: String = LLMProvider.openai.defaultBaseURL
-    var modelName: String = "gpt-4o-mini"
-    var temperature: Double = 0.7
-    var maxTokens: Int = 4096
-
-    // API keys are NOT stored here — they go to Keychain
-    // This field exists only for the Codable roundtrip to skip it
     var isValid: Bool {
-        !modelName.isEmpty && temperature >= 0.0 && temperature <= 2.0 && maxTokens >= 1
+        activeProvider?.isValid ?? false
     }
 }

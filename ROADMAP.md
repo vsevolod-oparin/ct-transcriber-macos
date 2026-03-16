@@ -135,7 +135,8 @@ Key details:
 
 ### Tasks
 - [x] Create Settings window (SwiftUI `Settings` scene, 3-tab TabView)
-- [x] Settings model with JSON Codable, stored at `~/.config/ct-transcriber/settings.json`
+- [x] Settings model with JSON Codable, stored at `~/Library/Application Support/CTTranscriber/settings.json` (or `~/.config/ct-transcriber/` if writable)
+- [x] Default provider configs in bundled `Resources/default-settings.json` — no hardcoded configs in code; users can share/edit the JSON file directly
 - [x] Tabs:
   - **General**: app theme (light/dark/system)
   - **Transcription**: model (base/large-v3-turbo/large-v3), device (mps/cpu), beam size, temperature, language, VAD filter, condition on previous text
@@ -153,35 +154,30 @@ Key details:
 
 ---
 
-## Milestone 4: LLM API Integration
+## Milestone 4: LLM API Integration ✅
 
 **Goal:** Send messages to LLM providers and stream responses.
+**Status:** Complete (2026-03-16) — see `reports/milestone-4-llm-api-integration.md`
 
 ### Tasks
-- [ ] Define `LLMProvider` protocol:
-  ```swift
-  protocol LLMProvider {
-      func sendMessage(messages: [ChatMessage], model: String, temperature: Double) -> AsyncThrowingStream<String, Error>
-  }
-  ```
-- [ ] Implement providers:
-  - [ ] `OpenAIProvider` (GPT-4o, GPT-4-mini, etc.) — also covers DeepSeek and Qwen (OpenAI-compatible API)
-  - [ ] `AnthropicProvider` (Claude models — Messages API with SSE streaming)
-- [ ] Provider factory that creates the right provider from settings
-- [ ] Model listing: fetch available models from each provider's API
-- [ ] Streaming response: tokens appear in real-time in chat bubble
-- [ ] Error handling: network errors, auth errors, rate limits shown inline
-- [ ] Stop/cancel streaming: send button becomes a Stop button during LLM inference; pressing it cancels the URLSession stream, preserves partial text in the assistant bubble, and restores the send button
-- [ ] Conversation context: send conversation history with each request
-- [ ] Auto-name conversations: after first assistant response, use LLM to suggest a short title (user can always rename manually via sidebar)
+- [x] Define `LLMService` protocol with `streamCompletion()` → `AsyncThrowingStream<String, Error>`
+- [x] Implement providers:
+  - [x] `OpenAICompatibleService` (OpenAI, DeepSeek, Qwen, Z.ai — `/v1/chat/completions` SSE)
+  - [x] `AnthropicService` (Claude — `/v1/messages` SSE with `content_block_delta`)
+- [x] `LLMServiceFactory` maps provider enum → service implementation
+- [x] Streaming response: tokens appear in real-time, "Thinking..." placeholder before first token
+- [x] Error handling: inline error banner with dismiss, covers no-key/network/HTTP errors
+- [x] Stop/cancel streaming: send button becomes red Stop button during inference; cancels URLSession, preserves partial text
+- [x] Conversation context: full message history sent with each request
+- [x] Auto-name conversations: after first assistant response, background LLM request for a short title
 
 ### Test Criteria
-- [ ] Configure OpenAI API key, select GPT-4o-mini, send "Hello" — get streamed response
-- [ ] Configure Anthropic API key, select Claude — get streamed response
-- [ ] Configure DeepSeek/Qwen endpoint (OpenAI-compatible) — get response
-- [ ] Press Stop during streaming — response stops, partial text preserved, send button restored
-- [ ] No API key configured — clear error message, not a crash
-- [ ] Network offline — graceful error in chat
+- [x] Configure OpenAI API key, select model, send "Hello" — get streamed response
+- [x] Configure Anthropic API key, select Claude — get streamed response
+- [x] Configure DeepSeek/Qwen/Z.ai endpoint (OpenAI-compatible) — get response
+- [x] Press Stop during streaming — response stops, partial text preserved, send button restored
+- [x] No API key configured — clear error message, not a crash
+- [x] Network offline — graceful error in chat
 
 ---
 

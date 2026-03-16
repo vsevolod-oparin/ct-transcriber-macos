@@ -35,11 +35,11 @@ Three nested Codable structs:
 ### Persistence
 
 **SettingsStorage:**
-- JSON file at `~/.config/ct-transcriber/settings.json`
+- JSON file at `~/Library/Application Support/CTTranscriber/settings.json` (fallback if `~/.config` is not writable) or `~/.config/ct-transcriber/settings.json`
+- Default provider configs stored in bundled `Resources/default-settings.json` — not hardcoded in Swift
+- On first launch, bundled defaults are copied to the user config directory so the file is immediately shareable/editable
 - Pretty-printed with sorted keys (human-readable)
-- Graceful fallback to defaults on missing/corrupted file
-- Directory created lazily on first save
-- File only written when settings change (no empty default file)
+- Graceful fallback to bundled defaults on corrupted file
 
 **KeychainService:**
 - Stores API keys in macOS Keychain under service `com.branch.ct-transcriber`
