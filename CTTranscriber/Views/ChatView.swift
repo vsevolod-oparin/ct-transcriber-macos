@@ -21,14 +21,7 @@ struct ChatView: View {
 
             ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isInputFocused = true
-        }
         .navigationTitle(conversation.title)
-        .onAppear {
-            isInputFocused = true
-        }
         .onChange(of: conversation.id) { _, _ in
             isInputFocused = true
         }
@@ -47,7 +40,8 @@ private struct ErrorBanner: View {
                 .foregroundStyle(.yellow)
             Text(message)
                 .font(.caption)
-                .lineLimit(2)
+                .lineLimit(5)
+                .textSelection(.enabled)
             Spacer()
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")

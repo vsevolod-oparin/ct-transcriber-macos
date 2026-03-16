@@ -11,7 +11,7 @@ struct SettingsView: View {
             TranscriptionSettingsTab(settings: $settingsManager.settings.transcription)
                 .tabItem { Label("Transcription", systemImage: "waveform") }
 
-            LLMSettingsTab(settings: $settingsManager.settings.llm, settingsManager: settingsManager)
+            LLMSettingsTab(settings: $settingsManager.settings.llm)
                 .tabItem { Label("LLM", systemImage: "brain") }
         }
         .frame(width: 520, height: 480)
@@ -104,7 +104,6 @@ private struct TranscriptionSettingsTab: View {
 
 private struct LLMSettingsTab: View {
     @Binding var settings: LLMSettings
-    var settingsManager: SettingsManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,8 +134,7 @@ private struct LLMSettingsTab: View {
             // Active provider config
             if let index = activeProviderIndex {
                 ProviderConfigEditor(
-                    config: $settings.providers[index],
-                    settingsManager: settingsManager
+                    config: $settings.providers[index]
                 )
             }
         }
@@ -158,6 +156,7 @@ private struct LLMSettingsTab: View {
             fallbackModels: [],
             temperature: 0.7,
             maxTokens: 4096,
+            apiKey: "",
             extraHeaders: [:]
         )
         settings.providers.append(newProvider)
@@ -175,8 +174,6 @@ private struct LLMSettingsTab: View {
 
 private struct ProviderConfigEditor: View {
     @Binding var config: ProviderConfig
-    var settingsManager: SettingsManager
-    @State private var apiKeyText: String = ""
     @State private var availableModels: [String] = []
     @State private var isFetchingModels: Bool = false
     @State private var fallbackModelsText: String = ""
@@ -205,10 +202,7 @@ private struct ProviderConfigEditor: View {
             }
 
             Section("Authentication") {
-                SecureField("API Key", text: $apiKeyText)
-                    .onChange(of: apiKeyText) { _, newValue in
-                        settingsManager.setApiKey(newValue, for: config)
-                    }
+                SecureField("API Key", text: $config.apiKey)
                     .onSubmit { fetchModels() }
             }
 
@@ -246,7 +240,7 @@ private struct ProviderConfigEditor: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Fetch models from API")
-                    .disabled(apiKeyText.isEmpty)
+                    .disabled(config.apiKey.isEmpty)
                 }
 
                 TextField("Fallback Models (comma-separated)", text: $fallbackModelsText)
@@ -292,7 +286,6 @@ private struct ProviderConfigEditor: View {
     }
 
     private func loadProviderState() {
-        apiKeyText = settingsManager.apiKey(for: config)
         fallbackModelsText = config.fallbackModels.joined(separator: ", ")
         extraHeadersText = formatHeaders(config.extraHeaders)
         availableModels = config.fallbackModels
@@ -320,7 +313,7 @@ private struct ProviderConfigEditor: View {
     }
 
     private func fetchModels() {
-        guard !apiKeyText.isEmpty, !config.modelsPath.isEmpty else {
+        guard !config.apiKey.isEmpty, !config.modelsPath.isEmpty else {
             availableModels = config.fallbackModels
             return
         }
@@ -328,7 +321,7 @@ private struct ProviderConfigEditor: View {
         Task {
             let models = await ModelListService.fetchModels(
                 provider: config,
-                apiKey: apiKeyText
+                apiKey: config.apiKey
             )
             await MainActor.run {
                 availableModels = models

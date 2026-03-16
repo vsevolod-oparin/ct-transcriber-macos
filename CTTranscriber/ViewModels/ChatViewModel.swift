@@ -97,7 +97,7 @@ final class ChatViewModel {
         guard let settings = settingsManager,
               let provider = settings.activeProvider else { return }
 
-        let apiKey = settings.apiKey(for: provider)
+        let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
             lastError = LLMError.noAPIKey.localizedDescription
             return
@@ -203,7 +203,7 @@ final class ChatViewModel {
         let assistantMessages = conversation.messages.filter { $0.role == .assistant }
         guard assistantMessages.count == 1 else { return }
 
-        let apiKey = settings.apiKey(for: provider)
+        let apiKey = provider.apiKey
         guard !apiKey.isEmpty else { return }
 
         let service = LLMServiceFactory.service(for: provider)

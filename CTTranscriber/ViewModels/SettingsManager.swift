@@ -21,24 +21,6 @@ final class SettingsManager {
         settings.llm.activeProvider
     }
 
-    // MARK: - API Key accessors (Keychain-backed, keyed by provider ID)
-
-    func apiKey(for provider: ProviderConfig) -> String {
-        KeychainService.load(key: keychainKey(for: provider)) ?? ""
-    }
-
-    func setApiKey(_ key: String, for provider: ProviderConfig) {
-        if key.isEmpty {
-            KeychainService.delete(key: keychainKey(for: provider))
-        } else {
-            KeychainService.save(key: keychainKey(for: provider), value: key)
-        }
-    }
-
-    private func keychainKey(for provider: ProviderConfig) -> String {
-        "apikey-\(provider.id.uuidString)"
-    }
-
     // MARK: - Theme
 
     var colorScheme: ColorScheme? {

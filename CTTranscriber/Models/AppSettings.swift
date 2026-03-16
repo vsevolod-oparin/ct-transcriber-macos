@@ -72,6 +72,8 @@ struct ProviderConfig: Codable, Equatable, Identifiable {
     var fallbackModels: [String]
     var temperature: Double
     var maxTokens: Int
+    /// API key for this provider. Stored in settings.json (plaintext, same as industry standard for LLM tools).
+    var apiKey: String
     /// Additional HTTP headers sent with every request (e.g., {"anthropic-version": "2023-06-01"}).
     var extraHeaders: [String: String]
 

@@ -56,6 +56,7 @@ final class ConversationRenameUITests: XCTestCase {
 
         // Select all, type new name, commit with Enter
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("Renamed Title")
         field.typeKey(.return, modifierFlags: [])
 
@@ -69,6 +70,7 @@ final class ConversationRenameUITests: XCTestCase {
 
         // Type something but cancel with Escape
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("Should not persist")
         field.typeKey(.escape, modifierFlags: [])
 
@@ -101,6 +103,7 @@ final class ConversationRenameUITests: XCTestCase {
         let first = sidebar.staticTexts["New Conversation"].firstMatch
         var field = openRename(on: first)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("Alpha")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["Alpha"].waitForExistence(timeout: 2))
@@ -109,6 +112,7 @@ final class ConversationRenameUITests: XCTestCase {
         let second = sidebar.staticTexts["New Conversation"].firstMatch
         field = openRename(on: second)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("This gets cancelled")
         field.typeKey(.escape, modifierFlags: [])
 
@@ -116,6 +120,7 @@ final class ConversationRenameUITests: XCTestCase {
         let secondAgain = sidebar.staticTexts["New Conversation"].firstMatch
         field = openRename(on: secondAgain)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("Beta")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["Beta"].waitForExistence(timeout: 2))
@@ -124,6 +129,7 @@ final class ConversationRenameUITests: XCTestCase {
         let third = sidebar.staticTexts["New Conversation"].firstMatch
         field = openRename(on: third)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("Gamma")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["Gamma"].waitForExistence(timeout: 2))
@@ -146,6 +152,7 @@ final class ConversationRenameUITests: XCTestCase {
         var target = sidebar.staticTexts["New Conversation"].firstMatch
         var field = openRename(on: target)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("AAA")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["AAA"].waitForExistence(timeout: 2))
@@ -154,6 +161,7 @@ final class ConversationRenameUITests: XCTestCase {
         target = sidebar.staticTexts["New Conversation"].firstMatch
         field = openRename(on: target)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("BBB")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["BBB"].waitForExistence(timeout: 2))
@@ -162,6 +170,7 @@ final class ConversationRenameUITests: XCTestCase {
         target = sidebar.staticTexts["AAA"].firstMatch
         field = openRename(on: target)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("AAA-v2")
         field.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["AAA-v2"].waitForExistence(timeout: 2))
@@ -171,6 +180,7 @@ final class ConversationRenameUITests: XCTestCase {
         target = sidebar.staticTexts["BBB"].firstMatch
         field = openRename(on: target)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("BBB-nope")
         field.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(sidebar.staticTexts["BBB"].waitForExistence(timeout: 2))
@@ -180,6 +190,7 @@ final class ConversationRenameUITests: XCTestCase {
         target = sidebar.staticTexts["New Conversation"].firstMatch
         field = openRename(on: target)
         field.typeKey("a", modifierFlags: .command)
+        field.typeKey(.delete, modifierFlags: [])
         field.typeText("CCC")
         field.typeKey(.return, modifierFlags: [])
 

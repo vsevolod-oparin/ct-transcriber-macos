@@ -10,7 +10,7 @@
 ### LLM Service Layer
 
 **Protocol (`LLMService`):**
-- `streamCompletion(messages:model:temperature:maxTokens:baseURL:apiKey:)` → `AsyncThrowingStream<String, Error>`
+- `streamCompletion(messages:model:temperature:maxTokens:baseURL:completionsPath:apiKey:extraHeaders:)` → `AsyncThrowingStream<String, Error>`
 - All parameters passed explicitly — no global state dependency
 - `Sendable` conformance for safe concurrent use
 
@@ -19,110 +19,93 @@
 - SSE streaming: parses `data: ` lines, extracts `choices[0].delta.content`
 - Handles `[DONE]` terminator
 - Auth via `Authorization: Bearer <key>`
+- Extra headers applied from provider config
 
 **AnthropicService:**
-- Handles Anthropic Messages API (`/v1/messages`)
+- Handles Anthropic Messages API with SSE streaming
 - Different SSE format: `event: content_block_delta` with `delta.text`
 - System messages separated from the messages array (Anthropic requirement)
-- Auth via `x-api-key` header + `anthropic-version`
-- Handles `message_stop` and `error` events
+- Auth via `x-api-key` header
+- `anthropic-version` header comes from `extraHeaders` in config (not hardcoded)
 
 **LLMServiceFactory:**
-- Maps `LLMSettings.LLMProvider` → `LLMService` implementation
-- Anthropic → `AnthropicService`, all others → `OpenAICompatibleService`
+- Maps `LLMApiType` → `LLMService` implementation
+- `anthropic` → `AnthropicService`, `openaiCompatible` → `OpenAICompatibleService`
 
-**LLMError:**
-- `noAPIKey`, `invalidURL`, `httpError(statusCode:body:)`, `decodingError`, `networkError`, `cancelled`
-- All implement `LocalizedError` for user-facing messages
+### Data-Driven Provider Configs
 
-### Providers Supported
+All provider configurations are stored in `default-settings.json` (bundled) and `settings.json` (user config). No hardcoded provider URLs, paths, models, or headers in Swift code.
 
-| Provider | API Type | Default Base URL |
-|----------|----------|-----------------|
-| OpenAI | OpenAI-compatible | `https://api.openai.com` |
-| Anthropic | Anthropic Messages | `https://api.anthropic.com` |
-| DeepSeek | OpenAI-compatible | `https://api.deepseek.com` |
-| Qwen | OpenAI-compatible | `https://dashscope.aliyuncs.com/compatible-mode` |
-| Z.ai | OpenAI-compatible | `https://api.z.ai` |
+**`ProviderConfig` struct:**
+- `name`, `apiType` (OpenAI Compatible / Anthropic)
+- `baseURL`, `completionsPath`, `modelsPath`
+- `defaultModel`, `fallbackModels`
+- `temperature`, `maxTokens`
+- `apiKey` — stored in plaintext in settings.json (industry standard for LLM tools)
+- `extraHeaders` — arbitrary key-value pairs (e.g., `anthropic-version`, `Accept-Language`)
 
-All base URLs are user-editable in Settings → LLM tab.
+**Default providers shipped:**
 
-### ChatViewModel Changes
+| Provider | Default Model | API Type | Completions Path |
+|----------|--------------|----------|-----------------|
+| Z.ai | glm-4.7 | OpenAI Compatible | api/paas/v4/chat/completions |
+| OpenAI | gpt-4o-mini | OpenAI Compatible | v1/chat/completions |
+| Anthropic | claude-sonnet-4-20250514 | Anthropic | v1/messages |
+| DeepSeek | deepseek-chat | OpenAI Compatible | v1/chat/completions |
+| Qwen | qwen-plus | OpenAI Compatible | v1/chat/completions |
 
-**Streaming state:**
-- `isStreaming: Bool` — true while LLM response is in progress
-- `streamingText: String` — accumulates tokens as they arrive
-- `lastError: String?` — shown as inline error banner in chat
-- `streamingTask: Task<Void, Never>?` — cancellable handle
+Users can add/remove/edit any provider through Settings or by editing `settings.json` directly.
 
-**`sendMessage()` flow:**
-1. Creates user message, appends to conversation, saves
-2. Calls `requestLLMResponse(for:)` which:
-   - Validates API key exists
-   - Creates placeholder empty assistant message
-   - Spawns async task that streams tokens
-   - Each token updates `streamingText` and the assistant message content
-   - On completion: finalizes, triggers auto-name
-   - On cancel: preserves partial text
-   - On error: shows error banner, removes empty assistant message
+### Model Fetching
 
-**`stopStreaming()`:**
-- Cancels the streaming task
-- Preserves any partial text already received in the assistant bubble
-- Restores send button
+`ModelListService` fetches available models from each provider's models endpoint. Falls back to `fallbackModels` list on failure. Refresh button in Settings. Auto-fetches on tab open and after entering API key.
 
-**Auto-naming:**
-- After first assistant response, fires a background LLM request with prompt "Give a short title (max 6 words)"
-- Uses same provider/model/key, temperature 0.3, max 30 tokens
-- Silently fails — truncated first-message title remains if this fails
+### Streaming & Stop
 
-### UI Changes
+- `isStreaming` state drives UI: send button → red stop button, text field disabled
+- Placeholder "Thinking..." assistant bubble before first token
+- Tokens appear in real-time in the assistant message bubble
+- Stop button cancels URLSession stream, preserves partial text
+- Error banner shown inline above input bar
 
-**ChatInputBar:**
-- Send button (arrow.up.circle.fill) shown when idle
-- Stop button (stop.circle.fill, red) shown when streaming
-- Text field and paperclip disabled during streaming
+### Auto-naming
 
-**MessageBubble:**
-- Shows spinning `ProgressView` next to streaming text
-- Shows "Thinking..." placeholder when assistant message is empty (initial wait)
+After first assistant response, background LLM request generates a short title (max 6 words). Silently falls back to truncated first-message title on failure.
 
-**ErrorBanner:**
-- Yellow warning icon + error message + dismiss button
-- Shown above the input bar when `lastError` is set
+### API Key Storage
 
-**ContentView:**
-- Injects `settingsManager` into `ChatViewModel` on creation
+API keys stored in `settings.json` alongside each provider config (plaintext). Keychain removed — was causing password prompts on app launch and settings access, unacceptable UX for a dev tool.
+
+### Input Focus
+
+Message input field auto-focuses when switching conversations via `@FocusState`.
+
+### Settings UI
+
+LLM tab redesigned with:
+- Provider selector with +/- buttons
+- Full config editor: Provider (name, API type), Endpoints (base URL, paths), Authentication (API key), Extra Headers (key: value per line), Model (picker with fetch + fallback list), Defaults (temperature, max tokens)
 
 ---
 
 ## Key Decisions
 
-- **Data-driven provider configs** (`ProviderConfig`): no hardcoded enum. Each provider is a fully editable struct with name, API type, base URL, paths, default model, fallback models, temperature, max tokens. Users can add/remove/edit providers freely.
-- **API type abstraction** (`LLMApiType`): only two types — `openaiCompatible` and `anthropic`. All OpenAI-compatible providers (OpenAI, DeepSeek, Qwen, Z.ai) share the same service implementation; only paths and URLs differ.
-- **Z.ai confirmed as Zhipu AI international**: base URL `https://api.z.ai`, completions path `api/paas/v4/chat/completions`, models path `api/paas/v4/models`. Default model set to `glm-4.7`.
-- **Per-provider completionsPath**: Z.ai uses `/api/paas/v4/chat/completions` instead of the standard `/v1/chat/completions`. Each provider config stores its own path.
-- **Model picker with API fetch**: Settings shows a dropdown populated from the provider's models endpoint. Falls back to `fallbackModels` list if API unreachable. Refresh button to re-fetch.
-- **Placeholder assistant message created immediately**: gives visual feedback before first token. Removed on error if empty.
-- **Auto-name is fire-and-forget**: doesn't block UI, silently falls back to truncated first-message title.
-- **Keychain keys by provider UUID**: switching providers doesn't lose API keys.
+- **No hardcoded configs in Swift**: all provider URLs, paths, models, headers, and API keys come from `default-settings.json` (bundled) or `settings.json` (user config)
+- **Plaintext API keys**: industry standard for LLM dev tools. Keychain prompts were unacceptable UX
+- **`extraHeaders` dict**: handles provider-specific headers (Anthropic version, Z.ai Accept-Language) without hardcoding
+- **Per-provider `completionsPath`**: Z.ai uses `api/paas/v4/chat/completions`, others use `v1/chat/completions`
+- **Auto-name is fire-and-forget**: doesn't block UI, silently falls back
 
 ---
 
-## Test Criteria Results
+## Known Issues
 
-| Criteria | Result |
-|----------|--------|
-| Configure OpenAI API key, select model, send "Hello" — get streamed response | PASS (requires valid key) |
-| Configure Anthropic API key, select Claude — get streamed response | PASS (requires valid key) |
-| Configure DeepSeek/Qwen/Z.ai endpoint — get response | PASS (OpenAI-compatible) |
-| Press Stop during streaming — response stops, partial text preserved, send button restored | PASS |
-| No API key configured — clear error message, not a crash | PASS ("No API key configured" banner) |
-| Network offline — graceful error in chat | PASS (network error shown in banner) |
+- 4 of 5 rename UI tests regressed due to XCUITest `typeText` not replacing selected text in NSTextField. Manual rename works correctly. Deferred to a dedicated test-fix session.
 
 ---
 
 ## Files Created/Modified
 
-- **Created:** `Services/LLM/LLMService.swift`, `Services/LLM/OpenAICompatibleService.swift`, `Services/LLM/AnthropicService.swift`, `Services/LLM/LLMServiceFactory.swift`
-- **Modified:** `Models/AppSettings.swift` (added Z.ai provider), `ViewModels/ChatViewModel.swift` (streaming, stop, auto-name), `Views/ChatView.swift` (stop button, streaming UI, error banner), `Views/ContentView.swift` (settingsManager injection)
+- **Created:** `Services/LLM/LLMService.swift`, `Services/LLM/OpenAICompatibleService.swift`, `Services/LLM/AnthropicService.swift`, `Services/LLM/LLMServiceFactory.swift`, `Services/LLM/ModelListService.swift`, `Resources/default-settings.json`
+- **Modified:** `Models/AppSettings.swift` (data-driven ProviderConfig with apiKey, extraHeaders), `ViewModels/ChatViewModel.swift` (streaming, stop, auto-name), `ViewModels/SettingsManager.swift` (simplified, no Keychain), `Services/SettingsStorage.swift` (bundled defaults, fallback paths), `Views/ChatView.swift` (stop button, streaming UI, error banner, input focus), `Views/ContentView.swift` (settingsManager injection), `Views/SettingsView.swift` (provider config editor), `App/CTTranscriberApp.swift` (SettingsManager, theme)
+- **Deleted:** `Services/KeychainService.swift`
