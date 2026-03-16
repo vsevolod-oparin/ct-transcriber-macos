@@ -55,8 +55,21 @@
 
 ---
 
+## UI Tests
+
+`CTTranscriberUITests/ConversationRenameUITests.swift` — 3 XCUITest cases:
+- `testRenameViaContextMenu` — right-click → Rename → type → Enter → title updated
+- `testRenameCancelViaEscape` — right-click → Rename → type → Escape → original title kept
+- `testRenameEmptyStringKeepsOriginal` — right-click → Rename → clear → Enter → original title kept
+
+Key findings during test development:
+- NSViewRepresentable `SelectAllTextField` inherits the parent VStack's accessibility identifier, not its own `setAccessibilityIdentifier`. Query by `sidebar.textFields.firstMatch` instead.
+- The original `DoubleClickOverlay` (NSView with `mouseDown` override) blocked the main run loop when XCUITest inspected the accessibility tree. Replaced with `NSEvent.addLocalMonitorForEvents` approach.
+- SwiftUI `List` on macOS is accessible via `app.descendants(matching: .any)["conversationList"]`, not `app.tables` or `app.outlines`.
+- App uses `--uitesting` launch argument → in-memory SwiftData container for test isolation.
+
 ## Files Created/Modified
 
-- **Created:** `ViewModels/ChatViewModel.swift`, `Views/ConversationListView.swift`, `Views/ChatView.swift`
-- **Modified:** `Views/ContentView.swift` (replaced stub with full NavigationSplitView wiring)
+- **Created:** `ViewModels/ChatViewModel.swift`, `Views/ConversationListView.swift`, `Views/ChatView.swift`, `CTTranscriberUITests/ConversationRenameUITests.swift`
+- **Modified:** `Views/ContentView.swift` (replaced stub with full NavigationSplitView wiring), `App/CTTranscriberApp.swift` (in-memory store for UI testing), `project.yml` (added UI test target)
 - **Regenerated:** `CTTranscriber.xcodeproj` (via xcodegen)

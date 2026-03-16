@@ -6,26 +6,17 @@ import SwiftData
 final class ChatViewModel {
     var selectedConversationID: UUID?
     var messageText: String = ""
+    private(set) var conversations: [Conversation] = []
 
     private var modelContext: ModelContext
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
-    }
-
-    var conversations: [Conversation] {
-        let descriptor = FetchDescriptor<Conversation>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        refreshConversations()
     }
 
     var selectedConversation: Conversation? {
-        guard let id = selectedConversationID else { return nil }
-        let descriptor = FetchDescriptor<Conversation>(
-            predicate: #Predicate { $0.id == id }
-        )
-        return try? modelContext.fetch(descriptor).first
+        conversations.first { $0.id == selectedConversationID }
     }
 
     func sortedMessages(for conversation: Conversation) -> [Message] {
@@ -36,6 +27,7 @@ final class ChatViewModel {
         let conversation = Conversation()
         modelContext.insert(conversation)
         saveContext()
+        refreshConversations()
         selectedConversationID = conversation.id
     }
 
@@ -43,10 +35,10 @@ final class ChatViewModel {
         conversation.title = newTitle
         conversation.updatedAt = Date()
         saveContext()
+        refreshConversations()
     }
 
     func deleteConversation(_ conversation: Conversation) {
-        // Clean up stored files for all attachments
         for message in conversation.messages {
             for attachment in message.attachments {
                 FileStorage.delete(storedName: attachment.storedName)
@@ -56,6 +48,7 @@ final class ChatViewModel {
         let wasSelected = selectedConversationID == conversation.id
         modelContext.delete(conversation)
         saveContext()
+        refreshConversations()
 
         if wasSelected {
             selectedConversationID = conversations.first?.id
@@ -74,6 +67,7 @@ final class ChatViewModel {
 
         messageText = ""
         saveContext()
+        refreshConversations()
     }
 
     func attachFile(from url: URL, to conversation: Conversation) {
@@ -88,6 +82,7 @@ final class ChatViewModel {
         conversation.messages.append(message)
         conversation.updatedAt = Date()
         saveContext()
+        refreshConversations()
     }
 
     // MARK: - Private
@@ -103,6 +98,13 @@ final class ChatViewModel {
         conversation.title = truncated.count < firstMessageText.count
             ? "\(truncated)..."
             : truncated
+    }
+
+    private func refreshConversations() {
+        let descriptor = FetchDescriptor<Conversation>(
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        conversations = (try? modelContext.fetch(descriptor)) ?? []
     }
 
     private func saveContext() {

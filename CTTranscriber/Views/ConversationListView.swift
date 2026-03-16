@@ -13,8 +13,7 @@ struct ConversationListView: View {
                     isEditing: editingConversationID == conversation.id,
                     editingTitle: $editingTitle,
                     onCommitRename: { commitRename(conversation) },
-                    onCancelRename: { cancelRename() },
-                    onDoubleClick: { beginRename(conversation) }
+                    onCancelRename: { cancelRename() }
                 )
                 .tag(conversation.id)
                 .contextMenu {
@@ -37,14 +36,27 @@ struct ConversationListView: View {
                 cancelRename()
             }
         }
+        .onDoubleClickInList { location in
+            handleDoubleClick(at: location)
+        }
+        .accessibilityIdentifier("conversationList")
         .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         .toolbar {
             ToolbarItem {
                 Button(action: viewModel.createConversation) {
                     Label("New Conversation", systemImage: "plus")
                 }
+                .accessibilityIdentifier("newConversationButton")
                 .keyboardShortcut("n", modifiers: .command)
             }
+        }
+    }
+
+    private func handleDoubleClick(at location: NSPoint) {
+        // Double-click on the selected conversation triggers rename
+        if let selectedID = viewModel.selectedConversationID,
+           let conversation = viewModel.conversations.first(where: { $0.id == selectedID }) {
+            beginRename(conversation)
         }
     }
 
@@ -66,6 +78,36 @@ struct ConversationListView: View {
     }
 }
 
+// MARK: - Double-click modifier using local event monitor
+
+private struct DoubleClickListModifier: ViewModifier {
+    let action: (NSPoint) -> Void
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+                    if event.clickCount == 2 {
+                        action(event.locationInWindow)
+                    }
+                    return event
+                }
+            }
+            .onDisappear {
+                if let monitor {
+                    NSEvent.removeMonitor(monitor)
+                }
+            }
+    }
+}
+
+extension View {
+    func onDoubleClickInList(perform action: @escaping (NSPoint) -> Void) -> some View {
+        modifier(DoubleClickListModifier(action: action))
+    }
+}
+
 // MARK: - Conversation Row
 
 private struct ConversationRow: View {
@@ -74,17 +116,18 @@ private struct ConversationRow: View {
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
-    let onDoubleClick: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if isEditing {
                 SelectAllTextField(text: $editingTitle, onCommit: onCommitRename, onCancel: onCancelRename)
                     .font(.headline)
+                    .accessibilityIdentifier("renameTextField")
             } else {
                 Text(conversation.title)
                     .font(.headline)
                     .lineLimit(1)
+                    .accessibilityIdentifier("conversationTitle_\(conversation.title)")
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
@@ -92,38 +135,7 @@ private struct ConversationRow: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
-        .overlay {
-            if !isEditing {
-                DoubleClickOverlay(onDoubleClick: onDoubleClick)
-            }
-        }
-    }
-}
-
-// MARK: - AppKit double-click detector (doesn't interfere with List selection)
-
-private struct DoubleClickOverlay: NSViewRepresentable {
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> DoubleClickView {
-        let view = DoubleClickView()
-        view.onDoubleClick = onDoubleClick
-        return view
-    }
-
-    func updateNSView(_ nsView: DoubleClickView, context: Context) {
-        nsView.onDoubleClick = onDoubleClick
-    }
-
-    class DoubleClickView: NSView {
-        var onDoubleClick: (() -> Void)?
-
-        override func mouseDown(with event: NSEvent) {
-            super.mouseDown(with: event)
-            if event.clickCount == 2 {
-                onDoubleClick?()
-            }
-        }
+        .accessibilityIdentifier("conversationRow_\(conversation.title)")
     }
 }
 
@@ -141,6 +153,7 @@ private struct SelectAllTextField: NSViewRepresentable {
         field.focusRingType = .exterior
         field.delegate = context.coordinator
         field.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        field.setAccessibilityIdentifier("renameField")
         return field
     }
 

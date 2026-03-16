@@ -29,3 +29,16 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_CFBundleDisplayName: CT Transcriber
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
+
+  CTTranscriberUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - CTTranscriberUITests
+    dependencies:
+      - target: CTTranscriber
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.branch.ct-transcriber.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: CTTranscriber
