@@ -6,7 +6,9 @@
       "Bash(which xcodegen:*)",
       "Bash(brew install:*)",
       "Bash(xcodegen generate:*)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash",
+      "Read"
     ]
   }
 }
