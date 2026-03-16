@@ -21,29 +21,19 @@ struct GeneralSettings: Codable, Equatable {
 // MARK: - Transcription
 
 struct TranscriptionSettings: Codable, Equatable {
-    enum WhisperModel: String, Codable, CaseIterable, Identifiable {
-        case base = "whisper-base"
-        case largeTurbo = "whisper-large-v3-turbo"
-        case largeV3 = "whisper-large-v3"
+    /// Conda environment name for whisper-metal.
+    var condaEnvName: String
+    /// Path to CTranslate2 source directory (metal-backend branch).
+    var ctranslate2SourcePath: String
+    /// Path to directory where converted whisper models are stored.
+    var modelsDirectory: String
 
-        var id: String { rawValue }
-
-        var displayName: String {
-            switch self {
-            case .base: "Base (~150 MB)"
-            case .largeTurbo: "Large V3 Turbo (~1.6 GB)"
-            case .largeV3: "Large V3 (~3.1 GB)"
-            }
-        }
-    }
-
-    var model: WhisperModel = .largeTurbo
-    var beamSize: Int = 5
-    var temperature: Double = 0.0
-    var language: String = "" // empty = auto-detect
-    var vadFilter: Bool = true
-    var conditionOnPreviousText: Bool = false
-    var device: String = "mps" // "mps" or "cpu"
+    var beamSize: Int
+    var temperature: Double
+    var language: String // empty = auto-detect
+    var vadFilter: Bool
+    var conditionOnPreviousText: Bool
+    var device: String // "mps" or "cpu"
 
     var isValid: Bool {
         beamSize >= 1 && beamSize <= 20 && temperature >= 0.0 && temperature <= 2.0

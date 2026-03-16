@@ -181,14 +181,15 @@ Key details:
 
 ---
 
-## Milestone 5: Python/CTranslate2 Environment Setup
+## Milestone 5: Python/CTranslate2 Environment Setup ✅
 
 **Goal:** Conda environment with faster-whisper and CTranslate2 metal-backend, callable from Swift.
+**Status:** Complete (2026-03-16) — see `reports/milestone-5-python-env-setup.md`
 
 The CTranslate2 metal-backend source is at `/Users/smileijp/projects/branch/CTranslate2` and builds per `METAL_QUICKSTART.md`.
 
 ### Tasks
-- [ ] Create environment setup script (`setup_env.sh`) that automates the METAL_QUICKSTART flow:
+- [x] Create environment setup script (`setup_env.sh`) that automates the METAL_QUICKSTART flow:
   - Check for conda/miniconda (prompt to install if missing)
   - Create `whisper-metal` conda env (Python 3.12)
   - `pip install torch transformers sentencepiece faster-whisper`
@@ -204,28 +205,89 @@ The CTranslate2 metal-backend source is at `/Users/smileijp/projects/branch/CTra
     cmake --install build
     cd python && pip install . && cd ..
     ```
-  - Report progress for each step (submodules, cmake, build, install)
-- [ ] Create `transcribe.py` CLI wrapper:
-  ```
-  python transcribe.py --model <path> --audio <path> --beam-size 5 --temperature 0.0 --device mps --output json
-  ```
-  Output: JSON with segments `[{start, end, text}]`, progress on stderr
-  - Use `device=mps`, `compute_type=float16` by default; fall back to `device=cpu`, `compute_type=float32`
-  - Support `vad_filter=True`, `condition_on_previous_text`, `language` args
-- [ ] Swift `PythonEnvironment` service:
-  - Detect conda installation and `whisper-metal` env
-  - Provide path to conda env's Python executable
-  - Validate: `python -c "import ctranslate2; import faster_whisper"`
-  - Run setup if env missing (with progress reporting)
-- [ ] First-launch flow: detect missing env, guide user through setup
-- [ ] Store CTranslate2 source path in settings (default: bundled or user-configured)
+  - Report progress for each step via JSON stdout
+- [x] Create `transcribe.py` CLI wrapper:
+  - JSON-over-stdout protocol: info → segments → done (or error)
+  - Progress on stderr: `[progress] Transcribing... 45%`
+  - Device mps/cpu, beam size, temperature, language, VAD, condition args
+- [x] Swift `PythonEnvironment` service:
+  - Detect conda + env, validate imports, return `.ready(pythonPath)` or `.missing(reason)`
+  - `runSetup()` → `AsyncThrowingStream<SetupStep, Error>` for progress
+- [x] Environment paths in settings.json: condaEnvName, ctranslate2SourcePath, modelsDirectory
+- [x] Settings UI: Environment section with Browse buttons for paths
 
 ### Test Criteria
-- [ ] Run `setup_env.sh` — conda env created, `python -c "import ctranslate2"` succeeds
-- [ ] `conda activate whisper-metal && python transcribe.py --model <path> --audio test.wav` produces JSON transcript
-- [ ] `transcribe.py --device mps` uses Metal GPU; `--device cpu` falls back to CPU
-- [ ] Swift app detects missing env and shows setup prompt
-- [ ] Setup completes with visible progress (build steps logged)
+- [x] `setup_env.sh` creates conda env, imports succeed
+- [x] `transcribe.py` produces JSON transcript with segments
+- [x] `--device mps` uses Metal GPU; `--device cpu` falls back
+- [x] Swift app detects missing env via `PythonEnvironment.check`
+- [x] Setup streams progress via JSON steps
+
+---
+
+## Milestone 5b: Zero-Setup User Experience
+
+**Goal:** End user installs the DMG, launches the app, and the Python environment sets itself up automatically — no terminal, no Xcode CLT, no manual conda install.
+
+### Strategy
+
+Two complementary approaches:
+
+**1. Pre-built CTranslate2 Metal wheel**
+- Build a `.whl` for the metal-backend on arm64 macOS once (on the developer's machine or CI)
+- Host on GitHub Releases or a simple HTTP server
+- Setup script becomes: `pip install ctranslate2-metal-X.Y.Z-cp312-arm64.whl` instead of compiling from source
+- Eliminates: Xcode CLT, cmake, 5+ minute build time
+- User still needs conda/miniconda for the Python env
+
+**2. Bundled Miniconda installer**
+- On first launch, if conda is not detected:
+  - Download Miniconda arm64 installer (~60 MB) from `https://repo.anaconda.com/miniconda/`
+  - Install silently to `~/Library/Application Support/CTTranscriber/miniconda/`
+  - Create the whisper-metal env there
+  - All automatic — user only sees a progress bar
+- Eliminates: manual conda installation
+
+Together these mean: user opens app → progress bar → ready. No terminal commands ever.
+
+### Tasks
+
+**Pre-built wheel:**
+- [ ] Build CTranslate2 metal-backend wheel: `cd python && pip wheel . -w dist/`
+- [ ] Test wheel installs cleanly on a fresh conda env: `pip install dist/ctranslate2-*.whl`
+- [ ] Host wheel (GitHub Release on the CTranslate2 fork, or `CTTranscriber/releases`)
+- [ ] Update `setup_env.sh` to `pip install <wheel_url>` instead of building from source
+- [ ] Keep source-build path as fallback (if wheel URL fails or user prefers source)
+
+**Bundled Miniconda:**
+- [ ] Add Miniconda download + silent install to `setup_env.sh`:
+  ```bash
+  MINICONDA_DIR="$HOME/Library/Application Support/CTTranscriber/miniconda"
+  curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh \
+    -o /tmp/miniconda.sh
+  bash /tmp/miniconda.sh -b -p "$MINICONDA_DIR"
+  ```
+- [ ] Use the bundled Miniconda's conda instead of requiring system-wide install
+- [ ] `PythonEnvironment` service: add `~/Library/Application Support/CTTranscriber/miniconda/bin/conda` to search paths
+
+**First-launch flow (Swift UI):**
+- [ ] On app launch, `PythonEnvironment.check()` runs automatically
+- [ ] If `.missing`: show setup sheet with "Set Up Transcription" button
+  - Progress bar with step names from setup_env.sh JSON output
+  - Estimated time: "This may take a few minutes (downloading ~500 MB)"
+  - Cancel button
+  - On completion: "Ready! You can now transcribe audio."
+- [ ] If `.ready`: no prompt, transcription available immediately
+- [ ] Settings → Transcription: "Re-run Setup" button for repairs
+- [ ] Wheel URL configurable in settings.json (for self-hosted/offline installs)
+
+### Test Criteria
+- [ ] Fresh machine (no conda, no Xcode CLT): app installs Miniconda + wheel → transcription works
+- [ ] Machine with existing conda: app uses it, installs wheel into env → works
+- [ ] Wheel install fails: falls back to source build (with clear progress/error)
+- [ ] User sees only a progress bar during setup, no terminal interaction
+- [ ] Cancel during setup: clean state, can retry
+- [ ] "Re-run Setup" in settings works for recovery
 
 ---
 
@@ -364,7 +426,7 @@ The CTranslate2 metal-backend source is at `/Users/smileijp/projects/branch/CTra
 - [ ] About window with version, credits, links
 - [ ] Menu bar items: standard macOS menus (File, Edit, Window, Help)
 - [ ] Keyboard shortcuts: `Cmd+N` new conversation, `Cmd+,` settings, `Cmd+O` open audio
-- [ ] First-launch onboarding: quick setup for Python env + API keys
+- [ ] First-launch onboarding: automatic Python env setup (M5b) + API key entry prompt
 - [ ] Error states: empty states, network errors, missing dependencies
 - [ ] Dark mode support (native SwiftUI)
 - [ ] DMG creation:
@@ -411,8 +473,9 @@ M0 (Skeleton)
  │         └── M7 (Transcription) ← M5 (Python Env) ← M6 (Models)
  │              └── M8 (Task Manager)
  ├── M3 (Settings)
+ ├── M5b (Zero-Setup UX) ← M5
  └── M9 (macOS Integration) ← M2, M7
-      └── M10 (Polish & DMG) ← all above
+      └── M10 (Polish & DMG) ← all above including M5b
            └── M11 (MCP) [future]
 ```
 
@@ -423,7 +486,7 @@ M0 (Skeleton)
 | **Phase A** | M0 → M1 → M2 → M3 | Core UI + persistence — you see a working chat app |
 | **Phase B** | M4 | LLM integration — app becomes useful as a chat client |
 | **Phase C** | M5 → M6 → M7 | Transcription pipeline — core differentiator |
-| **Phase D** | M8 → M9 | Task management + OS integration — production quality |
+| **Phase D** | M5b → M8 → M9 | Zero-setup UX + task management + OS integration |
 | **Phase E** | M10 | Polish + distribution |
 | **Phase F** | M11 | Future MCP exploration |
 
@@ -433,10 +496,10 @@ M0 (Skeleton)
 
 | Risk | Mitigation |
 |------|-----------|
-| CTranslate2 metal-backend build requires Xcode CLT + conda | Automate in setup script; already proven to build locally (see METAL_QUICKSTART.md) |
-| Conda dependency for end users | Automate miniconda install; document clearly in onboarding flow |
+| Pre-built wheel compatibility across macOS versions | Build on oldest supported macOS (14.0); test on 14 and 15; include macOS version in wheel filename |
+| Miniconda silent install may be blocked by Gatekeeper | Download official installer from repo.anaconda.com (signed); use `-b` (batch) flag |
 | Model conversion downloads are large (1-3 GB for large models) | Start with `whisper-base` (~150 MB) for testing; show size warnings; implement resume |
 | `preprocessor_config.json` or `tokenizer.json` missing after conversion | Enforce `--copy_files` flag in conversion script; validate model directory completeness |
 | Unsigned app triggers Gatekeeper warnings | Document `xattr -cr` bypass; consider $99/yr Developer ID signing for wider distribution |
 | LLM API rate limits / costs | Show token usage estimates; support local models in future |
-| Metal shader compilation errors (`msl_strings.h out of sync`) | Run `python3 tools/gen_msl_strings.py` as part of automated build; catch and report clearly |
+| Bundled Miniconda adds ~500 MB first-launch download | Show clear size estimate in setup dialog; cache the installer |

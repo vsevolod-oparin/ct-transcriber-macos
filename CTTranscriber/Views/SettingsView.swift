@@ -49,51 +49,75 @@ private struct TranscriptionSettingsTab: View {
 
     var body: some View {
         Form {
-            Picker("Model", selection: $settings.model) {
-                ForEach(TranscriptionSettings.WhisperModel.allCases) { model in
-                    Text(model.displayName).tag(model)
+            Section("Environment") {
+                TextField("Conda Env Name", text: $settings.condaEnvName)
+                HStack {
+                    TextField("CTranslate2 Source Path", text: $settings.ctranslate2SourcePath)
+                    Button("Browse...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            settings.ctranslate2SourcePath = url.path
+                        }
+                    }
+                }
+                HStack {
+                    TextField("Models Directory", text: $settings.modelsDirectory)
+                    Button("Browse...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            settings.modelsDirectory = url.path
+                        }
+                    }
                 }
             }
 
-            Picker("Device", selection: $settings.device) {
-                Text("Metal GPU (mps)").tag("mps")
-                Text("CPU").tag("cpu")
-            }
+            Section("Inference") {
+                Picker("Device", selection: $settings.device) {
+                    Text("Metal GPU (mps)").tag("mps")
+                    Text("CPU").tag("cpu")
+                }
 
-            HStack {
-                Text("Beam Size")
-                Spacer()
-                TextField("", value: $settings.beamSize, format: .number)
-                    .frame(width: 60)
-                    .multilineTextAlignment(.trailing)
-                Stepper("", value: $settings.beamSize,
-                        in: Self.minBeamSize...Self.maxBeamSize)
-                    .labelsHidden()
-            }
-            if settings.beamSize < Self.minBeamSize || settings.beamSize > Self.maxBeamSize {
-                Text("Beam size must be between \(Self.minBeamSize) and \(Self.maxBeamSize)")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
+                HStack {
+                    Text("Beam Size")
+                    Spacer()
+                    TextField("", value: $settings.beamSize, format: .number)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                    Stepper("", value: $settings.beamSize,
+                            in: Self.minBeamSize...Self.maxBeamSize)
+                        .labelsHidden()
+                }
+                if settings.beamSize < Self.minBeamSize || settings.beamSize > Self.maxBeamSize {
+                    Text("Beam size must be between \(Self.minBeamSize) and \(Self.maxBeamSize)")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
 
-            HStack {
-                Text("Temperature")
-                Spacer()
-                TextField("", value: $settings.temperature, format: .number.precision(.fractionLength(1)))
-                    .frame(width: 60)
-                    .multilineTextAlignment(.trailing)
+                HStack {
+                    Text("Temperature")
+                    Spacer()
+                    TextField("", value: $settings.temperature, format: .number.precision(.fractionLength(1)))
+                        .frame(width: 60)
+                        .multilineTextAlignment(.trailing)
+                }
+                if settings.temperature < Self.minTemperature || settings.temperature > Self.maxTemperature {
+                    Text("Temperature must be between \(Self.minTemperature) and \(Self.maxTemperature)")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+
+                TextField("Language (empty = auto-detect)", text: $settings.language)
+
+                Toggle("VAD Filter (skip silence)", isOn: $settings.vadFilter)
+
+                Toggle("Condition on Previous Text", isOn: $settings.conditionOnPreviousText)
             }
-            if settings.temperature < Self.minTemperature || settings.temperature > Self.maxTemperature {
-                Text("Temperature must be between \(Self.minTemperature) and \(Self.maxTemperature)")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            }
-
-            TextField("Language (empty = auto-detect)", text: $settings.language)
-
-            Toggle("VAD Filter (skip silence)", isOn: $settings.vadFilter)
-
-            Toggle("Condition on Previous Text", isOn: $settings.conditionOnPreviousText)
         }
         .formStyle(.grouped)
         .padding()

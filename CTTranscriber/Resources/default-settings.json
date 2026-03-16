@@ -3,7 +3,9 @@
     "theme": "system"
   },
   "transcription": {
-    "model": "whisper-large-v3-turbo",
+    "condaEnvName": "whisper-metal",
+    "ctranslate2SourcePath": "",
+    "modelsDirectory": "",
     "beamSize": 5,
     "temperature": 0.0,
     "language": "",
