@@ -1,0 +1,31 @@
+name: CTTranscriber
+options:
+  bundleIdPrefix: com.branch.ct-transcriber
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.2"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  CTTranscriber:
+    type: application
+    platform: macOS
+    sources:
+      - CTTranscriber
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.branch.ct-transcriber
+        PRODUCT_NAME: CT Transcriber
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: CT Transcriber
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"

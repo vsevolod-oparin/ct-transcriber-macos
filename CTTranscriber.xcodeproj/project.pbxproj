@@ -1,0 +1,371 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B4C75EEB3AEEE8104FF1B3B /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E16694A09D0B59035EA77 /* Message.swift */; };
+		33C143E5D5FC26D377B0EF8E /* CTTranscriberApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */; };
+		988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */; };
+		C3FC14CE7048400AFE174901 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		128C815950849E516D0EC30F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		27ABE31824F927E9C4AAC145 /* CTTranscriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CTTranscriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C12C6C49D0510515609D820 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
+		A07E16694A09D0B59035EA77 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
+		B17E23706EFEECA05EFE39F1 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		B366EF674878E371A6B985E7 /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTTranscriberApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		023CAE0A2109E362F3190A0C /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		1A0E1471BFFC4CE8A0485C3E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1F5202F216141558E1D58E6E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				128C815950849E516D0EC30F /* .gitkeep */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		2290E68696C18EA9EFA2233C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */,
+				A07E16694A09D0B59035EA77 /* Message.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		32F37C5058D60D201AA3624A /* CTTranscriber */ = {
+			isa = PBXGroup;
+			children = (
+				023CAE0A2109E362F3190A0C /* App */,
+				2290E68696C18EA9EFA2233C /* Models */,
+				AD512143C811C3882755AB50 /* Python */,
+				1F5202F216141558E1D58E6E /* Resources */,
+				6C57959938D64B9D176FD810 /* Services */,
+				91CF9C95832D1A7BC0B5D256 /* ViewModels */,
+				1A0E1471BFFC4CE8A0485C3E /* Views */,
+			);
+			path = CTTranscriber;
+			sourceTree = "<group>";
+		};
+		6C57959938D64B9D176FD810 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B17E23706EFEECA05EFE39F1 /* .gitkeep */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		91CF9C95832D1A7BC0B5D256 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				B366EF674878E371A6B985E7 /* .gitkeep */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		AD512143C811C3882755AB50 /* Python */ = {
+			isa = PBXGroup;
+			children = (
+				2C12C6C49D0510515609D820 /* .gitkeep */,
+			);
+			path = Python;
+			sourceTree = "<group>";
+		};
+		B00C0F36FF95BF66311829EF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				27ABE31824F927E9C4AAC145 /* CTTranscriber.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D7D0D6BAE38952748E2220E7 = {
+			isa = PBXGroup;
+			children = (
+				32F37C5058D60D201AA3624A /* CTTranscriber */,
+				B00C0F36FF95BF66311829EF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4E77C51A4B81A3A3AD110FE7 /* CTTranscriber */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89BDF98D3029E655EBF25D99 /* Build configuration list for PBXNativeTarget "CTTranscriber" */;
+			buildPhases = (
+				6D9378AA93A69C0438D95593 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CTTranscriber;
+			packageProductDependencies = (
+			);
+			productName = CTTranscriber;
+			productReference = 27ABE31824F927E9C4AAC145 /* CTTranscriber.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6AECBB57F972D2385B1C13F9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					4E77C51A4B81A3A3AD110FE7 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = C7D3A218374FF211D918F0CB /* Build configuration list for PBXProject "CTTranscriber" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D7D0D6BAE38952748E2220E7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B00C0F36FF95BF66311829EF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4E77C51A4B81A3A3AD110FE7 /* CTTranscriber */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6D9378AA93A69C0438D95593 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				33C143E5D5FC26D377B0EF8E /* CTTranscriberApp.swift in Sources */,
+				C3FC14CE7048400AFE174901 /* ContentView.swift in Sources */,
+				988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */,
+				0B4C75EEB3AEEE8104FF1B3B /* Message.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5CB50F041E44E54E96179F0A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleDisplayName = "CT Transcriber";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
+				PRODUCT_NAME = "CT Transcriber";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A6B603276AE87EB1B5257B2E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleDisplayName = "CT Transcriber";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
+				PRODUCT_NAME = "CT Transcriber";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F5266AFC8EE8BD619978F424 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		FC26131AD60CA383E28504C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		89BDF98D3029E655EBF25D99 /* Build configuration list for PBXNativeTarget "CTTranscriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A6B603276AE87EB1B5257B2E /* Debug */,
+				5CB50F041E44E54E96179F0A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C7D3A218374FF211D918F0CB /* Build configuration list for PBXProject "CTTranscriber" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FC26131AD60CA383E28504C4 /* Debug */,
+				F5266AFC8EE8BD619978F424 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6AECBB57F972D2385B1C13F9 /* Project object */;
+}
