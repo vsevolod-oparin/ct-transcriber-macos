@@ -78,26 +78,28 @@ Key details:
 
 ---
 
-## Milestone 1: Chat UI Shell (No Backend)
+## Milestone 1: Chat UI Shell (No Backend) ✅
 
 **Goal:** ChatGPT-like UI with sidebar and chat area, using mock data.
+**Status:** Complete (2026-03-16) — see `reports/milestone-1-chat-ui-shell.md`
 
 ### Tasks
-- [ ] Implement `NavigationSplitView` with collapsible sidebar
-- [ ] Sidebar: list of conversations with title, date, delete action
-- [ ] Main area: scrollable message list (user/assistant bubbles)
-- [ ] Text input bar at bottom with send button
-- [ ] Attachment button (audio file picker — non-functional placeholder)
-- [ ] New conversation button in sidebar
-- [ ] Empty state when no conversation is selected
-- [ ] Use mock in-memory data (no persistence yet)
+- [x] Implement `NavigationSplitView` with collapsible sidebar
+- [x] Sidebar: list of conversations with title, date, delete action
+- [x] Main area: scrollable message list (user/assistant bubbles)
+- [x] Text input bar at bottom with send button
+- [x] Attachment button (audio file picker — non-functional placeholder)
+- [x] New conversation button in sidebar
+- [x] Empty state when no conversation is selected
+- [x] Rename conversation (right-click → Rename, inline editing in sidebar)
+- [x] Use mock in-memory data (no persistence yet)
 
 ### Test Criteria
-- [ ] Sidebar shows mock conversations; selecting one displays messages
-- [ ] Sidebar can be collapsed/shown via toolbar button
-- [ ] Typing text and pressing Send adds a user bubble to the chat
-- [ ] New conversation creates an entry in sidebar
-- [ ] Delete conversation removes it from sidebar
+- [x] Sidebar shows mock conversations; selecting one displays messages
+- [x] Sidebar can be collapsed/shown via toolbar button
+- [x] Typing text and pressing Send adds a user bubble to the chat
+- [x] New conversation creates an entry in sidebar
+- [x] Delete conversation removes it from sidebar
 
 ---
 
@@ -165,6 +167,7 @@ Key details:
 - [ ] Error handling: network errors, auth errors, rate limits shown inline
 - [ ] Cancel in-flight request (user presses Stop)
 - [ ] Conversation context: send conversation history with each request
+- [ ] Auto-name conversations: after first assistant response, use LLM to suggest a short title (user can always rename manually via sidebar)
 
 ### Test Criteria
 - [ ] Configure OpenAI API key, select GPT-4o-mini, send "Hello" — get streamed response
