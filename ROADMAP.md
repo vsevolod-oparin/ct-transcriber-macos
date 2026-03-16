@@ -50,14 +50,15 @@ Key details:
 
 ---
 
-## Milestone 0: Project Skeleton & Build System
+## Milestone 0: Project Skeleton & Build System ✅
 
 **Goal:** Xcode project builds and runs, showing an empty window.
+**Status:** Complete (2026-03-16) — see `reports/milestone-0-project-skeleton.md`
 
 ### Tasks
-- [ ] Create Xcode project: macOS App, SwiftUI, Swift, SwiftData
-- [ ] Set deployment target to macOS 14.0+ (Sonoma — required for modern SwiftData)
-- [ ] Configure project structure:
+- [x] Create Xcode project: macOS App, SwiftUI, Swift, SwiftData (via xcodegen + `project.yml`)
+- [x] Set deployment target to macOS 14.0+ (Sonoma — required for modern SwiftData)
+- [x] Configure project structure:
   ```
   CTTranscriber/
     App/              — App entry point, main window
@@ -68,12 +69,12 @@ Key details:
     Resources/        — Assets, bundled scripts
     Python/           — Bundled Python scripts for faster-whisper
   ```
-- [ ] Add `.gitignore` entries for Xcode build artifacts, DerivedData
-- [ ] Verify app launches in Xcode 16.2 with blank window
+- [x] Add `.gitignore` entries for Xcode build artifacts, DerivedData
+- [x] Verify app launches in Xcode 16.2 with blank window
 
 ### Test Criteria
-- `Cmd+R` in Xcode builds and launches the app without errors
-- App shows a window with title "CT Transcriber"
+- [x] `Cmd+R` in Xcode builds and launches the app without errors
+- [x] App shows a window with title "CT Transcriber"
 
 ---
 
