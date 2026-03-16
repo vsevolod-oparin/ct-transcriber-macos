@@ -6,34 +6,42 @@ struct ConversationListView: View {
     @State private var editingTitle: String = ""
 
     var body: some View {
-        List(selection: $viewModel.selectedConversationID) {
-            ForEach(viewModel.conversations) { conversation in
-                ConversationRow(
-                    conversation: conversation,
-                    isEditing: editingConversationID == conversation.id,
-                    editingTitle: $editingTitle,
-                    onCommitRename: { commitRename(conversation) },
-                    onCancelRename: { cancelRename() }
-                )
-                .tag(conversation.id)
-                .contextMenu {
-                    Button {
-                        beginRename(conversation)
-                    } label: {
-                        Label("Rename", systemImage: "pencil")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        viewModel.deleteConversation(conversation)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+        ScrollViewReader { proxy in
+            List(selection: $viewModel.selectedConversationID) {
+                ForEach(viewModel.conversations) { conversation in
+                    ConversationRow(
+                        conversation: conversation,
+                        isEditing: editingConversationID == conversation.id,
+                        editingTitle: $editingTitle,
+                        onCommitRename: { commitRename(conversation) },
+                        onCancelRename: { cancelRename() }
+                    )
+                    .tag(conversation.id)
+                    .id(conversation.id)
+                    .contextMenu {
+                        Button {
+                            beginRename(conversation)
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            viewModel.deleteConversation(conversation)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
             }
-        }
-        .onChange(of: viewModel.selectedConversationID) { _, newID in
-            if editingConversationID != nil && editingConversationID != newID {
-                cancelRename()
+            .onChange(of: viewModel.selectedConversationID) { _, newID in
+                if editingConversationID != nil && editingConversationID != newID {
+                    cancelRename()
+                }
+                if let newID {
+                    withAnimation {
+                        proxy.scrollTo(newID, anchor: .top)
+                    }
+                }
             }
         }
         .onDoubleClickInList { location in
