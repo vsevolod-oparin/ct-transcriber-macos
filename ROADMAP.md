@@ -338,6 +338,51 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 ---
 
+## Milestone 7b: Chat UX Improvements
+
+**Goal:** Make long conversations and large transcription bubbles usable.
+
+### Tasks
+
+**Collapsible bubbles:**
+- [ ] Long messages (e.g., hour-long transcription results) should be collapsible
+- [ ] Auto-collapse transcription results above a configurable line threshold
+- [ ] Click to expand/collapse, with a "Show more" / "Show less" toggle
+- [ ] Collapsed state shows first few lines + line count summary
+
+**Bubble copy:**
+- [ ] Copy button on each message bubble (or right-click context menu)
+- [ ] Copies the full message text to clipboard
+- [ ] For transcription results: option to copy with or without timestamps
+
+**Flash attention:**
+- [ ] Enable `flash_attention=True` in faster-whisper `WhisperModel()` loading — Metal implementation exists in CTranslate2 (`flash_attention_metal.mm`, 303 lines) but is not enabled
+- [ ] Add "Flash Attention" toggle in transcription settings (default: on)
+- [ ] Benchmark: flash attention vs standard attention on Metal (M1–M4), measure speedup and verify output quality matches
+- [ ] Investigate compatibility with timestamps mode (may interact with the timestamps state corruption bug)
+
+**Transcription speed option:**
+- [ ] Add "Skip timestamps" toggle in transcription settings
+- [ ] When enabled, pass `--notimestamps` to transcribe.py / faster-whisper (simpler decoder prefix, fewer tokens, no seek retries)
+- [ ] Investigate actual speedup vs. timestamps mode — hypothesis: significantly faster for long audio
+- [ ] Note: Metal backend has a known issue with timestamps mode (state corruption with 3-token prefix, see CTranslate2 e2e test). Skipping timestamps may also improve stability
+- [ ] **Investigate timestamps bug**: determine if the state corruption is in CTranslate2 Metal backend or faster-whisper's seek/retry logic. Reproduce with direct CT2 API (bypass faster-whisper) to isolate. May require a fix in the CTranslate2 metal-backend branch
+- [ ] Display plain text segments without `[start → end]` formatting when timestamps are off
+
+**Performance optimization for large conversations:**
+- [ ] Conversations with hour-long transcription bubbles are extremely slow to load and navigate
+- [ ] Investigate: lazy text rendering, virtualized message list, or storing long transcripts as separate files (not inline in SwiftData)
+- [ ] Consider pagination or chunked loading for conversations with many/large messages
+- [ ] Profile and fix the specific bottleneck (SwiftData fetch? SwiftUI Text rendering? ScrollView layout?)
+
+### Test Criteria
+- [ ] Hour-long transcription bubble collapses by default, expands on click
+- [ ] Copy button on bubble → full text in clipboard
+- [ ] Conversation with large transcription loads in under 1 second
+- [ ] Scrolling through long conversations is smooth
+
+---
+
 ## Milestone 8: Background Task Manager
 
 **Goal:** All long-running tasks (downloads, transcriptions) are managed in a unified task system.
@@ -446,6 +491,7 @@ M0 (Skeleton)
  │    └── M2 (Persistence)
  │         ├── M4 (LLM Integration) ← M3 (Settings)
  │         └── M7 (Transcription) ← M5 (Python Env) ← M6 (Models)
+ │              ├── M7b (Chat UX: collapsible, copy, perf)
  │              └── M8 (Task Manager)
  ├── M3 (Settings)
  ├── M5b (Zero-Setup UX) ← M5
@@ -461,8 +507,8 @@ M0 (Skeleton)
 | **Phase A** | M0 → M1 → M2 → M3 | ✅ Done | Core UI + persistence |
 | **Phase B** | M4 | ✅ Done | LLM integration (Z.ai, OpenAI, Anthropic, DeepSeek, Qwen) |
 | **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
-| **Phase D** | M6 → M7 | **Next** | Model management + transcription pipeline |
-| **Phase E** | M8 → M9 | Pending | Task manager + macOS integration |
+| **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
+| **Phase E** | M7b → M8 → M9 | **Next** | Chat UX + task manager + macOS integration |
 | **Phase F** | M10 | Pending | Polish + DMG distribution |
 | **Phase G** | M11 | Future | MCP exploration |
 
