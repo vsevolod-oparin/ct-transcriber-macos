@@ -2,17 +2,21 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var settingsManager: SettingsManager
+    var modelManager: ModelManager?
 
     var body: some View {
         TabView {
             GeneralSettingsTab(settings: $settingsManager.settings.general)
                 .tabItem { Label("General", systemImage: "gear") }
 
-            TranscriptionSettingsTab(settings: $settingsManager.settings.transcription)
+            TranscriptionSettingsTab(settings: $settingsManager.settings.transcription, modelManager: modelManager)
                 .tabItem { Label("Transcription", systemImage: "waveform") }
 
             LLMSettingsTab(settings: $settingsManager.settings.llm)
                 .tabItem { Label("LLM", systemImage: "brain") }
+
+            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription)
+                .tabItem { Label("Environment", systemImage: "terminal") }
         }
         .frame(width: 520, height: 480)
     }
@@ -41,7 +45,8 @@ private struct GeneralSettingsTab: View {
 
 private struct TranscriptionSettingsTab: View {
     @Binding var settings: TranscriptionSettings
-    @State private var showSetupSheet = false
+    var modelManager: ModelManager?
+    @State private var showModelManager = false
 
     private static let minBeamSize = 1
     private static let maxBeamSize = 20
@@ -50,42 +55,22 @@ private struct TranscriptionSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Environment") {
-                TextField("Conda Env Name", text: $settings.condaEnvName)
-                TextField("CTranslate2 Package URL (pre-built)", text: $settings.ct2PackageURL)
-                    .font(.system(.body, design: .monospaced))
+            Section("Model") {
                 HStack {
-                    TextField("CTranslate2 Source Path (fallback)", text: $settings.ctranslate2SourcePath)
-                    Button("Browse...") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseDirectories = true
-                        panel.canChooseFiles = false
-                        panel.allowsMultipleSelection = false
-                        if panel.runModal() == .OK, let url = panel.url {
-                            settings.ctranslate2SourcePath = url.path
+                    Picker("Whisper Model", selection: $settings.selectedModelID) {
+                        ForEach(settings.models) { model in
+                            Text(model.displayName).tag(model.id)
                         }
                     }
-                }
-                HStack {
-                    TextField("Models Directory", text: $settings.modelsDirectory)
-                    Button("Browse...") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseDirectories = true
-                        panel.canChooseFiles = false
-                        panel.allowsMultipleSelection = false
-                        if panel.runModal() == .OK, let url = panel.url {
-                            settings.modelsDirectory = url.path
-                        }
-                    }
-                }
 
-                Button("Re-run Environment Setup...") {
-                    showSetupSheet = true
+                    Button("Manage Models...") {
+                        showModelManager = true
+                    }
                 }
             }
-            .sheet(isPresented: $showSetupSheet) {
-                EnvironmentSetupView(reason: "Manual re-run from Settings.") {
-                    showSetupSheet = false
+            .sheet(isPresented: $showModelManager) {
+                if let modelManager {
+                    ModelManagerView(modelManager: modelManager)
                 }
             }
 
@@ -133,6 +118,70 @@ private struct TranscriptionSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+// MARK: - LLM Tab
+
+// MARK: - Environment Tab
+
+private struct EnvironmentSettingsTab: View {
+    @Binding var settings: TranscriptionSettings
+    @State private var showSetupSheet = false
+
+    var body: some View {
+        Form {
+            Section("Python Environment") {
+                TextField("Conda Env Name", text: $settings.condaEnvName)
+                TextField("CTranslate2 Package URL (pre-built)", text: $settings.ct2PackageURL)
+                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    TextField("CTranslate2 Source Path (fallback)", text: $settings.ctranslate2SourcePath)
+                    Button("Browse...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            settings.ctranslate2SourcePath = url.path
+                        }
+                    }
+                }
+            }
+
+            Section("Storage") {
+                HStack {
+                    TextField("Models Directory", text: $settings.modelsDirectory)
+                    Button("Browse...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            settings.modelsDirectory = url.path
+                        }
+                    }
+                }
+                if settings.modelsDirectory.isEmpty {
+                    Text("Default: ~/Library/Application Support/CTTranscriber/models/")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Button("Re-run Environment Setup...") {
+                    showSetupSheet = true
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+        .sheet(isPresented: $showSetupSheet) {
+            EnvironmentSetupView(reason: "Manual re-run from Settings.") {
+                showSetupSheet = false
+            }
+        }
     }
 }
 

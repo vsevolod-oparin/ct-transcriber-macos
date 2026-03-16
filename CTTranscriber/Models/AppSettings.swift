@@ -20,6 +20,15 @@ struct GeneralSettings: Codable, Equatable {
 
 // MARK: - Transcription
 
+/// A Whisper model available for download and conversion.
+struct WhisperModelConfig: Codable, Equatable, Identifiable {
+    var id: String          // e.g. "whisper-large-v3-turbo"
+    var huggingFaceID: String // e.g. "openai/whisper-large-v3-turbo"
+    var displayName: String
+    var sizeEstimate: String  // e.g. "~1.6 GB"
+    var quantization: String  // e.g. "float16"
+}
+
 struct TranscriptionSettings: Codable, Equatable {
     /// Conda environment name for whisper-metal.
     var condaEnvName: String
@@ -29,6 +38,10 @@ struct TranscriptionSettings: Codable, Equatable {
     var ct2PackageURL: String
     /// Path to directory where converted whisper models are stored.
     var modelsDirectory: String
+    /// Currently selected model ID for transcription.
+    var selectedModelID: String
+    /// Available whisper models (editable in settings.json).
+    var models: [WhisperModelConfig]
 
     var beamSize: Int
     var temperature: Double
@@ -39,6 +52,10 @@ struct TranscriptionSettings: Codable, Equatable {
 
     var isValid: Bool {
         beamSize >= 1 && beamSize <= 20 && temperature >= 0.0 && temperature <= 2.0
+    }
+
+    var selectedModel: WhisperModelConfig? {
+        models.first { $0.id == selectedModelID }
     }
 }
 

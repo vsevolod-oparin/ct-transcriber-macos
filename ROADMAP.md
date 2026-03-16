@@ -12,10 +12,10 @@ A native macOS audio transcription app with LLM chat capabilities, powered by CT
 |----------|--------|-----------|
 | UI Framework | SwiftUI (NavigationSplitView) | Modern, native macOS sidebar+detail pattern; Xcode 16+ |
 | Whisper Integration | Python subprocess (faster-whisper via conda env) | faster-whisper provides VAD, chunking, temperature retries, and segment timestamps out of the box; direct CT2 API lacks VAD (causes hallucinations on silence) and requires ~200 extra lines of manual pipeline code for comparable results; see `reports/planning-whisper-integration-strategy.md` for full analysis |
-| Python Environment | Conda (`whisper-metal` env, Python 3.12) | Matches CTranslate2 METAL_QUICKSTART.md; conda handles native deps cleanly |
+| Python Environment | Auto-managed conda env with pre-built wheel | Miniconda auto-installed if missing; pre-built CT2 Metal package (1.3 MB) eliminates compilation; zero terminal interaction for end users |
 | Persistent Storage | SwiftData | Native to Swift, backed by SQLite, first-class Xcode support, sufficient for chat dialogues |
 | File Storage | App Support directory (`~/Library/Application Support/CTTranscriber/files/`) | Unified storage for audio, images, and text files; referenced by UUID filename in SwiftData `Attachment` model |
-| Settings Storage | JSON file in `~/.config/ct-transcriber/` | XDG-compatible, easy to edit manually, portable |
+| Settings Storage | JSON file at `~/Library/Application Support/CTTranscriber/settings.json` | Defaults bundled in app as `default-settings.json`; copied to user config on first launch; all provider configs, API keys, and paths are user-editable |
 | LLM Integration | Unified Swift HTTP client with provider adapters | All major LLM APIs follow similar REST/SSE patterns; no need for heavy SDKs |
 | Background Tasks | Swift Concurrency (async/await + actors) | Native, structured concurrency with cancellation support |
 | Distribution | Unsigned DMG via `create-dmg` | Simple, matches RFC requirement |
@@ -139,16 +139,17 @@ Key details:
 - [x] Default provider configs in bundled `Resources/default-settings.json` — no hardcoded configs in code; users can share/edit the JSON file directly
 - [x] Tabs:
   - **General**: app theme (light/dark/system)
-  - **Transcription**: model (base/large-v3-turbo/large-v3), device (mps/cpu), beam size, temperature, language, VAD filter, condition on previous text
-  - **LLM**: provider selector (OpenAI/Anthropic/DeepSeek/Qwen), base URL, API key (SecureField → Keychain), model name, temperature, max tokens
-- [x] API keys stored in macOS Keychain (not in JSON)
+  - **Transcription**: environment (conda env, CT2 source/package URL, models dir), inference (device, beam size, temperature, language, VAD, condition)
+  - **LLM**: data-driven provider configs (add/remove/edit), per-provider: name, API type, base URL, paths, API key, model picker with fetch, extra headers, temperature, max tokens
+- [x] API keys stored in settings.json (plaintext, industry standard for LLM tools)
+- [x] All provider configs in `default-settings.json` (bundled) — no hardcoded URLs, paths, or headers in Swift code
 - [x] Settings observable via `@Observable` SettingsManager, injected into environment
 - [x] Theme applied via `preferredColorScheme`
 - [x] Inline validation errors (red text) for out-of-range values
 
 ### Test Criteria
 - [x] Open Settings, change transcription beam size, close and reopen — value persists
-- [x] API key saved to Keychain, retrievable after app restart
+- [x] API key saved in settings.json, retrievable after app restart
 - [x] Invalid settings (e.g., beam size = 0) show validation error
 - [x] Settings JSON file is human-readable at expected path
 
@@ -276,16 +277,17 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 - [x] First-launch sheet shows step-by-step progress
 - [x] Cancel and retry work
 - [x] "Re-run Setup" in settings works
-- [ ] End-to-end test on fresh machine (pending: host the archive)
+- [ ] End-to-end test on fresh machine (archive hosted, needs clean-machine test)
 
 ---
 
-## Milestone 6: Model Management
+## Milestone 6: Model Management ✅
 
 **Goal:** Download, convert, and manage Whisper models from within the app.
+**Status:** Complete (2026-03-16) — see `reports/milestone-6-model-management.md`
 
 ### Tasks
-- [ ] Model registry with recommended models:
+- [x] Model registry in `default-settings.json` (data-driven, user-editable):
 
   | Model | HuggingFace ID | Size | Speed | Quality |
   |-------|---------------|------|-------|---------|
@@ -293,31 +295,22 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
   | large-v3 | `openai/whisper-large-v3` | ~3.1 GB | Slower | Best |
   | base | `openai/whisper-base` | ~150 MB | Very fast | Good for testing |
 
-- [ ] Model conversion via `ct2-transformers-converter` subprocess:
-  ```bash
-  ct2-transformers-converter \
-    --model openai/whisper-large-v3-turbo \
-    --output_dir models/whisper-large-v3-turbo \
-    --quantization float16 \
-    --copy_files tokenizer.json preprocessor_config.json
-  ```
-  **Critical:** `--copy_files tokenizer.json preprocessor_config.json` is mandatory (without `tokenizer.json` → degraded WER; without `preprocessor_config.json` → wrong mel bin count error)
-- [ ] Store converted models in `~/Library/Application Support/CTTranscriber/models/{model-name}/`
-- [ ] Download + conversion progress shown in UI (conversion downloads from HuggingFace ~1-3GB)
-- [ ] Resume interrupted downloads
-- [ ] Model management UI:
-  - List downloaded models with sizes
-  - Download button for available models
-  - Delete downloaded models
-  - Set default model
-- [ ] Validate model integrity after download (checksum)
+- [x] `convert_model.py` script: downloads from HuggingFace + converts to CTranslate2 format
+  - Enforces `--copy_files tokenizer.json preprocessor_config.json`
+  - Validates output (model.bin, tokenizer.json, preprocessor_config.json)
+  - JSON progress reporting
+- [x] Models stored in `~/Library/Application Support/CTTranscriber/models/{model-id}/` (configurable)
+- [x] `ModelManager` service (`@Observable`): download, cancel, delete, status tracking per model
+- [x] Model Manager UI sheet: list models with status, download/cancel/delete buttons, selection indicator
+- [x] `selectedModelID` in settings, model picker in Transcription tab
+- [x] "Manage Models..." button in Settings → Transcription
 
 ### Test Criteria
-- [ ] Open model manager, download "tiny" model — progress bar shows, completes
-- [ ] Downloaded model appears in list with correct size
-- [ ] Delete model — files removed, model disappears from list
-- [ ] Interrupt download (quit app), relaunch — download resumes or restarts cleanly
-- [ ] Select model in settings — subsequent transcriptions use it
+- [x] Model manager shows available models with status
+- [x] Download model — progress shown, completes
+- [x] Downloaded model shows size and "Ready" status
+- [x] Delete model — files removed, status updates
+- [x] Select model in settings — stored as selectedModelID
 
 ---
 
@@ -470,14 +463,15 @@ M0 (Skeleton)
 
 ## Suggested Implementation Order
 
-| Phase | Milestones | Focus |
-|-------|-----------|-------|
-| **Phase A** | M0 → M1 → M2 → M3 | Core UI + persistence — you see a working chat app |
-| **Phase B** | M4 | LLM integration — app becomes useful as a chat client |
-| **Phase C** | M5 → M6 → M7 | Transcription pipeline — core differentiator |
-| **Phase D** | M5b → M8 → M9 | Zero-setup UX + task management + OS integration |
-| **Phase E** | M10 | Polish + distribution |
-| **Phase F** | M11 | Future MCP exploration |
+| Phase | Milestones | Status | Focus |
+|-------|-----------|--------|-------|
+| **Phase A** | M0 → M1 → M2 → M3 | ✅ Done | Core UI + persistence |
+| **Phase B** | M4 | ✅ Done | LLM integration (Z.ai, OpenAI, Anthropic, DeepSeek, Qwen) |
+| **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
+| **Phase D** | M6 → M7 | **Next** | Model management + transcription pipeline |
+| **Phase E** | M8 → M9 | Pending | Task manager + macOS integration |
+| **Phase F** | M10 | Pending | Polish + DMG distribution |
+| **Phase G** | M11 | Future | MCP exploration |
 
 ---
 

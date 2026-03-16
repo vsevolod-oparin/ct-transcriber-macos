@@ -15,10 +15,13 @@
 		2B9C64A14D83B42FFB4265F6 /* ModelListService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA0890CDD643758097A54AF /* ModelListService.swift */; };
 		33C143E5D5FC26D377B0EF8E /* CTTranscriberApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */; };
 		34F36C5862E02B79DE6D5657 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0154EA1107EBB16AE37ADD82 /* SettingsView.swift */; };
+		359C21BC78DCBD9EF78384F2 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */; };
 		3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */; };
 		452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB94D1FAAA6ED9F2B6BBE /* AppSettings.swift */; };
 		501EB8429B9A650E2AB402EA /* default-settings.json in Resources */ = {isa = PBXBuildFile; fileRef = 5C90903B672DF2C7EAA2A33E /* default-settings.json */; };
 		63B8E73BEB59C8509E59135C /* ConversationRenameUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065F61E10EAF48287850AAE /* ConversationRenameUITests.swift */; };
+		6E87E47B0A4CD1BDB3EEBBE4 /* convert_model.py in Resources */ = {isa = PBXBuildFile; fileRef = 147A7E41F2723AA3463AF58E /* convert_model.py */; };
+		7D233FC3F692C3701B4494A6 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AF36BE09F983DF2B4D426D /* ModelManager.swift */; };
 		988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */; };
 		9F23569AA86BCB32B960D72C /* LLMServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383E65F1A53A9EEBC09491B3 /* LLMServiceFactory.swift */; };
 		A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */; };
@@ -45,10 +48,13 @@
 
 /* Begin PBXFileReference section */
 		0154EA1107EBB16AE37ADD82 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerView.swift; sourceTree = "<group>"; };
 		0FA0890CDD643758097A54AF /* ModelListService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelListService.swift; sourceTree = "<group>"; };
 		128C815950849E516D0EC30F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
+		147A7E41F2723AA3463AF58E /* convert_model.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = convert_model.py; sourceTree = "<group>"; };
 		14DA39CAEFF1636EE17D7B4A /* setup_env.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = setup_env.sh; sourceTree = "<group>"; };
 		27ABE31824F927E9C4AAC145 /* CTTranscriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CTTranscriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		29AF36BE09F983DF2B4D426D /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
 		2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleService.swift; sourceTree = "<group>"; };
 		37E38815C304D1AEC81942A0 /* CTTranscriberUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CTTranscriberUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		383E65F1A53A9EEBC09491B3 /* LLMServiceFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMServiceFactory.swift; sourceTree = "<group>"; };
@@ -101,6 +107,7 @@
 				3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */,
 				94890C099DFFDB85FAE02626 /* ConversationListView.swift */,
 				4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */,
+				0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */,
 				0154EA1107EBB16AE37ADD82 /* SettingsView.swift */,
 			);
 			path = Views;
@@ -152,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */,
+				29AF36BE09F983DF2B4D426D /* ModelManager.swift */,
 				3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */,
 				DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */,
 				10F918C5F3D7076FC33893B1 /* LLM */,
@@ -171,6 +179,7 @@
 		AD512143C811C3882755AB50 /* Python */ = {
 			isa = PBXGroup;
 			children = (
+				147A7E41F2723AA3463AF58E /* convert_model.py */,
 				14DA39CAEFF1636EE17D7B4A /* setup_env.sh */,
 				FF7A27F7EC2A302BBF0DB51A /* transcribe.py */,
 			);
@@ -277,6 +286,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E87E47B0A4CD1BDB3EEBBE4 /* convert_model.py in Resources */,
 				501EB8429B9A650E2AB402EA /* default-settings.json in Resources */,
 				D08C364E839E6FF062F8B52A /* setup_env.sh in Resources */,
 				EC20B31187147F173BFA7292 /* transcribe.py in Resources */,
@@ -305,6 +315,8 @@
 				9F23569AA86BCB32B960D72C /* LLMServiceFactory.swift in Sources */,
 				0B4C75EEB3AEEE8104FF1B3B /* Message.swift in Sources */,
 				2B9C64A14D83B42FFB4265F6 /* ModelListService.swift in Sources */,
+				7D233FC3F692C3701B4494A6 /* ModelManager.swift in Sources */,
+				359C21BC78DCBD9EF78384F2 /* ModelManagerView.swift in Sources */,
 				A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */,
 				233BD93D35A2878C5347F3C5 /* PythonEnvironment.swift in Sources */,
 				3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */,

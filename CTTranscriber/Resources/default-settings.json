@@ -7,6 +7,30 @@
     "ctranslate2SourcePath": "",
     "ct2PackageURL": "https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/pre-release-dep/ctranslate2-metal-4.7.1-macosx-arm64.tar.gz",
     "modelsDirectory": "",
+    "selectedModelID": "whisper-large-v3-turbo",
+    "models": [
+      {
+        "id": "whisper-large-v3-turbo",
+        "huggingFaceID": "openai/whisper-large-v3-turbo",
+        "displayName": "Large V3 Turbo",
+        "sizeEstimate": "~1.6 GB",
+        "quantization": "float16"
+      },
+      {
+        "id": "whisper-large-v3",
+        "huggingFaceID": "openai/whisper-large-v3",
+        "displayName": "Large V3",
+        "sizeEstimate": "~3.1 GB",
+        "quantization": "float16"
+      },
+      {
+        "id": "whisper-base",
+        "huggingFaceID": "openai/whisper-base",
+        "displayName": "Base",
+        "sizeEstimate": "~150 MB",
+        "quantization": "float16"
+      }
+    ],
     "beamSize": 5,
     "temperature": 0.0,
     "language": "",
