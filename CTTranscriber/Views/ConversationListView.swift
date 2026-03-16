@@ -14,7 +14,8 @@ struct ConversationListView: View {
                         isEditing: editingConversationID == conversation.id,
                         editingTitle: $editingTitle,
                         onCommitRename: { commitRename(conversation) },
-                        onCancelRename: { cancelRename() }
+                        onCancelRename: { cancelRename() },
+                        onDoubleClick: { beginRename(conversation) }
                     )
                     .tag(conversation.id)
                     .id(conversation.id)
@@ -44,9 +45,6 @@ struct ConversationListView: View {
                 }
             }
         }
-        .onDoubleClickInList { location in
-            handleDoubleClick(at: location)
-        }
         .accessibilityIdentifier("conversationList")
         .navigationSplitViewColumnWidth(min: 200, ideal: 250)
         .toolbar {
@@ -57,14 +55,6 @@ struct ConversationListView: View {
                 .accessibilityIdentifier("newConversationButton")
                 .keyboardShortcut("n", modifiers: .command)
             }
-        }
-    }
-
-    private func handleDoubleClick(at location: NSPoint) {
-        // Double-click on the selected conversation triggers rename
-        if let selectedID = viewModel.selectedConversationID,
-           let conversation = viewModel.conversations.first(where: { $0.id == selectedID }) {
-            beginRename(conversation)
         }
     }
 
@@ -86,36 +76,6 @@ struct ConversationListView: View {
     }
 }
 
-// MARK: - Double-click modifier using local event monitor
-
-private struct DoubleClickListModifier: ViewModifier {
-    let action: (NSPoint) -> Void
-    @State private var monitor: Any?
-
-    func body(content: Content) -> some View {
-        content
-            .onAppear {
-                monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
-                    if event.clickCount == 2 {
-                        action(event.locationInWindow)
-                    }
-                    return event
-                }
-            }
-            .onDisappear {
-                if let monitor {
-                    NSEvent.removeMonitor(monitor)
-                }
-            }
-    }
-}
-
-extension View {
-    func onDoubleClickInList(perform action: @escaping (NSPoint) -> Void) -> some View {
-        modifier(DoubleClickListModifier(action: action))
-    }
-}
-
 // MARK: - Conversation Row
 
 private struct ConversationRow: View {
@@ -124,6 +84,7 @@ private struct ConversationRow: View {
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
+    let onDoubleClick: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -136,11 +97,13 @@ private struct ConversationRow: View {
                     .font(.headline)
                     .lineLimit(1)
                     .accessibilityIdentifier("conversationTitle_\(conversation.title)")
+                    .onTapGesture(count: 2) { onDoubleClick() }
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .onTapGesture(count: 2) { onDoubleClick() }
         }
         .padding(.vertical, 2)
         .accessibilityIdentifier("conversationRow_\(conversation.title)")
