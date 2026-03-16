@@ -22,7 +22,13 @@ struct ChatView: View {
             ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
         }
         .navigationTitle(conversation.title)
+        .onAppear {
+            isInputFocused = true
+        }
         .onChange(of: conversation.id) { _, _ in
+            isInputFocused = true
+        }
+        .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
         }
     }

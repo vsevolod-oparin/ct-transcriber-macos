@@ -24,6 +24,12 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 700, minHeight: 500)
+        .onChange(of: viewModel?.selectedConversationID) { oldID, newID in
+            viewModel?.conversationDidChange(from: oldID, to: newID)
+            if newID != nil {
+                viewModel?.requestInputFocus()
+            }
+        }
         .task {
             if viewModel == nil {
                 let vm = ChatViewModel(modelContext: modelContext)

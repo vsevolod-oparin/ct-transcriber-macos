@@ -7,6 +7,22 @@ final class ChatViewModel {
     var selectedConversationID: UUID?
     var messageText: String = ""
     private(set) var conversations: [Conversation] = []
+    /// Per-conversation message drafts, keyed by conversation ID. In-memory only.
+    private var drafts: [UUID: String] = [:]
+
+    /// Called by the view when selected conversation changes.
+    func conversationDidChange(from oldID: UUID?, to newID: UUID?) {
+        if let oldID {
+            drafts[oldID] = messageText
+        }
+        messageText = drafts[newID ?? UUID()] ?? ""
+    }
+    /// Incremented whenever the detail view should reclaim input focus.
+    private(set) var focusCounter: Int = 0
+
+    func requestInputFocus() {
+        focusCounter += 1
+    }
 
     /// True while the LLM is streaming a response.
     private(set) var isStreaming: Bool = false
@@ -52,6 +68,7 @@ final class ChatViewModel {
     }
 
     func deleteConversation(_ conversation: Conversation) {
+        drafts.removeValue(forKey: conversation.id)
         for message in conversation.messages {
             for attachment in message.attachments {
                 FileStorage.delete(storedName: attachment.storedName)
