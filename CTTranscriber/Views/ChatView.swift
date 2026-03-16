@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ChatView: View {
     let conversation: Conversation
     @Bindable var viewModel: ChatViewModel
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,9 +19,19 @@ struct ChatView: View {
 
             Divider()
 
-            ChatInputBar(viewModel: viewModel, conversation: conversation)
+            ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isInputFocused = true
         }
         .navigationTitle(conversation.title)
+        .onAppear {
+            isInputFocused = true
+        }
+        .onChange(of: conversation.id) { _, _ in
+            isInputFocused = true
+        }
     }
 }
 
@@ -188,6 +199,7 @@ private let attachableContentTypes: [UTType] = [
 struct ChatInputBar: View {
     @Bindable var viewModel: ChatViewModel
     let conversation: Conversation
+    var isInputFocused: FocusState<Bool>.Binding
     @State private var isShowingFilePicker = false
 
     var body: some View {
@@ -216,6 +228,7 @@ struct ChatInputBar: View {
             TextField("Message...", text: $viewModel.messageText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
+                .focused(isInputFocused)
                 .disabled(viewModel.isStreaming)
                 .onSubmit {
                     if !NSEvent.modifierFlags.contains(.shift) {
