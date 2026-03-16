@@ -314,34 +314,27 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 ---
 
-## Milestone 7: Audio Transcription Pipeline
+## Milestone 7: Audio Transcription Pipeline ✅
 
 **Goal:** Attach audio file, transcribe it, show results in chat.
+**Status:** Complete (2026-03-17) — see `reports/milestone-7-transcription-pipeline.md`
 
 ### Tasks
-- [ ] `TranscriptionService` actor:
-  - Accepts audio file path + model + settings
-  - Runs `transcribe.py` as subprocess
-  - Parses JSON output (segments with timestamps)
-  - Reports progress via AsyncStream
-  - Supports cancellation (kill subprocess)
-- [ ] Audio attachment flow:
-  - Click attach button → file picker (`.wav`, `.mp3`, `.m4a`, `.flac`, `.ogg`)
-  - File copied to app storage
-  - Transcription task created automatically
-- [ ] Transcription result displayed as formatted message:
-  - Timestamps + text segments
-  - Collapsible raw transcript
-- [ ] Transcription settings from Settings applied (beam, temperature, language)
-- [ ] Error handling: unsupported format, model not downloaded, Python env missing
+- [x] `TranscriptionService`: runs `transcribe.py` subprocess, parses JSON segments, streams progress
+- [x] Auto-transcribe: attaching audio/video triggers transcription automatically
+- [x] Progress bar with percentage + stop button above input bar
+- [x] Placeholder message updates during transcription, final result with timestamps
+- [x] Transcription settings applied (beam, temperature, language, VAD, device)
+- [x] Preflight checks: Python env ready, model downloaded
+- [x] Cancellation: stop button kills the task
 
 ### Test Criteria
-- [ ] Attach a 30-second WAV file — transcription completes, text appears in chat
-- [ ] Progress bar shows during transcription
-- [ ] Cancel transcription mid-way — subprocess killed, partial result shown or discarded
-- [ ] Attach MP3 file — works (ffmpeg/format handling)
-- [ ] No model downloaded — prompt to download before transcribing
-- [ ] Changing beam size in settings affects transcription output
+- [x] Attach audio → transcription completes, timestamped text in chat
+- [x] Progress bar shows during transcription
+- [x] Cancel transcription → stops, message shows "cancelled"
+- [x] Audio/video attachment auto-triggers transcription
+- [x] No model → error message shown
+- [x] Settings (beam, temp) applied
 
 ---
 

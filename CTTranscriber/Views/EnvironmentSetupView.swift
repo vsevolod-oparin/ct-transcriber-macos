@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Sheet shown when the Python environment needs setup.
 struct EnvironmentSetupView: View {
-    @Environment(SettingsManager.self) private var settingsManager
+    var settingsManager: SettingsManager
     @State private var isRunning = false
     @State private var isDone = false
     @State private var currentStep = ""

@@ -21,7 +21,7 @@ set -euo pipefail
 CONDA_ENV_NAME=""
 CT2_PACKAGE_URL=""
 CT2_SOURCE=""
-MINICONDA_DIR="$HOME/Library/Application Support/CTTranscriber/miniconda"
+MINICONDA_DIR="$HOME/.ct-transcriber/miniconda"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -53,26 +53,10 @@ emit() {
 # ==========================================================================
 emit "check_conda" "start" "Checking for conda"
 
-find_conda() {
-    for p in \
-        "$MINICONDA_DIR/bin/conda" \
-        "$HOME/miniconda3/bin/conda" \
-        "$HOME/anaconda3/bin/conda" \
-        "/opt/anaconda3/bin/conda" \
-        "/opt/homebrew/Caskroom/miniconda/base/bin/conda" \
-        "/opt/homebrew/bin/conda" \
-        "/usr/local/bin/conda"; do
-        if [ -x "$p" ]; then
-            echo "$p"
-            return 0
-        fi
-    done
-    return 1
-}
+CONDA_BIN="$MINICONDA_DIR/bin/conda"
 
-CONDA_BIN=""
-if CONDA_BIN=$(find_conda); then
-    emit "check_conda" "done" "Found conda at $CONDA_BIN"
+if [ -x "$CONDA_BIN" ]; then
+    emit "check_conda" "done" "Found app Miniconda at $CONDA_BIN"
 else
     # Install Miniconda automatically
     emit "install_miniconda" "start" "Downloading and installing Miniconda"
@@ -102,26 +86,33 @@ fi
 # Initialize conda for this shell
 eval "$("$CONDA_BIN" shell.bash hook)"
 
+# Accept Terms of Service (required for recent Miniconda versions)
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
+# Helper: run a command inside the conda env without needing conda activate
+run_in_env() {
+    "$CONDA_BIN" run -n "$CONDA_ENV_NAME" "$@"
+}
+
 # ==========================================================================
 # Step 2: Create/verify conda environment
 # ==========================================================================
 emit "create_env" "start" "Setting up conda environment: $CONDA_ENV_NAME"
 
-if conda env list | grep -q "^${CONDA_ENV_NAME} "; then
+if "$CONDA_BIN" env list 2>/dev/null | grep -q "^${CONDA_ENV_NAME} "; then
     emit "create_env" "done" "Environment $CONDA_ENV_NAME already exists"
 else
-    conda create -n "$CONDA_ENV_NAME" python=3.12 -y 2>&1 | tail -1
+    "$CONDA_BIN" create -n "$CONDA_ENV_NAME" python=3.12 -y 2>&1 | tail -1
     emit "create_env" "done" "Environment $CONDA_ENV_NAME created"
 fi
-
-conda activate "$CONDA_ENV_NAME"
 
 # ==========================================================================
 # Step 3: Install Python dependencies
 # ==========================================================================
 emit "install_deps" "start" "Installing Python dependencies"
 
-pip install --quiet torch transformers sentencepiece faster-whisper 2>&1 | tail -3
+run_in_env pip install --quiet torch transformers sentencepiece faster-whisper 2>&1 | tail -3
 
 emit "install_deps" "done" "Python dependencies installed"
 
@@ -154,10 +145,10 @@ if [ -n "$CT2_PACKAGE_URL" ]; then
         exit 1
     fi
 
-    pip install --force-reinstall "$WHL" 2>&1 | tail -3
+    run_in_env pip install --force-reinstall "$WHL" 2>&1 | tail -3
 
     # Copy the shared library to the conda env's lib/
-    ENV_LIB="$(python -c 'import sys; print(sys.prefix)')/lib"
+    ENV_LIB="$(run_in_env python -c 'import sys; print(sys.prefix)')/lib"
     cp -f libctranslate2*.dylib "$ENV_LIB/" 2>/dev/null || true
 
     # Fix symlinks
@@ -197,9 +188,9 @@ elif [ -n "$CT2_SOURCE" ]; then
 
     cd "$CT2_SOURCE"
     git submodule update --init --recursive 2>&1 | tail -1
-    python3 tools/gen_msl_strings.py
+    run_in_env python3 tools/gen_msl_strings.py
 
-    CMAKE_PREFIX=$(python -c "import sys; print(sys.prefix)")
+    CMAKE_PREFIX=$(run_in_env python -c "import sys; print(sys.prefix)")
     cmake -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DWITH_METAL=ON \
@@ -215,7 +206,7 @@ elif [ -n "$CT2_SOURCE" ]; then
     cmake --install build 2>&1 | tail -3
 
     cd python
-    pip install . 2>&1 | tail -3
+    run_in_env pip install . 2>&1 | tail -3
     cd ..
 
     emit "install_ct2" "done" "CTranslate2 built and installed from source"
@@ -229,8 +220,8 @@ fi
 # ==========================================================================
 emit "validate" "start" "Validating installation"
 
-CT2_VERSION=$(python -c "import ctranslate2; print(ctranslate2.__version__)" 2>&1) || CT2_VERSION="not found"
-FW_OK=$(python -c "import faster_whisper; print('ok')" 2>&1)
+CT2_VERSION=$(run_in_env python -c "import ctranslate2; print(ctranslate2.__version__)" 2>&1) || CT2_VERSION="not found"
+FW_OK=$(run_in_env python -c "import faster_whisper; print('ok')" 2>&1)
 
 if [ "$FW_OK" != "ok" ]; then
     emit "validate" "error" "faster_whisper import failed: $FW_OK"

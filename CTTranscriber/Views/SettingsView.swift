@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var settingsManager: SettingsManager
-    var modelManager: ModelManager?
+    var modelManager: ModelManager
 
     var body: some View {
         TabView {
@@ -15,7 +15,7 @@ struct SettingsView: View {
             LLMSettingsTab(settings: $settingsManager.settings.llm)
                 .tabItem { Label("LLM", systemImage: "brain") }
 
-            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription)
+            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription, settingsManager: settingsManager)
                 .tabItem { Label("Environment", systemImage: "terminal") }
         }
         .frame(width: 520, height: 480)
@@ -45,7 +45,7 @@ private struct GeneralSettingsTab: View {
 
 private struct TranscriptionSettingsTab: View {
     @Binding var settings: TranscriptionSettings
-    var modelManager: ModelManager?
+    var modelManager: ModelManager
     @State private var showModelManager = false
 
     private static let minBeamSize = 1
@@ -69,9 +69,7 @@ private struct TranscriptionSettingsTab: View {
                 }
             }
             .sheet(isPresented: $showModelManager) {
-                if let modelManager {
-                    ModelManagerView(modelManager: modelManager)
-                }
+                ModelManagerView(modelManager: modelManager)
             }
 
             Section("Inference") {
@@ -127,6 +125,7 @@ private struct TranscriptionSettingsTab: View {
 
 private struct EnvironmentSettingsTab: View {
     @Binding var settings: TranscriptionSettings
+    var settingsManager: SettingsManager
     @State private var showSetupSheet = false
 
     var body: some View {
@@ -178,7 +177,7 @@ private struct EnvironmentSettingsTab: View {
         .formStyle(.grouped)
         .padding()
         .sheet(isPresented: $showSetupSheet) {
-            EnvironmentSetupView(reason: "Manual re-run from Settings.") {
+            EnvironmentSetupView(settingsManager: settingsManager, reason: "Manual re-run from Settings.") {
                 showSetupSheet = false
             }
         }

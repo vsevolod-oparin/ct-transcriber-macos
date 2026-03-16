@@ -11,6 +11,13 @@ struct ChatView: View {
             MessageListView(messages: viewModel.sortedMessages(for: conversation),
                             isStreaming: viewModel.isStreaming)
 
+            if viewModel.isTranscribing {
+                TranscriptionProgressBar(
+                    progress: viewModel.transcriptionProgress,
+                    onStop: { viewModel.stopTranscription() }
+                )
+            }
+
             if let error = viewModel.lastError {
                 ErrorBanner(message: error) {
                     viewModel.lastError = nil
@@ -31,6 +38,37 @@ struct ChatView: View {
         .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
         }
+    }
+}
+
+// MARK: - Transcription Progress
+
+private struct TranscriptionProgressBar: View {
+    let progress: Double
+    let onStop: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform")
+                .foregroundStyle(Color.accentColor)
+            Text("Transcribing...")
+                .font(.caption)
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+            Text("\(Int(progress * 100))%")
+                .font(.caption)
+                .monospacedDigit()
+                .frame(width: 35, alignment: .trailing)
+            Button(action: onStop) {
+                Image(systemName: "stop.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.borderless)
+            .help("Stop transcription")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 }
 

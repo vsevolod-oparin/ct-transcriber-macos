@@ -9,20 +9,15 @@ struct CTTranscriberApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(modelManager: $modelManager)
                 .environment(settingsManager)
                 .preferredColorScheme(settingsManager.colorScheme)
-                .task {
-                    if modelManager == nil {
-                        modelManager = ModelManager(settingsManager: settingsManager)
-                    }
-                }
         }
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self],
                          inMemory: isUITesting)
 
         Settings {
-            SettingsView(settingsManager: settingsManager, modelManager: modelManager)
+            SettingsView(settingsManager: settingsManager, modelManager: modelManager ?? ModelManager(settingsManager: settingsManager))
         }
     }
 }

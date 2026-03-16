@@ -31,11 +31,18 @@ final class ChatViewModel {
     /// Error message from the last LLM request, shown inline in the chat.
     var lastError: String?
 
+    /// True while a transcription is in progress.
+    private(set) var isTranscribing: Bool = false
+    /// Progress of the current transcription (0.0–1.0).
+    private(set) var transcriptionProgress: Double = 0
+
     private var modelContext: ModelContext
     private var streamingTask: Task<Void, Never>?
+    private var transcriptionTask: Task<Void, Never>?
 
     // Dependencies injected after init
     var settingsManager: SettingsManager?
+    var modelManager: ModelManager?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -276,6 +283,129 @@ final class ChatViewModel {
         conversation.updatedAt = Date()
         saveContext()
         refreshConversations()
+
+        // Auto-transcribe audio and video files
+        if kind == .audio || kind == .video {
+            let audioURL = FileStorage.url(for: storedName)
+            transcribeAudio(at: audioURL.path, in: conversation)
+        }
+    }
+
+    // MARK: - Transcription
+
+    func transcribeAudio(at audioPath: String, in conversation: Conversation) {
+        guard !isTranscribing else {
+            lastError = "A transcription is already in progress."
+            return
+        }
+
+        guard let settings = settingsManager else { return }
+        let transSettings = settings.settings.transcription
+
+        // Check environment
+        let envStatus = PythonEnvironment.check(settings: transSettings)
+        guard case .ready = envStatus else {
+            lastError = "Python environment not ready. Set up from Settings → Environment."
+            return
+        }
+
+        // Check model
+        guard let modelManager = modelManager else {
+            AppLogger.error("modelManager is nil", category: "transcription")
+            lastError = "Internal error: model manager not initialized."
+            return
+        }
+
+        let selectedID = transSettings.selectedModelID
+        AppLogger.info("Looking for model '\(selectedID)', statuses: \(modelManager.modelStatuses.keys.sorted())", category: "transcription")
+
+        guard let modelPath = modelManager.modelPath(for: selectedID) else {
+            AppLogger.error("Model '\(selectedID)' not found. Status: \(String(describing: modelManager.modelStatuses[selectedID]))", category: "transcription")
+            lastError = TranscriptionError.modelNotDownloaded.localizedDescription
+            return
+        }
+
+        AppLogger.info("Using model at: \(modelPath)", category: "transcription")
+
+        isTranscribing = true
+        transcriptionProgress = 0
+
+        // Create a placeholder system message for the transcription
+        let transcriptMessage = Message(role: .assistant, content: "Transcribing...")
+        conversation.messages.append(transcriptMessage)
+        saveContext()
+        refreshConversations()
+
+        transcriptionTask = Task { [weak self] in
+            let stream = TranscriptionService.transcribe(
+                audioPath: audioPath,
+                modelPath: modelPath,
+                settings: transSettings
+            )
+
+            do {
+                var result: TranscriptionService.TranscriptionResult?
+
+                for try await progress in stream {
+                    guard let self, !Task.isCancelled else { break }
+
+                    await MainActor.run {
+                        switch progress {
+                        case .started(let language, let duration):
+                            transcriptMessage.content = "Transcribing... (detected: \(language), \(String(format: "%.0f", duration))s)"
+                        case .segment(_, let text, let prog):
+                            self.transcriptionProgress = prog
+                            transcriptMessage.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                        case .completed(let res):
+                            result = res
+                        case .error(let msg):
+                            self.lastError = msg
+                        }
+                    }
+                }
+
+                guard let self else { return }
+                await MainActor.run {
+                    if let result {
+                        transcriptMessage.content = self.formatTranscriptionResult(result)
+                    }
+                    self.isTranscribing = false
+                    self.transcriptionProgress = 0
+                    self.saveContext()
+                    self.refreshConversations()
+                }
+            } catch let error as TranscriptionError where error.localizedDescription == TranscriptionError.cancelled.localizedDescription {
+                guard let self else { return }
+                await MainActor.run {
+                    transcriptMessage.content = "Transcription cancelled."
+                    self.isTranscribing = false
+                    self.transcriptionProgress = 0
+                    self.saveContext()
+                    self.refreshConversations()
+                }
+            } catch {
+                guard let self else { return }
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                    transcriptMessage.content = "Transcription failed."
+                    self.isTranscribing = false
+                    self.transcriptionProgress = 0
+                    self.saveContext()
+                    self.refreshConversations()
+                }
+            }
+        }
+    }
+
+    func stopTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+    }
+
+    private func formatTranscriptionResult(_ result: TranscriptionService.TranscriptionResult) -> String {
+        var text = "**Transcription** (\(result.language), \(String(format: "%.1f", result.elapsed))s)\n\n"
+        text += result.formattedTranscript
+        return text
     }
 
     // MARK: - Private

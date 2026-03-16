@@ -4,6 +4,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SettingsManager.self) private var settingsManager
+    @Binding var modelManager: ModelManager?
     @State private var viewModel: ChatViewModel?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @State private var showSetupSheet = false
@@ -33,15 +34,28 @@ struct ContentView: View {
             }
         }
         .task {
+            AppLogger.info("ContentView.task starting", category: "app")
+
+            // Create ModelManager if needed
+            if modelManager == nil {
+                modelManager = ModelManager(settingsManager: settingsManager)
+                AppLogger.info("ModelManager created", category: "app")
+            }
+
+            // Create ViewModel
             if viewModel == nil {
                 let vm = ChatViewModel(modelContext: modelContext)
                 vm.settingsManager = settingsManager
+                vm.modelManager = modelManager
                 viewModel = vm
+                AppLogger.info("ViewModel created", category: "app")
             }
+
             checkEnvironment()
+            AppLogger.info("Environment check done", category: "app")
         }
         .sheet(isPresented: $showSetupSheet) {
-            EnvironmentSetupView(reason: setupReason) {
+            EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
                 showSetupSheet = false
             }
         }
@@ -60,7 +74,9 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    @Previewable @State var mm: ModelManager? = nil
+    let sm = SettingsManager()
+    ContentView(modelManager: $mm)
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self], inMemory: true)
-        .environment(SettingsManager())
+        .environment(sm)
 }

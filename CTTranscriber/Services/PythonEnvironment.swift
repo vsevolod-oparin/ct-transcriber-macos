@@ -17,34 +17,49 @@ enum PythonEnvironment {
         let message: String
     }
 
-    /// Where bundled Miniconda gets installed.
+    /// Where bundled Miniconda gets installed. No spaces in path — Miniconda installer
+    /// and conda itself can have issues with spaces in prefixes.
     private static let bundledMinicondaPath =
-        NSHomeDirectory() + "/Library/Application Support/CTTranscriber/miniconda"
+        NSHomeDirectory() + "/.ct-transcriber/miniconda"
 
     // MARK: - Detection
 
     /// Checks if the conda environment is set up and functional.
     static func check(settings: TranscriptionSettings) -> Status {
+        AppLogger.info("Checking Python environment...", category: "python-env")
+
         guard let condaPath = findConda() else {
+            AppLogger.error("conda not found in any search path", category: "python-env")
             return .missing(reason: "Conda not found. Click 'Set Up Transcription' to install automatically.")
         }
+        AppLogger.info("Found conda at: \(condaPath)", category: "python-env")
 
         let envName = settings.condaEnvName
         guard !envName.isEmpty else {
+            AppLogger.error("condaEnvName is empty", category: "python-env")
             return .missing(reason: "Conda environment name not set in Settings → Transcription.")
         }
 
         guard let pythonPath = findPythonInEnv(condaPath: condaPath, envName: envName) else {
+            AppLogger.error("Python not found for env '\(envName)' (conda: \(condaPath))", category: "python-env")
             return .missing(reason: "Environment '\(envName)' not found. Click 'Set Up Transcription' to create it.")
         }
+        AppLogger.info("Found Python at: \(pythonPath)", category: "python-env")
 
         // Validate imports
         let validation = runPython(pythonPath: pythonPath,
                                    code: "import ctranslate2; import faster_whisper; print('ok')")
-        if validation.trimmingCharacters(in: .whitespacesAndNewlines) != "ok" {
+        let trimmed = validation.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != "ok" {
+            AppLogger.error("Import validation failed. Output: '\(trimmed)'", category: "python-env")
+            // Also capture stderr
+            let stderr = runPythonWithStderr(pythonPath: pythonPath,
+                                             code: "import ctranslate2; import faster_whisper; print('ok')")
+            AppLogger.error("Stderr: \(stderr)", category: "python-env")
             return .missing(reason: "CTranslate2 or faster-whisper not installed. Re-run setup.")
         }
 
+        AppLogger.info("Python environment ready", category: "python-env")
         return .ready(pythonPath: pythonPath)
     }
 
@@ -124,67 +139,87 @@ enum PythonEnvironment {
     // MARK: - Private
 
     private static func findConda() -> String? {
-        let searchPaths = [
-            // Bundled Miniconda (installed by our setup script)
-            bundledMinicondaPath + "/bin/conda",
-            // Common user installs
-            NSHomeDirectory() + "/miniconda3/bin/conda",
-            NSHomeDirectory() + "/anaconda3/bin/conda",
-            "/opt/anaconda3/bin/conda",
-            "/opt/homebrew/Caskroom/miniconda/base/bin/conda",
-            "/opt/homebrew/bin/conda",
-            "/usr/local/bin/conda",
-        ]
-
-        for path in searchPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
+        // Only use the app's own bundled Miniconda. Never use or contaminate the user's
+        // system conda/anaconda installation.
+        let bundledConda = bundledMinicondaPath + "/bin/conda"
+        if FileManager.default.isExecutableFile(atPath: bundledConda) {
+            AppLogger.debug("Found bundled Miniconda at \(bundledConda)", category: "python-env")
+            return bundledConda
         }
 
-        // Try PATH
-        let whichResult = shell("which conda")
-        let path = whichResult.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !path.isEmpty && FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-
+        AppLogger.debug("Bundled Miniconda not found at \(bundledConda)", category: "python-env")
         return nil
     }
 
     private static func findPythonInEnv(condaPath: String, envName: String) -> String? {
-        let envsOutput = shell("\(condaPath) env list")
-        for line in envsOutput.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix(envName + " ") {
-                let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-                if let envPath = parts.last {
-                    let pythonPath = "\(envPath)/bin/python"
-                    if FileManager.default.isExecutableFile(atPath: pythonPath) {
-                        return pythonPath
-                    }
-                }
-            }
+        // Derive env path directly from conda path (no subprocess needed).
+        // conda is at <prefix>/bin/conda → envs at <prefix>/envs/<name>
+        let condaDir = (condaPath as NSString).deletingLastPathComponent
+        let condaPrefix = (condaDir as NSString).deletingLastPathComponent
+        let pythonPath = "\(condaPrefix)/envs/\(envName)/bin/python"
+
+        if FileManager.default.isExecutableFile(atPath: pythonPath) {
+            return pythonPath
         }
+
+        AppLogger.debug("Python not found at \(pythonPath)", category: "python-env")
         return nil
     }
 
     private static func runPython(pythonPath: String, code: String) -> String {
-        shell("\(pythonPath) -c '\(code)'")
+        runProcess(executable: pythonPath, arguments: ["-c", code])
     }
 
-    private static func shell(_ command: String) -> String {
+    private static func runPythonWithStderr(pythonPath: String, code: String) -> String {
         let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-l", "-c", command]
-        process.standardOutput = pipe
-        process.standardError = pipe
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: pythonPath)
+        process.arguments = ["-c", code]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = stderrPipe
+
+        var env = ProcessInfo.processInfo.environment
+        let execDir = (pythonPath as NSString).deletingLastPathComponent
+        let libDir = ((execDir as NSString).deletingLastPathComponent as NSString).appendingPathComponent("lib")
+        let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
+        env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? libDir : "\(libDir):\(existingDyld)"
+        process.environment = env
 
         do {
             try process.run()
             process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? ""
+        } catch {
+            return "Process launch failed: \(error)"
+        }
+    }
+
+    private static func shell(_ command: String) -> String {
+        runProcess(executable: "/bin/bash", arguments: ["-l", "-c", command])
+    }
+
+    private static func runProcess(executable: String, arguments: [String]) -> String {
+        let process = Process()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        // Ensure the conda env's lib is on the dynamic library path
+        var env = ProcessInfo.processInfo.environment
+        let execDir = (executable as NSString).deletingLastPathComponent
+        let libDir = ((execDir as NSString).deletingLastPathComponent as NSString).appendingPathComponent("lib")
+        let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
+        env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? libDir : "\(libDir):\(existingDyld)"
+        process.environment = env
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
             return String(data: data, encoding: .utf8) ?? ""
         } catch {
             return ""
