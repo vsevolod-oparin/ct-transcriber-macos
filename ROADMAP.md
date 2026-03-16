@@ -168,7 +168,7 @@ Key details:
 - [ ] Model listing: fetch available models from each provider's API
 - [ ] Streaming response: tokens appear in real-time in chat bubble
 - [ ] Error handling: network errors, auth errors, rate limits shown inline
-- [ ] Cancel in-flight request (user presses Stop)
+- [ ] Stop/cancel streaming: send button becomes a Stop button during LLM inference; pressing it cancels the URLSession stream, preserves partial text in the assistant bubble, and restores the send button
 - [ ] Conversation context: send conversation history with each request
 - [ ] Auto-name conversations: after first assistant response, use LLM to suggest a short title (user can always rename manually via sidebar)
 
@@ -176,7 +176,7 @@ Key details:
 - [ ] Configure OpenAI API key, select GPT-4o-mini, send "Hello" — get streamed response
 - [ ] Configure Anthropic API key, select Claude — get streamed response
 - [ ] Configure DeepSeek/Qwen endpoint (OpenAI-compatible) — get response
-- [ ] Cancel mid-stream — response stops, partial text preserved
+- [ ] Press Stop during streaming — response stops, partial text preserved, send button restored
 - [ ] No API key configured — clear error message, not a crash
 - [ ] Network offline — graceful error in chat
 
