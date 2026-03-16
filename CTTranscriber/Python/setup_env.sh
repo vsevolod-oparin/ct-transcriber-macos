@@ -3,80 +3,109 @@
 # setup_env.sh — Sets up the whisper-metal conda environment with
 # CTranslate2 Metal backend and faster-whisper.
 #
+# Two modes:
+#   Wheel mode (default): Downloads pre-built package, no compilation needed.
+#   Source mode: Builds CTranslate2 from source (requires Xcode CLT + cmake).
+#
 # Usage:
-#   ./setup_env.sh <conda_env_name> <ctranslate2_source_path>
+#   ./setup_env.sh <conda_env_name> [--package-url URL] [--source PATH]
 #
-# Example:
-#   ./setup_env.sh whisper-metal /Users/me/projects/CTranslate2
-#
-# Prerequisites:
-#   - macOS on Apple Silicon (M1–M4)
-#   - Anaconda or Miniconda installed
-#   - Xcode Command Line Tools: xcode-select --install
+# If neither --package-url nor --source is given, only installs faster-whisper
+# (assumes CTranslate2 is already available or will be installed separately).
 #
 # Each step prints a JSON status line to stdout for the Swift app to parse:
 #   {"step": "name", "status": "start|done|error", "message": "..."}
 
 set -euo pipefail
 
-CONDA_ENV_NAME="${1:?Usage: setup_env.sh <conda_env_name> <ctranslate2_source_path>}"
-CT2_SOURCE="${2:?Usage: setup_env.sh <conda_env_name> <ctranslate2_source_path>}"
+CONDA_ENV_NAME=""
+CT2_PACKAGE_URL=""
+CT2_SOURCE=""
+MINICONDA_DIR="$HOME/Library/Application Support/CTTranscriber/miniconda"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --package-url) CT2_PACKAGE_URL="$2"; shift 2 ;;
+        --source) CT2_SOURCE="$2"; shift 2 ;;
+        *)
+            if [ -z "$CONDA_ENV_NAME" ]; then
+                CONDA_ENV_NAME="$1"; shift
+            else
+                echo "Unknown argument: $1" >&2; exit 1
+            fi
+            ;;
+    esac
+done
+
+if [ -z "$CONDA_ENV_NAME" ]; then
+    echo "Usage: setup_env.sh <conda_env_name> [--package-url URL] [--source PATH]" >&2
+    exit 1
+fi
 
 emit() {
     local step="$1" status="$2" message="${3:-}"
     printf '{"step":"%s","status":"%s","message":"%s"}\n' "$step" "$status" "$message"
 }
 
-# --- Step 0: Check Xcode Command Line Tools ---
-emit "check_xcode" "start" "Checking for Xcode Command Line Tools"
+# ==========================================================================
+# Step 1: Ensure conda is available (install Miniconda if needed)
+# ==========================================================================
+emit "check_conda" "start" "Checking for conda"
 
-if ! xcode-select -p &>/dev/null; then
-    emit "check_xcode" "error" "Xcode Command Line Tools not installed. Run: xcode-select --install"
-    exit 1
-fi
-
-if ! command -v cmake &>/dev/null; then
-    emit "check_xcode" "error" "cmake not found. Install via: brew install cmake"
-    exit 1
-fi
-
-emit "check_xcode" "done" "Xcode CLT and cmake found"
-
-# --- Step 1: Check conda ---
-emit "check_conda" "start" "Checking for conda installation"
-
-if ! command -v conda &>/dev/null; then
-    # Try common conda paths
-    for p in "$HOME/miniconda3/bin/conda" "$HOME/anaconda3/bin/conda" "/opt/homebrew/Caskroom/miniconda/base/bin/conda"; do
+find_conda() {
+    for p in \
+        "$MINICONDA_DIR/bin/conda" \
+        "$HOME/miniconda3/bin/conda" \
+        "$HOME/anaconda3/bin/conda" \
+        "/opt/anaconda3/bin/conda" \
+        "/opt/homebrew/Caskroom/miniconda/base/bin/conda" \
+        "/opt/homebrew/bin/conda" \
+        "/usr/local/bin/conda"; do
         if [ -x "$p" ]; then
-            eval "$("$p" shell.bash hook)"
-            break
+            echo "$p"
+            return 0
         fi
     done
+    return 1
+}
+
+CONDA_BIN=""
+if CONDA_BIN=$(find_conda); then
+    emit "check_conda" "done" "Found conda at $CONDA_BIN"
+else
+    # Install Miniconda automatically
+    emit "install_miniconda" "start" "Downloading and installing Miniconda"
+
+    MINICONDA_INSTALLER="/tmp/ct-transcriber-miniconda.sh"
+    MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh"
+
+    curl -fsSL "$MINICONDA_URL" -o "$MINICONDA_INSTALLER" 2>&1
+
+    if [ ! -f "$MINICONDA_INSTALLER" ]; then
+        emit "install_miniconda" "error" "Failed to download Miniconda installer"
+        exit 1
+    fi
+
+    bash "$MINICONDA_INSTALLER" -b -p "$MINICONDA_DIR" 2>&1 | tail -3
+    rm -f "$MINICONDA_INSTALLER"
+
+    CONDA_BIN="$MINICONDA_DIR/bin/conda"
+    if [ ! -x "$CONDA_BIN" ]; then
+        emit "install_miniconda" "error" "Miniconda installation failed"
+        exit 1
+    fi
+
+    emit "install_miniconda" "done" "Miniconda installed to $MINICONDA_DIR"
 fi
-
-if ! command -v conda &>/dev/null; then
-    emit "check_conda" "error" "conda not found. Install Miniconda from https://docs.anaconda.com/miniconda/"
-    exit 1
-fi
-
-emit "check_conda" "done" "Found conda at $(which conda)"
-
-# --- Step 2: Check CTranslate2 source ---
-emit "check_source" "start" "Checking CTranslate2 source at $CT2_SOURCE"
-
-if [ ! -f "$CT2_SOURCE/CMakeLists.txt" ]; then
-    emit "check_source" "error" "CTranslate2 source not found at $CT2_SOURCE (no CMakeLists.txt)"
-    exit 1
-fi
-
-emit "check_source" "done" "CTranslate2 source found"
-
-# --- Step 3: Create/verify conda env ---
-emit "create_env" "start" "Creating conda environment: $CONDA_ENV_NAME (Python 3.12)"
 
 # Initialize conda for this shell
-eval "$(conda shell.bash hook)"
+eval "$("$CONDA_BIN" shell.bash hook)"
+
+# ==========================================================================
+# Step 2: Create/verify conda environment
+# ==========================================================================
+emit "create_env" "start" "Setting up conda environment: $CONDA_ENV_NAME"
 
 if conda env list | grep -q "^${CONDA_ENV_NAME} "; then
     emit "create_env" "done" "Environment $CONDA_ENV_NAME already exists"
@@ -87,54 +116,120 @@ fi
 
 conda activate "$CONDA_ENV_NAME"
 
-# --- Step 4: Install Python dependencies ---
-emit "install_deps" "start" "Installing Python dependencies (torch, transformers, faster-whisper)"
+# ==========================================================================
+# Step 3: Install Python dependencies
+# ==========================================================================
+emit "install_deps" "start" "Installing Python dependencies"
 
 pip install --quiet torch transformers sentencepiece faster-whisper 2>&1 | tail -3
 
 emit "install_deps" "done" "Python dependencies installed"
 
-# --- Step 5: Build CTranslate2 ---
-emit "build_ct2" "start" "Building CTranslate2 with Metal backend"
+# ==========================================================================
+# Step 4: Install CTranslate2 Metal backend
+# ==========================================================================
 
-cd "$CT2_SOURCE"
+if [ -n "$CT2_PACKAGE_URL" ]; then
+    # --- Wheel mode: download pre-built package ---
+    emit "install_ct2" "start" "Downloading pre-built CTranslate2 Metal package"
 
-git submodule update --init --recursive 2>&1 | tail -1
+    CT2_TMPDIR="/tmp/ct2-metal-package"
+    rm -rf "$CT2_TMPDIR"
+    mkdir -p "$CT2_TMPDIR"
 
-python3 tools/gen_msl_strings.py
+    curl -fsSL "$CT2_PACKAGE_URL" -o "$CT2_TMPDIR/package.tar.gz" 2>&1
 
-CMAKE_PREFIX=$(python -c "import sys; print(sys.prefix)")
+    if [ ! -f "$CT2_TMPDIR/package.tar.gz" ]; then
+        emit "install_ct2" "error" "Failed to download CTranslate2 package from $CT2_PACKAGE_URL"
+        exit 1
+    fi
 
-cmake -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DWITH_METAL=ON \
-    -DWITH_ACCELERATE=ON \
-    -DWITH_MKL=OFF \
-    -DWITH_DNNL=OFF \
-    -DOPENMP_RUNTIME=NONE \
-    -DCMAKE_INSTALL_PREFIX="$CMAKE_PREFIX" \
-    2>&1 | tail -3
+    cd "$CT2_TMPDIR"
+    tar xzf package.tar.gz
 
-NCPU=$(sysctl -n hw.logicalcpu)
-cmake --build build -j"$NCPU" 2>&1 | tail -5
+    # Install the wheel
+    WHL=$(ls ctranslate2-*.whl 2>/dev/null | head -1)
+    if [ -z "$WHL" ]; then
+        emit "install_ct2" "error" "No .whl file found in package"
+        exit 1
+    fi
 
-emit "build_ct2" "done" "CTranslate2 built successfully"
+    pip install --force-reinstall "$WHL" 2>&1 | tail -3
 
-# --- Step 6: Install CTranslate2 ---
-emit "install_ct2" "start" "Installing CTranslate2 C++ library and Python bindings"
+    # Copy the shared library to the conda env's lib/
+    ENV_LIB="$(python -c 'import sys; print(sys.prefix)')/lib"
+    cp -f libctranslate2*.dylib "$ENV_LIB/" 2>/dev/null || true
 
-cmake --install build 2>&1 | tail -3
+    # Fix symlinks
+    cd "$ENV_LIB"
+    REAL_DYLIB=$(ls libctranslate2.*.*.dylib 2>/dev/null | head -1)
+    if [ -n "$REAL_DYLIB" ]; then
+        MAJOR_DYLIB=$(echo "$REAL_DYLIB" | sed 's/\.[0-9]*\.[0-9]*\.dylib/.dylib/')
+        ln -sf "$REAL_DYLIB" "$MAJOR_DYLIB" 2>/dev/null || true
+        ln -sf "$MAJOR_DYLIB" libctranslate2.dylib 2>/dev/null || true
+    fi
 
-cd python
-pip install . 2>&1 | tail -3
-cd ..
+    rm -rf "$CT2_TMPDIR"
 
-emit "install_ct2" "done" "CTranslate2 installed"
+    emit "install_ct2" "done" "CTranslate2 Metal package installed (pre-built)"
 
-# --- Step 7: Validate ---
+elif [ -n "$CT2_SOURCE" ]; then
+    # --- Source mode: build from source ---
+    emit "check_build_tools" "start" "Checking build tools"
+
+    if ! xcode-select -p &>/dev/null; then
+        emit "check_build_tools" "error" "Xcode Command Line Tools not installed. Run: xcode-select --install"
+        exit 1
+    fi
+    if ! command -v cmake &>/dev/null; then
+        emit "check_build_tools" "error" "cmake not found. Install via: brew install cmake"
+        exit 1
+    fi
+
+    emit "check_build_tools" "done" "Build tools available"
+
+    if [ ! -f "$CT2_SOURCE/CMakeLists.txt" ]; then
+        emit "install_ct2" "error" "CTranslate2 source not found at $CT2_SOURCE"
+        exit 1
+    fi
+
+    emit "install_ct2" "start" "Building CTranslate2 from source (this may take several minutes)"
+
+    cd "$CT2_SOURCE"
+    git submodule update --init --recursive 2>&1 | tail -1
+    python3 tools/gen_msl_strings.py
+
+    CMAKE_PREFIX=$(python -c "import sys; print(sys.prefix)")
+    cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DWITH_METAL=ON \
+        -DWITH_ACCELERATE=ON \
+        -DWITH_MKL=OFF \
+        -DWITH_DNNL=OFF \
+        -DOPENMP_RUNTIME=NONE \
+        -DCMAKE_INSTALL_PREFIX="$CMAKE_PREFIX" \
+        2>&1 | tail -3
+
+    NCPU=$(sysctl -n hw.logicalcpu)
+    cmake --build build -j"$NCPU" 2>&1 | tail -5
+    cmake --install build 2>&1 | tail -3
+
+    cd python
+    pip install . 2>&1 | tail -3
+    cd ..
+
+    emit "install_ct2" "done" "CTranslate2 built and installed from source"
+else
+    emit "install_ct2" "start" "Skipping CTranslate2 install (no package URL or source path)"
+    emit "install_ct2" "done" "CTranslate2 not installed — configure package URL or source path in Settings"
+fi
+
+# ==========================================================================
+# Step 5: Validate
+# ==========================================================================
 emit "validate" "start" "Validating installation"
 
-CT2_VERSION=$(python -c "import ctranslate2; print(ctranslate2.__version__)" 2>&1)
+CT2_VERSION=$(python -c "import ctranslate2; print(ctranslate2.__version__)" 2>&1) || CT2_VERSION="not found"
 FW_OK=$(python -c "import faster_whisper; print('ok')" 2>&1)
 
 if [ "$FW_OK" != "ok" ]; then
@@ -142,6 +237,10 @@ if [ "$FW_OK" != "ok" ]; then
     exit 1
 fi
 
-emit "validate" "done" "CTranslate2 $CT2_VERSION + faster_whisper ready"
+if [ "$CT2_VERSION" = "not found" ]; then
+    emit "validate" "error" "ctranslate2 import failed — install via package URL or source build"
+    exit 1
+fi
 
+emit "validate" "done" "CTranslate2 $CT2_VERSION + faster_whisper ready"
 echo '{"step":"complete","status":"done","message":"Environment setup complete"}'

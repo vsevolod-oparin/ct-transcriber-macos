@@ -24,6 +24,7 @@
 		A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */; };
 		B74AB71BE888405154B99885 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6DCE79BC5B3122843750F3D /* ChatView.swift */; };
 		B8F1E1CE6A8614F8D6D4DD9E /* SettingsStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */; };
+		BAA9B052D765EE9781B469D8 /* EnvironmentSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */; };
 		C3FC14CE7048400AFE174901 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */; };
 		C6E8B49EBEB96AE05CC35BEA /* AnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64537F181692C5D3F3657E3D /* AnthropicService.swift */; };
 		D08C364E839E6FF062F8B52A /* setup_env.sh in Resources */ = {isa = PBXBuildFile; fileRef = 14DA39CAEFF1636EE17D7B4A /* setup_env.sh */; };
@@ -54,6 +55,7 @@
 		3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonEnvironment.swift; sourceTree = "<group>"; };
 		3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		400DB94D1FAAA6ED9F2B6BBE /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentSetupView.swift; sourceTree = "<group>"; };
 		5C90903B672DF2C7EAA2A33E /* default-settings.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "default-settings.json"; sourceTree = "<group>"; };
 		64537F181692C5D3F3657E3D /* AnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicService.swift; sourceTree = "<group>"; };
 		733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStorage.swift; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 				D6DCE79BC5B3122843750F3D /* ChatView.swift */,
 				3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */,
 				94890C099DFFDB85FAE02626 /* ConversationListView.swift */,
+				4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */,
 				0154EA1107EBB16AE37ADD82 /* SettingsView.swift */,
 			);
 			path = Views;
@@ -296,6 +299,7 @@
 				C3FC14CE7048400AFE174901 /* ContentView.swift in Sources */,
 				988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */,
 				E816061D4DC7642B48E733DC /* ConversationListView.swift in Sources */,
+				BAA9B052D765EE9781B469D8 /* EnvironmentSetupView.swift in Sources */,
 				FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */,
 				2A92842A542865F2F4B3C2C2 /* LLMService.swift in Sources */,
 				9F23569AA86BCB32B960D72C /* LLMServiceFactory.swift in Sources */,

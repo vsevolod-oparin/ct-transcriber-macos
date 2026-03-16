@@ -23,8 +23,10 @@ struct GeneralSettings: Codable, Equatable {
 struct TranscriptionSettings: Codable, Equatable {
     /// Conda environment name for whisper-metal.
     var condaEnvName: String
-    /// Path to CTranslate2 source directory (metal-backend branch).
+    /// Path to CTranslate2 source directory (for source builds; empty = use pre-built wheel).
     var ctranslate2SourcePath: String
+    /// URL to pre-built CTranslate2 Metal package (tar.gz with wheel + dylib).
+    var ct2PackageURL: String
     /// Path to directory where converted whisper models are stored.
     var modelsDirectory: String
 

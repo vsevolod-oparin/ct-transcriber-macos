@@ -41,6 +41,7 @@ private struct GeneralSettingsTab: View {
 
 private struct TranscriptionSettingsTab: View {
     @Binding var settings: TranscriptionSettings
+    @State private var showSetupSheet = false
 
     private static let minBeamSize = 1
     private static let maxBeamSize = 20
@@ -51,8 +52,10 @@ private struct TranscriptionSettingsTab: View {
         Form {
             Section("Environment") {
                 TextField("Conda Env Name", text: $settings.condaEnvName)
+                TextField("CTranslate2 Package URL (pre-built)", text: $settings.ct2PackageURL)
+                    .font(.system(.body, design: .monospaced))
                 HStack {
-                    TextField("CTranslate2 Source Path", text: $settings.ctranslate2SourcePath)
+                    TextField("CTranslate2 Source Path (fallback)", text: $settings.ctranslate2SourcePath)
                     Button("Browse...") {
                         let panel = NSOpenPanel()
                         panel.canChooseDirectories = true
@@ -74,6 +77,15 @@ private struct TranscriptionSettingsTab: View {
                             settings.modelsDirectory = url.path
                         }
                     }
+                }
+
+                Button("Re-run Environment Setup...") {
+                    showSetupSheet = true
+                }
+            }
+            .sheet(isPresented: $showSetupSheet) {
+                EnvironmentSetupView(reason: "Manual re-run from Settings.") {
+                    showSetupSheet = false
                 }
             }
 

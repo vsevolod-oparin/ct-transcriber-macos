@@ -17,12 +17,16 @@ enum PythonEnvironment {
         let message: String
     }
 
+    /// Where bundled Miniconda gets installed.
+    private static let bundledMinicondaPath =
+        NSHomeDirectory() + "/Library/Application Support/CTTranscriber/miniconda"
+
     // MARK: - Detection
 
     /// Checks if the conda environment is set up and functional.
     static func check(settings: TranscriptionSettings) -> Status {
         guard let condaPath = findConda() else {
-            return .missing(reason: "conda not found. Install Miniconda from https://docs.anaconda.com/miniconda/")
+            return .missing(reason: "Conda not found. Click 'Set Up Transcription' to install automatically.")
         }
 
         let envName = settings.condaEnvName
@@ -31,14 +35,14 @@ enum PythonEnvironment {
         }
 
         guard let pythonPath = findPythonInEnv(condaPath: condaPath, envName: envName) else {
-            return .missing(reason: "Conda environment '\(envName)' not found. Run setup from Settings → Transcription.")
+            return .missing(reason: "Environment '\(envName)' not found. Click 'Set Up Transcription' to create it.")
         }
 
         // Validate imports
         let validation = runPython(pythonPath: pythonPath,
                                    code: "import ctranslate2; import faster_whisper; print('ok')")
         if validation.trimmingCharacters(in: .whitespacesAndNewlines) != "ok" {
-            return .missing(reason: "Environment '\(envName)' exists but CTranslate2/faster-whisper not installed. Re-run setup.")
+            return .missing(reason: "CTranslate2 or faster-whisper not installed. Re-run setup.")
         }
 
         return .ready(pythonPath: pythonPath)
@@ -61,6 +65,7 @@ enum PythonEnvironment {
     // MARK: - Setup
 
     /// Runs setup_env.sh as a subprocess, streaming progress steps.
+    /// Automatically chooses wheel mode or source mode based on settings.
     static func runSetup(
         settings: TranscriptionSettings
     ) -> AsyncThrowingStream<SetupStep, Error> {
@@ -71,14 +76,19 @@ enum PythonEnvironment {
                         throw PythonEnvError.setupScriptNotFound
                     }
 
-                    let ct2Path = settings.ctranslate2SourcePath
-                    guard !ct2Path.isEmpty else {
-                        throw PythonEnvError.ctranslate2PathNotSet
+                    var arguments = [scriptPath, settings.condaEnvName]
+
+                    // Prefer pre-built package, fall back to source build
+                    if !settings.ct2PackageURL.isEmpty {
+                        arguments += ["--package-url", settings.ct2PackageURL]
+                    } else if !settings.ctranslate2SourcePath.isEmpty {
+                        arguments += ["--source", settings.ctranslate2SourcePath]
                     }
+                    // If neither is set, script installs deps but skips CT2
 
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/bin/bash")
-                    process.arguments = [scriptPath, settings.condaEnvName, ct2Path]
+                    process.arguments = arguments
 
                     let pipe = Pipe()
                     process.standardOutput = pipe
@@ -100,7 +110,7 @@ enum PythonEnvironment {
                     process.waitUntilExit()
 
                     if process.terminationStatus != 0 {
-                        throw PythonEnvError.setupFailed("Setup script exited with code \(process.terminationStatus)")
+                        throw PythonEnvError.setupFailed("Setup exited with code \(process.terminationStatus)")
                     }
 
                     continuation.finish()
@@ -115,8 +125,12 @@ enum PythonEnvironment {
 
     private static func findConda() -> String? {
         let searchPaths = [
-            "\(NSHomeDirectory())/miniconda3/bin/conda",
-            "\(NSHomeDirectory())/anaconda3/bin/conda",
+            // Bundled Miniconda (installed by our setup script)
+            bundledMinicondaPath + "/bin/conda",
+            // Common user installs
+            NSHomeDirectory() + "/miniconda3/bin/conda",
+            NSHomeDirectory() + "/anaconda3/bin/conda",
+            "/opt/anaconda3/bin/conda",
             "/opt/homebrew/Caskroom/miniconda/base/bin/conda",
             "/opt/homebrew/bin/conda",
             "/usr/local/bin/conda",
@@ -139,11 +153,10 @@ enum PythonEnvironment {
     }
 
     private static func findPythonInEnv(condaPath: String, envName: String) -> String? {
-        // Get conda info to find env path
         let envsOutput = shell("\(condaPath) env list")
         for line in envsOutput.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix(envName + " ") || trimmed.hasPrefix(envName + " ") {
+            if trimmed.hasPrefix(envName + " ") {
                 let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
                 if let envPath = parts.last {
                     let pythonPath = "\(envPath)/bin/python"
@@ -183,7 +196,6 @@ enum PythonEnvironment {
 
 enum PythonEnvError: LocalizedError {
     case setupScriptNotFound
-    case ctranslate2PathNotSet
     case setupFailed(String)
     case environmentNotReady(String)
 
@@ -191,8 +203,6 @@ enum PythonEnvError: LocalizedError {
         switch self {
         case .setupScriptNotFound:
             "setup_env.sh not found in app bundle."
-        case .ctranslate2PathNotSet:
-            "CTranslate2 source path not set. Configure in Settings → Transcription."
         case .setupFailed(let msg):
             "Environment setup failed: \(msg)"
         case .environmentNotReady(let msg):

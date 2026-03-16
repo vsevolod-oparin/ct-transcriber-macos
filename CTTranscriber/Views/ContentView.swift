@@ -6,6 +6,8 @@ struct ContentView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @State private var viewModel: ChatViewModel?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
+    @State private var showSetupSheet = false
+    @State private var setupReason = ""
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -36,6 +38,23 @@ struct ContentView: View {
                 vm.settingsManager = settingsManager
                 viewModel = vm
             }
+            checkEnvironment()
+        }
+        .sheet(isPresented: $showSetupSheet) {
+            EnvironmentSetupView(reason: setupReason) {
+                showSetupSheet = false
+            }
+        }
+    }
+
+    private func checkEnvironment() {
+        let status = PythonEnvironment.check(settings: settingsManager.settings.transcription)
+        switch status {
+        case .missing(let reason):
+            setupReason = reason
+            showSetupSheet = true
+        case .ready, .notChecked:
+            break
         }
     }
 }

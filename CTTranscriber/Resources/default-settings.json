@@ -5,6 +5,7 @@
   "transcription": {
     "condaEnvName": "whisper-metal",
     "ctranslate2SourcePath": "",
+    "ct2PackageURL": "https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/pre-release-dep/ctranslate2-metal-4.7.1-macosx-arm64.tar.gz",
     "modelsDirectory": "",
     "beamSize": 5,
     "temperature": 0.0,
