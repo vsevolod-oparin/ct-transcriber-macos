@@ -1,63 +1,63 @@
 import Foundation
 import SwiftUI
+import SwiftData
 
 @Observable
 final class ChatViewModel {
-    var conversations: [Conversation] = []
     var selectedConversationID: UUID?
     var messageText: String = ""
 
-    var selectedConversation: Conversation? {
-        conversations.first { $0.id == selectedConversationID }
+    private var modelContext: ModelContext
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
     }
 
-    init() {
-        // Seed with mock data
-        let conv1 = Conversation(title: "Meeting Notes Transcription")
-        conv1.createdAt = Date().addingTimeInterval(-86400 * 2)
-        conv1.updatedAt = Date().addingTimeInterval(-86400)
-        conv1.messages = [
-            Message(role: .user, content: "Please transcribe the attached meeting recording."),
-            Message(role: .assistant, content: "I've transcribed the audio. The meeting covered Q3 roadmap planning with 5 action items identified."),
-            Message(role: .user, content: "Can you summarize the key decisions?"),
-            Message(role: .assistant, content: "Key decisions from the meeting:\n\n1. Launch date moved to October 15\n2. Budget approved for new ML infrastructure\n3. Team expansion: 2 new engineers\n4. Weekly sync moved to Thursdays\n5. Documentation sprint planned for next month"),
-        ]
+    var conversations: [Conversation] {
+        let descriptor = FetchDescriptor<Conversation>(
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
 
-        let conv2 = Conversation(title: "Podcast Episode 42")
-        conv2.createdAt = Date().addingTimeInterval(-3600 * 5)
-        conv2.updatedAt = Date().addingTimeInterval(-3600)
-        conv2.messages = [
-            Message(role: .user, content: "Transcribe this podcast episode about AI in healthcare."),
-            Message(role: .assistant, content: "Transcription complete. The episode discusses three main topics: diagnostic AI, drug discovery, and patient data privacy."),
-        ]
+    var selectedConversation: Conversation? {
+        guard let id = selectedConversationID else { return nil }
+        let descriptor = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
 
-        let conv3 = Conversation(title: "Lecture: Intro to ML")
-        conv3.createdAt = Date().addingTimeInterval(-86400 * 7)
-        conv3.updatedAt = Date().addingTimeInterval(-86400 * 5)
-        conv3.messages = [
-            Message(role: .user, content: "Here's a recording of today's ML lecture."),
-            Message(role: .assistant, content: "Transcription of the lecture is ready. Topics covered: supervised learning, loss functions, and gradient descent basics."),
-            Message(role: .user, content: "What were the recommended readings mentioned?"),
-            Message(role: .assistant, content: "The professor recommended:\n- \"Pattern Recognition and Machine Learning\" by Bishop\n- \"Deep Learning\" by Goodfellow et al.\n- Stanford CS229 lecture notes (available online)"),
-        ]
-
-        conversations = [conv1, conv2, conv3]
+    func sortedMessages(for conversation: Conversation) -> [Message] {
+        conversation.messages.sorted { $0.timestamp < $1.timestamp }
     }
 
     func createConversation() {
         let conversation = Conversation()
-        conversations.insert(conversation, at: 0)
+        modelContext.insert(conversation)
+        saveContext()
         selectedConversationID = conversation.id
     }
 
     func renameConversation(_ conversation: Conversation, to newTitle: String) {
         conversation.title = newTitle
         conversation.updatedAt = Date()
+        saveContext()
     }
 
     func deleteConversation(_ conversation: Conversation) {
-        conversations.removeAll { $0.id == conversation.id }
-        if selectedConversationID == conversation.id {
+        // Clean up stored files for all attachments
+        for message in conversation.messages {
+            for attachment in message.attachments {
+                FileStorage.delete(storedName: attachment.storedName)
+            }
+        }
+
+        let wasSelected = selectedConversationID == conversation.id
+        modelContext.delete(conversation)
+        saveContext()
+
+        if wasSelected {
             selectedConversationID = conversations.first?.id
         }
     }
@@ -69,12 +69,43 @@ final class ChatViewModel {
         let message = Message(role: .user, content: text)
         conversation.messages.append(message)
         conversation.updatedAt = Date()
-        messageText = ""
 
-        // Move conversation to top
-        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
-            let conv = conversations.remove(at: index)
-            conversations.insert(conv, at: 0)
-        }
+        autoTitleIfNeeded(conversation, firstMessageText: text)
+
+        messageText = ""
+        saveContext()
+    }
+
+    func attachFile(from url: URL, to conversation: Conversation) {
+        guard let storedName = try? FileStorage.copyToStorage(from: url) else { return }
+
+        let kind = FileStorage.attachmentKind(for: url)
+        let originalName = url.lastPathComponent
+        let attachment = Attachment(kind: kind, storedName: storedName, originalName: originalName)
+
+        let message = Message(role: .user, content: "Attached \(kind.rawValue): \(originalName)")
+        message.attachments.append(attachment)
+        conversation.messages.append(message)
+        conversation.updatedAt = Date()
+        saveContext()
+    }
+
+    // MARK: - Private
+
+    private static let autoTitleMaxLength = 50
+
+    private func autoTitleIfNeeded(_ conversation: Conversation, firstMessageText: String) {
+        let isFirstMessage = conversation.messages.count == 1
+        let hasDefaultTitle = conversation.title == "New Conversation"
+        guard isFirstMessage && hasDefaultTitle else { return }
+
+        let truncated = String(firstMessageText.prefix(Self.autoTitleMaxLength))
+        conversation.title = truncated.count < firstMessageText.count
+            ? "\(truncated)..."
+            : truncated
+    }
+
+    private func saveContext() {
+        try? modelContext.save()
     }
 }

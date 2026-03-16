@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     let conversation: Conversation
@@ -6,11 +7,11 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MessageListView(messages: conversation.messages)
+            MessageListView(messages: viewModel.sortedMessages(for: conversation))
 
             Divider()
 
-            ChatInputBar(viewModel: viewModel)
+            ChatInputBar(viewModel: viewModel, conversation: conversation)
         }
         .navigationTitle(conversation.title)
     }
@@ -55,10 +56,8 @@ private struct MessageBubble: View {
             if isUser { Spacer(minLength: 60) }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                if let audioPath = message.audioFilePath {
-                    Label(audioPath, systemImage: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ForEach(message.attachments) { attachment in
+                    AttachmentView(attachment: attachment)
                 }
 
                 Text(message.content)
@@ -79,10 +78,51 @@ private struct MessageBubble: View {
     }
 }
 
+// MARK: - Attachment View
+
+private struct AttachmentView: View {
+    let attachment: Attachment
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: iconName)
+            Text(attachment.originalName)
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var iconName: String {
+        switch attachment.kind {
+        case .audio: "waveform"
+        case .video: "film"
+        case .image: "photo"
+        case .text:  "doc.text"
+        }
+    }
+}
+
 // MARK: - Input Bar
+
+private let attachableContentTypes: [UTType] = [
+    .audio,
+    .movie,
+    .video,
+    .image,
+    .plainText,
+    .sourceCode,
+    .utf8PlainText,
+    .text,
+]
 
 struct ChatInputBar: View {
     @Bindable var viewModel: ChatViewModel
+    let conversation: Conversation
     @State private var isShowingFilePicker = false
 
     var body: some View {
@@ -92,13 +132,19 @@ struct ChatInputBar: View {
                     .font(.title3)
             }
             .buttonStyle(.borderless)
-            .help("Attach audio file")
+            .help("Attach file (audio, image, or text)")
             .fileImporter(
                 isPresented: $isShowingFilePicker,
-                allowedContentTypes: [.audio],
-                allowsMultipleSelection: false
-            ) { _ in
-                // Non-functional placeholder for M1
+                allowedContentTypes: attachableContentTypes,
+                allowsMultipleSelection: true
+            ) { result in
+                if case .success(let urls) = result {
+                    for url in urls {
+                        let didAccess = url.startAccessingSecurityScopedResource()
+                        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                        viewModel.attachFile(from: url, to: conversation)
+                    }
+                }
             }
 
             TextField("Message...", text: $viewModel.messageText, axis: .vertical)

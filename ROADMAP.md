@@ -14,7 +14,7 @@ A native macOS audio transcription app with LLM chat capabilities, powered by CT
 | Whisper Integration | Python subprocess (faster-whisper via conda env) | faster-whisper provides VAD, chunking, temperature retries, and segment timestamps out of the box; direct CT2 API lacks VAD (causes hallucinations on silence) and requires ~200 extra lines of manual pipeline code for comparable results; see `reports/planning-whisper-integration-strategy.md` for full analysis |
 | Python Environment | Conda (`whisper-metal` env, Python 3.12) | Matches CTranslate2 METAL_QUICKSTART.md; conda handles native deps cleanly |
 | Persistent Storage | SwiftData | Native to Swift, backed by SQLite, first-class Xcode support, sufficient for chat dialogues |
-| Audio File Storage | App Support directory (`~/Library/Application Support/CTTranscriber/audio/`) | Standard macOS convention; files referenced by path in SwiftData |
+| File Storage | App Support directory (`~/Library/Application Support/CTTranscriber/files/`) | Unified storage for audio, images, and text files; referenced by UUID filename in SwiftData `Attachment` model |
 | Settings Storage | JSON file in `~/.config/ct-transcriber/` | XDG-compatible, easy to edit manually, portable |
 | LLM Integration | Unified Swift HTTP client with provider adapters | All major LLM APIs follow similar REST/SSE patterns; no need for heavy SDKs |
 | Background Tasks | Swift Concurrency (async/await + actors) | Native, structured concurrency with cancellation support |
@@ -103,25 +103,28 @@ Key details:
 
 ---
 
-## Milestone 2: Persistent Storage (SwiftData)
+## Milestone 2: Persistent Storage (SwiftData) ✅
 
 **Goal:** Conversations and messages persist across app restarts.
+**Status:** Complete (2026-03-16) — see `reports/milestone-2-persistent-storage.md`
 
 ### Tasks
-- [ ] Define SwiftData models:
+- [x] Define SwiftData models:
   - `Conversation`: id, title, createdAt, updatedAt
   - `Message`: id, role (user/assistant/system), content, timestamp, audioFilePath?, conversation relationship
-- [ ] Wire sidebar to `@Query` on `Conversation` sorted by updatedAt
-- [ ] Wire chat view to `@Query` on `Message` filtered by conversation
-- [ ] Save messages on send
-- [ ] Auto-generate conversation title from first message (truncated)
-- [ ] Audio file storage: copy attached audio to `~/Library/Application Support/CTTranscriber/audio/{uuid}.{ext}`
-- [ ] Store audio file reference in Message model
+- [x] Wire ChatViewModel to `ModelContext` with fetch by updatedAt descending
+- [x] Wire chat view to sorted messages via view model
+- [x] Save messages on send
+- [x] Auto-generate conversation title from first message (truncated at 50 chars)
+- [x] File storage: copy attachments to `~/Library/Application Support/CTTranscriber/files/{uuid}.{ext}`
+- [x] `Attachment` model (kind: audio/video/image/text, storedName, originalName) with cascade delete from Message
+- [x] Support attaching audio, video, images, and text files (txt, md, py, cpp, etc.)
+- [x] Clean up stored files on conversation delete
 
 ### Test Criteria
-- [ ] Create conversation, add messages, quit app, relaunch — data persists
-- [ ] Delete conversation — messages and referenced audio files are cleaned up
-- [ ] Attach an audio file — file is copied to app storage, reference appears in message
+- [x] Create conversation, add messages, quit app, relaunch — data persists
+- [x] Delete conversation — messages and referenced audio files are cleaned up
+- [x] Attach an audio file — file is copied to app storage, reference appears in message
 
 ---
 

@@ -13,15 +13,17 @@ final class Message {
     var role: MessageRole
     var content: String
     var timestamp: Date
-    var audioFilePath: String?
+
+    @Relationship(deleteRule: .cascade, inverse: \Attachment.message)
+    var attachments: [Attachment]
 
     var conversation: Conversation?
 
-    init(role: MessageRole, content: String, audioFilePath: String? = nil) {
+    init(role: MessageRole, content: String) {
         self.id = UUID()
         self.role = role
         self.content = content
         self.timestamp = Date()
-        self.audioFilePath = audioFilePath
+        self.attachments = []
     }
 }

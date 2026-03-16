@@ -7,7 +7,7 @@ struct CTTranscriberApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: Conversation.self)
+        .modelContainer(for: [Conversation.self, Message.self, Attachment.self])
 
         Settings {
             Text("Settings will go here")
