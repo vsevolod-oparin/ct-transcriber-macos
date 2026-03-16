@@ -128,25 +128,28 @@ Key details:
 
 ---
 
-## Milestone 3: Settings Infrastructure
+## Milestone 3: Settings Infrastructure ✅
 
 **Goal:** Settings UI and JSON-based persistence.
+**Status:** Complete (2026-03-16) — see `reports/milestone-3-settings-infrastructure.md`
 
 ### Tasks
-- [ ] Create Settings window (SwiftUI `Settings` scene)
-- [ ] Settings model with JSON Codable, stored at `~/.config/ct-transcriber/settings.json`
-- [ ] Tabs:
+- [x] Create Settings window (SwiftUI `Settings` scene, 3-tab TabView)
+- [x] Settings model with JSON Codable, stored at `~/.config/ct-transcriber/settings.json`
+- [x] Tabs:
   - **General**: app theme (light/dark/system)
-  - **Transcription**: model size (tiny/base/small/medium/large), beam size, temperature, language, live transcription toggle
-  - **LLM**: provider selector, API key fields (secure storage in Keychain), model picker, temperature, max tokens
-- [ ] API keys stored in macOS Keychain (not in JSON)
-- [ ] Settings observable via `@Observable` class, injected into environment
+  - **Transcription**: model (base/large-v3-turbo/large-v3), device (mps/cpu), beam size, temperature, language, VAD filter, condition on previous text
+  - **LLM**: provider selector (OpenAI/Anthropic/DeepSeek/Qwen), base URL, API key (SecureField → Keychain), model name, temperature, max tokens
+- [x] API keys stored in macOS Keychain (not in JSON)
+- [x] Settings observable via `@Observable` SettingsManager, injected into environment
+- [x] Theme applied via `preferredColorScheme`
+- [x] Inline validation errors (red text) for out-of-range values
 
 ### Test Criteria
-- [ ] Open Settings, change transcription beam size, close and reopen — value persists
-- [ ] API key saved to Keychain, retrievable after app restart
-- [ ] Invalid settings (e.g., beam size = 0) show validation error
-- [ ] Settings JSON file is human-readable at expected path
+- [x] Open Settings, change transcription beam size, close and reopen — value persists
+- [x] API key saved to Keychain, retrievable after app restart
+- [x] Invalid settings (e.g., beam size = 0) show validation error
+- [x] Settings JSON file is human-readable at expected path
 
 ---
 
