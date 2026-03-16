@@ -43,11 +43,21 @@ private struct ErrorBanner: View {
                 .lineLimit(5)
                 .textSelection(.enabled)
             Spacer()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(message, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Copy error message")
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
+            .help("Dismiss")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
