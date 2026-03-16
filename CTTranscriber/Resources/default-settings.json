@@ -31,6 +31,22 @@
         }
       },
       {
+        "id": "00000000-0000-0000-0000-000000000006",
+        "name": "Z.ai Coding",
+        "apiType": "OpenAI Compatible",
+        "baseURL": "https://api.z.ai",
+        "completionsPath": "api/coding/paas/v4/chat/completions",
+        "modelsPath": "api/coding/paas/v4/models",
+        "defaultModel": "glm-4.7",
+        "fallbackModels": ["glm-5", "glm-4.7", "glm-4-flash"],
+        "temperature": 0.7,
+        "maxTokens": 4096,
+        "apiKey": "",
+        "extraHeaders": {
+          "Accept-Language": "en-US,en"
+        }
+      },
+      {
         "id": "00000000-0000-0000-0000-000000000002",
         "name": "OpenAI",
         "apiType": "OpenAI Compatible",
