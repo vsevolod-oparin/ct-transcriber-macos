@@ -36,7 +36,8 @@
     "language": "",
     "vadFilter": true,
     "conditionOnPreviousText": false,
-    "flashAttention": true,
+    "flashAttention": false,
+    "skipTimestamps": false,
     "device": "mps"
   },
   "llm": {

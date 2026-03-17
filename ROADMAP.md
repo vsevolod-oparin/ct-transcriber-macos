@@ -365,15 +365,15 @@ Performance optimization and some player features deferred.
 **Flash attention:**
 - [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
 - [x] **Fixed**: threadgroup memory alignment bug resolved in CTranslate2 metal-backend. Default: **on**
-- [ ] Benchmark: flash attention vs standard attention on Metal (M1–M4)
-- [ ] Investigate compatibility with timestamps mode
+- [x] **Benchmarked**: flash attention is 3-5% *slower* on 60s audio with whisper-large-v3-turbo on Metal. Default changed to **off**. See `reports/research-flash-attention-timestamps.md`
+- [x] **Timestamps mode stable**: no state corruption detected with current CT2 4.7.1 build (direct API test)
 
 **Transcription speed option:**
-- [ ] Add "Skip timestamps" toggle in transcription settings
-- [ ] When enabled, pass `--notimestamps` to transcribe.py / faster-whisper
-- [ ] Investigate actual speedup vs. timestamps mode
-- [ ] **Investigate timestamps bug**: determine if state corruption is in CTranslate2 Metal or faster-whisper
-- [ ] Display plain text segments without `[start → end]` when timestamps off
+- [x] "Skip Timestamps (faster)" toggle in Settings → Transcription
+- [x] Passes `--skip-timestamps` → `without_timestamps=True` to faster-whisper
+- [x] Plain text output (no `[start → end]`) when timestamps off
+- [x] **Benchmarked**: skipping timestamps gives 22% speedup (13.4s vs 17.2s on 60s audio)
+- [x] **Timestamps bug not reproduced**: direct CT2 API test shows no state corruption with current build (4.7.1)
 
 **Audio/video player:**
 - [x] Inline play/pause button on audio and video attachments

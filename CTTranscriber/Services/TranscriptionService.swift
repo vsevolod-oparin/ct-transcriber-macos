@@ -108,6 +108,10 @@ enum TranscriptionService {
                         args.append("--no-flash-attention")
                     }
 
+                    if settings.skipTimestamps {
+                        args.append("--skip-timestamps")
+                    }
+
                     process.arguments = args
 
                     AppLogger.info("Transcription command: \(pythonPath) \(args.joined(separator: " "))", category: "transcription")

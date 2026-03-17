@@ -49,6 +49,7 @@ struct TranscriptionSettings: Codable, Equatable {
     var vadFilter: Bool
     var conditionOnPreviousText: Bool
     var flashAttention: Bool
+    var skipTimestamps: Bool
     var device: String // "mps" or "cpu"
 
     var isValid: Bool {

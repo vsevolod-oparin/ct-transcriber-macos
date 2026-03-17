@@ -114,6 +114,8 @@ private struct TranscriptionSettingsTab: View {
                 Toggle("Condition on Previous Text", isOn: $settings.conditionOnPreviousText)
 
                 Toggle("Flash Attention", isOn: $settings.flashAttention)
+
+                Toggle("Skip Timestamps (faster)", isOn: $settings.skipTimestamps)
             }
         }
         .formStyle(.grouped)

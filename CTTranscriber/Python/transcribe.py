@@ -61,6 +61,9 @@ def main():
     parser.add_argument("--flash-attention", action="store_true", default=True,
                         help="Enable flash attention (default: True)")
     parser.add_argument("--no-flash-attention", action="store_false", dest="flash_attention")
+    parser.add_argument("--skip-timestamps", action="store_true", default=False,
+                        help="Skip timestamp generation (faster transcription)")
+    parser.add_argument("--no-skip-timestamps", action="store_false", dest="skip_timestamps")
     args = parser.parse_args()
 
     compute_type = "float16" if args.device == "mps" else "float32"
@@ -93,6 +96,7 @@ def main():
             temperature=args.temperature,
             condition_on_previous_text=args.condition_on_previous_text,
             vad_filter=args.vad_filter,
+            without_timestamps=args.skip_timestamps,
         )
 
         emit({

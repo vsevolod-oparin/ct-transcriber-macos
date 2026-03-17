@@ -441,8 +441,9 @@ final class ChatViewModel {
     }
 
     private func formatTranscriptionResult(_ result: TranscriptionService.TranscriptionResult) -> String {
+        let skipTimestamps = settingsManager?.settings.transcription.skipTimestamps ?? false
         var text = "**Transcription** (\(result.language), \(String(format: "%.1f", result.elapsed))s)\n\n"
-        text += result.formattedTranscript
+        text += skipTimestamps ? result.plainText : result.formattedTranscript
         return text
     }
 
