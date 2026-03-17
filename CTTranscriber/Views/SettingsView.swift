@@ -264,6 +264,14 @@ private struct ProviderConfigEditor: View {
     @State private var isFetchingModels: Bool = false
     @State private var fallbackModelsText: String = ""
     @State private var extraHeadersText: String = ""
+    @State private var testResult: TestConnectionResult = .idle
+
+    enum TestConnectionResult: Equatable {
+        case idle
+        case testing
+        case success
+        case failure(String)
+    }
 
     private static let minTemperature = 0.0
     private static let maxTemperature = 2.0
@@ -290,6 +298,29 @@ private struct ProviderConfigEditor: View {
             Section("Authentication") {
                 SecureField("API Key", text: $config.apiKey)
                     .onSubmit { fetchModels() }
+
+                HStack {
+                    Button("Test Connection") { testConnection() }
+                        .disabled(config.apiKey.isEmpty || testResult == .testing)
+
+                    switch testResult {
+                    case .idle:
+                        EmptyView()
+                    case .testing:
+                        ProgressView()
+                            .controlSize(.small)
+                    case .success:
+                        Label("Connected", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    case .failure(let msg):
+                        Text(msg)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                }
             }
 
             Section("Extra Headers") {
@@ -415,6 +446,39 @@ private struct ProviderConfigEditor: View {
                     config.defaultModel = first
                 }
                 isFetchingModels = false
+            }
+        }
+    }
+
+    private func testConnection() {
+        testResult = .testing
+        let service = LLMServiceFactory.service(for: config)
+        let messages = [ChatMessageDTO(role: "user", content: "Hi")]
+
+        Task {
+            var gotToken = false
+            do {
+                let stream = service.streamCompletion(
+                    messages: messages,
+                    model: config.defaultModel,
+                    temperature: 0.1,
+                    maxTokens: 1,
+                    baseURL: config.baseURL,
+                    completionsPath: config.completionsPath,
+                    apiKey: config.apiKey,
+                    extraHeaders: config.extraHeaders
+                )
+                for try await _ in stream {
+                    gotToken = true
+                    break // one token is enough
+                }
+                await MainActor.run {
+                    testResult = .success
+                }
+            } catch {
+                await MainActor.run {
+                    testResult = .failure(error.localizedDescription)
+                }
             }
         }
     }

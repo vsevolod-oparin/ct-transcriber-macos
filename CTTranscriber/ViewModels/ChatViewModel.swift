@@ -92,6 +92,44 @@ final class ChatViewModel {
         }
     }
 
+    // MARK: - Retry
+
+    func retryMessage(_ message: Message, in conversation: Conversation) {
+        guard !isStreaming && !isTranscribing else { return }
+
+        // Find the user message before this failed assistant/system message
+        let sorted = sortedMessages(for: conversation)
+        if message.role == .assistant || message.role == .system {
+            // Remove the failed message, re-trigger LLM response
+            conversation.messages.removeAll { $0.id == message.id }
+            modelContext.delete(message)
+            saveContext()
+            refreshConversations()
+            requestLLMResponse(for: conversation)
+        } else if message.role == .user {
+            // Re-send the user message: delete it and any following assistant message, re-send
+            if let idx = sorted.firstIndex(where: { $0.id == message.id }) {
+                let nextMessages = sorted.suffix(from: sorted.index(after: idx))
+                for msg in nextMessages {
+                    conversation.messages.removeAll { $0.id == msg.id }
+                    modelContext.delete(msg)
+                }
+            }
+            conversation.messages.removeAll { $0.id == message.id }
+            modelContext.delete(message)
+            saveContext()
+            refreshConversations()
+
+            // Re-create the user message and trigger LLM
+            let newMessage = Message(role: .user, content: message.content)
+            conversation.messages.append(newMessage)
+            conversation.updatedAt = Date()
+            saveContext()
+            refreshConversations()
+            requestLLMResponse(for: conversation)
+        }
+    }
+
     // MARK: - Send Message + LLM Streaming
 
     func sendMessage() {
@@ -123,7 +161,10 @@ final class ChatViewModel {
 
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
-            lastError = LLMError.noAPIKey.localizedDescription
+            let errorMessage = Message(role: .assistant, content: "⚠ \(LLMError.noAPIKey.localizedDescription)")
+            conversation.messages.append(errorMessage)
+            saveContext()
+            refreshConversations()
             return
         }
 
@@ -173,12 +214,9 @@ final class ChatViewModel {
             } catch {
                 guard let self else { return }
                 await MainActor.run {
-                    self.lastError = error.localizedDescription
-                    // Remove empty assistant message on error
-                    if assistantMessage.content.isEmpty {
-                        conversation.messages.removeAll { $0.id == assistantMessage.id }
-                        self.modelContext.delete(assistantMessage)
-                    }
+                    // Keep the message with error content so the user can see it and retry
+                    let partial = assistantMessage.content.isEmpty ? "" : assistantMessage.content + "\n\n"
+                    assistantMessage.content = "\(partial)⚠ \(error.localizedDescription)"
                     self.finalizeStreaming()
                 }
             }

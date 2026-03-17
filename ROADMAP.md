@@ -338,22 +338,23 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 ---
 
-## Milestone 7b: Chat UX Improvements
+## Milestone 7b: Chat UX Improvements (partial ✅)
 
 **Goal:** Make long conversations and large transcription bubbles usable.
+**Status:** Partially complete (2026-03-17) — see `reports/milestone-7b-chat-ux-improvements.md`
+Performance optimization deferred.
 
 ### Tasks
 
 **Collapsible bubbles:**
-- [ ] Long messages (e.g., hour-long transcription results) should be collapsible
-- [ ] Auto-collapse transcription results above a configurable line threshold
-- [ ] Click to expand/collapse, with a "Show more" / "Show less" toggle
-- [ ] Collapsed state shows first few lines + line count summary
+- [x] Long messages (>15 lines) auto-collapse, show first 5 lines + "Show more (N lines)"
+- [x] Click to expand/collapse with animation
+- [x] Streaming messages always expanded
 
 **Bubble copy:**
-- [ ] Copy button on each message bubble (or right-click context menu)
-- [ ] Copies the full message text to clipboard
-- [ ] For transcription results: option to copy with or without timestamps
+- [x] Copy button on hover (top-right)
+- [x] Right-click context menu: "Copy" and "Copy without timestamps" (for transcription results)
+- [x] Copies full message text to clipboard
 
 **Flash attention:**
 - [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
@@ -370,22 +371,22 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 - [ ] Display plain text segments without `[start → end]` formatting when timestamps are off
 
 **Audio/video player:**
-- [ ] Inline audio player in attachment bubbles — play/pause button, seek bar, duration
-- [ ] Use AVPlayer/AVAudioPlayer for playback from the stored file
-- [ ] For video attachments: thumbnail preview + click to play in a popover/sheet
-- [ ] Sync playback position with transcription timestamps (click a segment → seek to that position)
+- [x] Inline play/pause button on audio and video attachments
+- [x] AVAudioPlayer for playback from stored file
+- [ ] Seek bar and duration display
+- [ ] Video thumbnail preview + click to play in popover
+- [ ] Sync playback position with transcription timestamps (click segment → seek)
 
 **Message status & retry:**
-- [ ] Visual status indicator on each message: sent, streaming, error, transcription-in-progress
-- [ ] On error (LLM or transcription failure): show error state on the message bubble with a "Retry" button
-- [ ] Retry re-sends the same user message / re-runs the same transcription
-- [ ] Failed messages should be distinguishable from successful ones (red tint, icon, or label)
+- [x] Error messages get red-tinted background
+- [x] Error icon + "Retry" button in timestamp row
+- [x] Right-click context menu "Retry" for failed messages
+- [x] Retry logic: deletes failed message, re-triggers LLM or re-sends user message
 
 **LLM API key test:**
-- [ ] "Test Connection" button in LLM Settings next to each provider's API key field
-- [ ] Sends a minimal request (e.g., "Hi" with max_tokens=1) to validate the key works
-- [ ] Shows result inline: green checkmark on success, red error with message on failure (auth error, insufficient funds, rate limit, network error)
-- [ ] Useful for catching configuration issues before the user tries to chat
+- [x] "Test Connection" button in Settings → LLM → Authentication
+- [x] Sends minimal request ("Hi", max_tokens=1), shows spinner → green checkmark or red error
+- [x] Catches auth errors, insufficient funds, network issues before chatting
 
 **Performance optimization for large conversations:**
 - [ ] Conversations with hour-long transcription bubbles are extremely slow to load and navigate

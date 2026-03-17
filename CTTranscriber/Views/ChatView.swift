@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AVFoundation
 
 struct ChatView: View {
     let conversation: Conversation
@@ -9,7 +10,8 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             MessageListView(messages: viewModel.sortedMessages(for: conversation),
-                            isStreaming: viewModel.isStreaming)
+                            isStreaming: viewModel.isStreaming,
+                            onRetry: { message in viewModel.retryMessage(message, in: conversation) })
 
             if viewModel.isTranscribing {
                 TranscriptionProgressBar(
@@ -114,6 +116,7 @@ private struct ErrorBanner: View {
 private struct MessageListView: View {
     let messages: [Message]
     let isStreaming: Bool
+    let onRetry: (Message) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -121,7 +124,8 @@ private struct MessageListView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(messages) { message in
                         MessageBubble(message: message,
-                                      isStreamingThis: isStreaming && message == messages.last && message.role == .assistant)
+                                      isStreamingThis: isStreaming && message == messages.last && message.role == .assistant,
+                                      onRetry: { onRetry(message) })
                             .id(message.id)
                     }
                 }
@@ -147,15 +151,34 @@ private struct MessageListView: View {
 
 // MARK: - Message Bubble
 
+/// Number of lines above which a message is auto-collapsed.
+private let collapseThreshold = 15
+/// Number of preview lines shown when collapsed.
+private let collapsedPreviewLines = 5
+
 private struct MessageBubble: View {
     let message: Message
     var isStreamingThis: Bool = false
+    let onRetry: () -> Void
+    @State private var isExpanded = false
+    @State private var isHovering = false
 
     private var isUser: Bool { message.role == .user }
+    private var isError: Bool {
+        message.content.contains("⚠") ||
+        message.content.hasPrefix("Transcription failed") ||
+        message.content.hasPrefix("Transcription cancelled")
+    }
+    private var isLong: Bool {
+        message.content.components(separatedBy: "\n").count > collapseThreshold
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if isUser { Spacer(minLength: 60) }
+        HStack(alignment: .top, spacing: 4) {
+            if isUser {
+                Spacer(minLength: 60)
+                copyButton
+            }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 ForEach(message.attachments) { attachment in
@@ -163,42 +186,168 @@ private struct MessageBubble: View {
                 }
 
                 if !message.content.isEmpty {
-                    HStack(alignment: .bottom, spacing: 4) {
-                        Text(message.content)
-                            .textSelection(.enabled)
-
-                        if isStreamingThis {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .padding(.bottom, 2)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(isUser ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
-                    .foregroundStyle(isUser ? .white : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    bubbleContent
+                        .contextMenu { bubbleContextMenu }
                 } else if isStreamingThis {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .controlSize(.mini)
-                        Text("Thinking...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    thinkingBubble
                 }
 
-                Text(message.timestamp.formatted(.dateTime.hour().minute()))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: 4) {
+                    if isError {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+
+                    Text(message.timestamp.formatted(.dateTime.hour().minute()))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+
+                    if isError {
+                        Button("Retry") { onRetry() }
+                            .font(.caption2)
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
             }
 
-            if !isUser { Spacer(minLength: 60) }
+            if !isUser {
+                copyButton
+                Spacer(minLength: 60)
+            }
         }
+        .onHover { isHovering = $0 }
+    }
+
+    @ViewBuilder
+    private var copyButton: some View {
+        if isHovering && !message.content.isEmpty && !isStreamingThis {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(message.content, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("Copy message")
+            .padding(.top, 6)
+        } else {
+            // Invisible placeholder to keep layout stable
+            Color.clear.frame(width: 16)
+        }
+    }
+
+    @ViewBuilder
+    private var bubbleContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .bottom, spacing: 4) {
+                if isLong && !isExpanded && !isStreamingThis {
+                    // Collapsed: show preview
+                    Text(collapsedPreview)
+                        .textSelection(.enabled)
+                } else {
+                    Text(message.content)
+                        .textSelection(.enabled)
+                }
+
+                if isStreamingThis {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .padding(.bottom, 2)
+                }
+            }
+
+            // Collapse/expand toggle
+            if isLong && !isStreamingThis {
+                Button(isExpanded ? "Show less" : "Show more (\(lineCount) lines)") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+                .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(bubbleBackground)
+        .foregroundStyle(isUser ? .white : .primary)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var bubbleBackground: some ShapeStyle {
+        if isError {
+            return AnyShapeStyle(Color.red.opacity(0.15))
+        }
+        if isUser {
+            return AnyShapeStyle(Color.accentColor)
+        }
+        return AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var thinkingBubble: some View {
+        HStack(spacing: 4) {
+            ProgressView()
+                .controlSize(.mini)
+            Text("Thinking...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var bubbleContextMenu: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message.content, forType: .string)
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+
+        // For transcription results, offer copy without timestamps
+        if message.content.contains("[") && message.content.contains("→") {
+            Button {
+                let plain = message.content
+                    .split(separator: "\n")
+                    .map { line in
+                        let str = String(line)
+                        if let bracket = str.range(of: "] ") {
+                            return String(str[bracket.upperBound...])
+                        }
+                        return str
+                    }
+                    .joined(separator: "\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(plain, forType: .string)
+            } label: {
+                Label("Copy without timestamps", systemImage: "doc.plaintext")
+            }
+        }
+
+        if isError {
+            Divider()
+            Button { onRetry() } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+        }
+    }
+
+    private var lineCount: Int {
+        message.content.components(separatedBy: "\n").count
+    }
+
+    private var collapsedPreview: String {
+        let lines = message.content.components(separatedBy: "\n")
+        return lines.prefix(collapsedPreviewLines).joined(separator: "\n") + "\n..."
     }
 }
 
@@ -206,10 +355,23 @@ private struct MessageBubble: View {
 
 private struct AttachmentView: View {
     let attachment: Attachment
+    @State private var isPlaying = false
+    @State private var player: AVAudioPlayer?
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: iconName)
+            // Play button for audio/video
+            if attachment.kind == .audio || attachment.kind == .video {
+                Button(action: togglePlayback) {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.borderless)
+            } else {
+                Image(systemName: iconName)
+            }
+
             Text(attachment.originalName)
                 .lineLimit(1)
         }
@@ -219,6 +381,25 @@ private struct AttachmentView: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onDisappear {
+            player?.stop()
+        }
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            player?.stop()
+            isPlaying = false
+        } else {
+            let url = FileStorage.url(for: attachment.storedName)
+            do {
+                player = try AVAudioPlayer(contentsOf: url)
+                player?.play()
+                isPlaying = true
+            } catch {
+                AppLogger.error("Failed to play audio: \(error)", category: "audio")
+            }
+        }
     }
 
     private var iconName: String {
