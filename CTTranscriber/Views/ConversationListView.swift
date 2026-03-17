@@ -14,8 +14,7 @@ struct ConversationListView: View {
                         isEditing: editingConversationID == conversation.id,
                         editingTitle: $editingTitle,
                         onCommitRename: { commitRename(conversation) },
-                        onCancelRename: { cancelRename() },
-                        onDoubleClick: { beginRename(conversation) }
+                        onCancelRename: { cancelRename() }
                     )
                     .tag(conversation.id)
                     .id(conversation.id)
@@ -84,8 +83,6 @@ private struct ConversationRow: View {
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
-    let onDoubleClick: () -> Void
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if isEditing {
@@ -97,13 +94,11 @@ private struct ConversationRow: View {
                     .font(.headline)
                     .lineLimit(1)
                     .accessibilityIdentifier("conversationTitle_\(conversation.title)")
-                    .onTapGesture(count: 2) { onDoubleClick() }
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .onTapGesture(count: 2) { onDoubleClick() }
         }
         .padding(.vertical, 2)
         .accessibilityIdentifier("conversationRow_\(conversation.title)")

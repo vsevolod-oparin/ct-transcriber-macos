@@ -11,7 +11,14 @@
       "Read",
       "WebFetch(domain:z.ai)",
       "WebFetch(domain:chat.z.ai)",
-      "WebFetch(domain:api.z.ai)"
+      "WebFetch(domain:api.z.ai)",
+      "WebSearch",
+      "WebFetch(domain:juniperphoton.substack.com)",
+      "WebFetch(domain:kean.blog)",
+      "WebFetch(domain:getstream.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:swiftwithmajid.com)",
+      "WebFetch(domain:asciiwwdc.com)"
     ]
   }
 }
