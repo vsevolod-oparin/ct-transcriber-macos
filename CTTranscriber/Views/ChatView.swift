@@ -11,12 +11,12 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MessageListView(messages: viewModel.sortedMessages(for: conversation),
-                            isStreaming: viewModel.isStreaming,
-                            onRetry: { message in viewModel.retryMessage(message, in: conversation) },
-                            conversationID: conversation.id,
-                            scrollToTopTrigger: scrollToTopTrigger,
-                            scrollToBottomTrigger: scrollToBottomTrigger)
+            ChatTableView(messages: viewModel.sortedMessages(for: conversation),
+                          isStreaming: viewModel.isStreaming,
+                          onRetry: { message in viewModel.retryMessage(message, in: conversation) },
+                          conversationID: conversation.id,
+                          scrollToTopTrigger: scrollToTopTrigger,
+                          scrollToBottomTrigger: scrollToBottomTrigger)
 
             if viewModel.isTranscribing {
                 TranscriptionProgressBar(
@@ -130,9 +130,14 @@ private struct ErrorBanner: View {
     }
 }
 
-// MARK: - Message List
+// MARK: - Chat Table View (NSTableView-backed message list)
 
-private struct MessageListView: View {
+/// Replaces the SwiftUI ScrollView+LazyVStack with NSTableView for:
+/// - Reliable scroll-to-bottom (no LazyVStack height estimation issues)
+/// - ID-based scroll preservation on expand/collapse
+/// - Targeted row updates during streaming (no full list refresh)
+/// - Cell reuse for memory efficiency
+struct ChatTableView: NSViewRepresentable {
     let messages: [Message]
     let isStreaming: Bool
     let onRetry: (Message) -> Void
@@ -140,73 +145,362 @@ private struct MessageListView: View {
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
 
-    /// Track content length to detect changes without expensive string comparison.
-    private var lastContentLength: Int {
-        messages.last?.content.count ?? 0
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
     }
 
-    /// Minimum character delta before scroll-during-streaming triggers.
-    private static let streamingScrollCharThrottle = 50
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        let tableView = ChatNSTableView()
 
-    @State private var lastScrolledLength: Int = 0
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("message"))
+        column.resizingMask = .autoresizingMask
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.style = .plain
+        tableView.backgroundColor = .clear
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.selectionHighlightStyle = .none
+        tableView.intercellSpacing = NSSize(width: 0, height: 12)
+        tableView.rowSizeStyle = .custom
 
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(messages) { message in
-                        MessageBubble(message: message,
-                                      isStreamingThis: isStreaming && message == messages.last && message.role == .assistant,
-                                      onRetry: { onRetry(message) },
-                                      onCollapseToggle: { scrollTo(message.id, proxy: proxy) })
-                            .id(message.id)
+        // Performance: disable automatic layer redraws (from TelegramSwift research)
+        tableView.layerContentsRedrawPolicy = .never
+
+        tableView.delegate = context.coordinator
+        tableView.dataSource = context.coordinator
+
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
+
+        context.coordinator.tableView = tableView
+        context.coordinator.scrollView = scrollView
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        let coordinator = context.coordinator
+        let oldMessages = coordinator.messages
+        let oldStreaming = coordinator.isStreaming
+        let oldConversationID = coordinator.conversationID
+
+        coordinator.onRetry = onRetry
+        coordinator.isStreaming = isStreaming
+
+        guard let tableView = coordinator.tableView else { return }
+
+        // Conversation switch — full reload + scroll to bottom
+        if conversationID != oldConversationID {
+            coordinator.conversationID = conversationID
+            coordinator.messages = messages
+            coordinator.heightCache.removeAll()
+            coordinator.expandedMessages.removeAll()
+            tableView.reloadData()
+            DispatchQueue.main.async {
+                coordinator.scrollToBottom(animated: false)
+            }
+            return
+        }
+
+        let oldIDs = oldMessages.map(\.id)
+        let newIDs = messages.map(\.id)
+
+        if oldIDs == newIDs {
+            // Same messages — check for content changes (streaming)
+            coordinator.messages = messages
+
+            if isStreaming, let lastRow = messages.indices.last {
+                // Only update the last row during streaming
+                let lastID = messages[lastRow].id
+                coordinator.heightCache.removeValue(forKey: lastID)
+                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: lastRow))
+                tableView.reloadData(forRowIndexes: IndexSet(integer: lastRow),
+                                     columnIndexes: IndexSet(integer: 0))
+                coordinator.scrollToBottomThrottled()
+            } else if oldStreaming && !isStreaming {
+                // Streaming just ended — final reload of last row
+                if let lastRow = messages.indices.last {
+                    let lastID = messages[lastRow].id
+                    coordinator.heightCache.removeValue(forKey: lastID)
+                    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: lastRow))
+                    tableView.reloadData(forRowIndexes: IndexSet(integer: lastRow),
+                                         columnIndexes: IndexSet(integer: 0))
+                }
+                coordinator.scrollToBottom(animated: true)
+            }
+        } else {
+            // Messages added or removed
+            coordinator.messages = messages
+
+            let oldSet = Set(oldIDs)
+            let newSet = Set(newIDs)
+
+            // Clean up caches for removed messages
+            for id in oldSet.subtracting(newSet) {
+                coordinator.heightCache.removeValue(forKey: id)
+                coordinator.expandedMessages.remove(id)
+            }
+
+            // Fast path: messages only appended (most common — new message or transcription placeholder)
+            if newIDs.count > oldIDs.count && newIDs.starts(with: oldIDs) {
+                let insertRange = oldIDs.count..<newIDs.count
+                tableView.insertRows(at: IndexSet(insertRange), withAnimation: .slideDown)
+                DispatchQueue.main.async {
+                    coordinator.scrollToBottom(animated: true)
+                }
+            } else {
+                // General case: deletions or reorders — full reload
+                tableView.reloadData()
+                if newIDs.count >= oldIDs.count {
+                    DispatchQueue.main.async {
+                        coordinator.scrollToBottom(animated: false)
                     }
                 }
-                .padding()
             }
-            .defaultScrollAnchor(.bottom)
-            .id(conversationID)
-            .onChange(of: messages.count) { _, _ in
-                scrollToLast(proxy: proxy)
-                lastScrolledLength = lastContentLength
-            }
-            .onChange(of: lastContentLength) { _, newValue in
-                // Throttle: only scroll every N characters during streaming
-                // to avoid per-character layout/scroll overhead
-                if isStreaming {
-                    let delta = abs(newValue - lastScrolledLength)
-                    if delta >= Self.streamingScrollCharThrottle {
-                        scrollToLast(proxy: proxy)
-                        lastScrolledLength = newValue
-                    }
-                }
-            }
-            .onChange(of: isStreaming) { _, streaming in
-                // Always scroll to bottom when streaming ends
-                if !streaming {
-                    scrollToLast(proxy: proxy)
-                    lastScrolledLength = 0
-                }
-            }
-            .onChange(of: scrollToTopTrigger) { _, _ in
-                if let firstID = messages.first?.id {
-                    proxy.scrollTo(firstID, anchor: .top)
-                }
-            }
-            .onChange(of: scrollToBottomTrigger) { _, _ in
-                scrollToLast(proxy: proxy)
-            }
+        }
+
+        // Handle scroll triggers from Cmd+Up / Cmd+Down
+        if scrollToTopTrigger != coordinator.lastTopTrigger {
+            coordinator.lastTopTrigger = scrollToTopTrigger
+            coordinator.scrollToTop()
+        }
+        if scrollToBottomTrigger != coordinator.lastBottomTrigger {
+            coordinator.lastBottomTrigger = scrollToBottomTrigger
+            coordinator.scrollToBottom(animated: true)
         }
     }
 
-    private func scrollToLast(proxy: ScrollViewProxy) {
-        guard let lastID = messages.last?.id else { return }
-        proxy.scrollTo(lastID, anchor: .bottom)
+    // MARK: - Coordinator
+
+    class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource {
+        var messages: [Message] = []
+        var isStreaming: Bool = false
+        var onRetry: (Message) -> Void = { _ in }
+        var conversationID: UUID?
+
+        weak var tableView: NSTableView?
+        weak var scrollView: NSScrollView?
+
+        /// Cached row heights keyed by message ID. Invalidated on width change or content change.
+        var heightCache: [UUID: CGFloat] = [:]
+        /// Messages the user has expanded (for long/collapsible messages).
+        var expandedMessages: Set<UUID> = []
+
+        var lastTableWidth: CGFloat = 0
+        var lastTopTrigger: Int = 0
+        var lastBottomTrigger: Int = 0
+
+        /// Throttle for scroll-during-streaming
+        private var lastStreamingScrollTime: Date = .distantPast
+        private static let streamingScrollInterval: TimeInterval = 0.2
+
+        /// Shared sizing view for height measurement — avoids allocating per row.
+        private var sizingHostingView: NSHostingView<AnyView>?
+
+        // MARK: - DataSource
+
+        func numberOfRows(in tableView: NSTableView) -> Int {
+            messages.count
+        }
+
+        // MARK: - Delegate (cell creation)
+
+        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+            guard row < messages.count else { return nil }
+            let message = messages[row]
+            let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
+            let isExpanded = expandedMessages.contains(message.id)
+
+            let bubble = MessageBubble(
+                message: message,
+                isStreamingThis: isStreamingThis,
+                isExpanded: isExpanded,
+                onRetry: { [weak self] in self?.onRetry(message) },
+                onCollapseToggle: { [weak self] in
+                    self?.toggleExpanded(for: message.id, row: row)
+                }
+            )
+            .padding(.horizontal, 16)
+
+            let cell = NSHostingView(rootView: bubble)
+            return cell
+        }
+
+        // MARK: - Delegate (row heights)
+
+        func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+            guard row < messages.count else { return 44 }
+            let message = messages[row]
+
+            // Use column width (more reliable than bounds during initial layout)
+            let currentWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
+            if currentWidth > 0 && abs(currentWidth - lastTableWidth) > 1 {
+                heightCache.removeAll()
+                lastTableWidth = currentWidth
+            }
+
+            // Don't cache if width hasn't been established yet
+            let widthEstablished = currentWidth > 300
+
+            // Don't cache streaming row — it changes every token
+            let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
+            if !isStreamingThis && widthEstablished, let cached = heightCache[message.id] {
+                return cached
+            }
+
+            // Measure height via a temporary NSHostingView
+            let isExpanded = expandedMessages.contains(message.id)
+
+            let bubble = MessageBubble(
+                message: message,
+                isStreamingThis: isStreamingThis,
+                isExpanded: isExpanded,
+                onRetry: {},
+                onCollapseToggle: {}
+            )
+            .padding(.horizontal, 16)
+
+            let measuringView = NSHostingView(rootView: bubble)
+            let targetWidth = max(currentWidth, 200)
+
+            // For large expanded messages, compute text height directly via NSTextStorage
+            // because nested NSViewRepresentable (LargeTextView) inside a measuring
+            // NSHostingView doesn't report correct height.
+            let useLargeText = isExpanded && message.content.count > largeTextThreshold
+            let fittingHeight: CGFloat
+
+            if useLargeText {
+                // Measure text height directly using the text layout system
+                let bubbleHPadding: CGFloat = 12 * 2    // .padding(.horizontal, 12)
+                let bubbleVPadding: CGFloat = 8 * 2     // .padding(.vertical, 8)
+                let outerHPadding: CGFloat = 16 * 2     // .padding(.horizontal, 16)
+                let spacerWidth: CGFloat = 60 + 4 + 24  // Spacer(minLength:60) + spacing + copy button
+                let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
+
+                let textHeight = Self.measureTextHeight(
+                    message.content, width: max(textWidth, 100))
+
+                // bubble content + padding + timestamp row + attachments
+                let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * 30
+                let timestampHeight: CGFloat = 20
+                let collapseButtonHeight: CGFloat = 24
+                fittingHeight = textHeight + bubbleVPadding + timestampHeight + attachmentHeight + collapseButtonHeight
+            } else {
+                // Normal messages: use Auto Layout measurement
+                measuringView.translatesAutoresizingMaskIntoConstraints = false
+                let widthConstraint = measuringView.widthAnchor.constraint(equalToConstant: targetWidth)
+                widthConstraint.isActive = true
+                measuringView.layoutSubtreeIfNeeded()
+                fittingHeight = measuringView.fittingSize.height
+                widthConstraint.isActive = false
+            }
+
+            let height = max(fittingHeight, 30)
+
+            if !isStreamingThis {
+                heightCache[message.id] = height
+            }
+
+            return height
+        }
+
+        // MARK: - Text Height Measurement
+
+        /// Measures the rendered height of a text string at a given width using NSTextStorage.
+        /// More reliable than NSHostingView measurement for large text blocks.
+        static func measureTextHeight(_ text: String, width: CGFloat) -> CGFloat {
+            let textStorage = NSTextStorage(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ])
+            let textContainer = NSTextContainer(containerSize: NSSize(width: width, height: .greatestFiniteMagnitude))
+            textContainer.lineFragmentPadding = 0
+            let layoutManager = NSLayoutManager()
+            layoutManager.addTextContainer(textContainer)
+            textStorage.addLayoutManager(layoutManager)
+            layoutManager.ensureLayout(for: textContainer)
+            let usedRect = layoutManager.usedRect(for: textContainer)
+            return ceil(usedRect.height)
+        }
+
+        // MARK: - Expand / Collapse
+
+        func toggleExpanded(for messageID: UUID, row: Int) {
+            if expandedMessages.contains(messageID) {
+                expandedMessages.remove(messageID)
+            } else {
+                expandedMessages.insert(messageID)
+            }
+
+            heightCache.removeValue(forKey: messageID)
+
+            guard let tableView else { return }
+
+            // ID-based scroll preservation: remember which row is at top of viewport
+            let visibleRange = tableView.rows(in: tableView.visibleRect)
+            let anchorRow = visibleRange.location
+
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.allowsImplicitAnimation = true
+                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
+                tableView.reloadData(forRowIndexes: IndexSet(integer: row),
+                                     columnIndexes: IndexSet(integer: 0))
+            }
+
+            // Restore: keep the same row at top of viewport
+            DispatchQueue.main.async {
+                if anchorRow < self.messages.count && anchorRow != row {
+                    tableView.scrollRowToVisible(anchorRow)
+                } else {
+                    tableView.scrollRowToVisible(row)
+                }
+            }
+        }
+
+        // MARK: - Scrolling
+
+        func scrollToBottom(animated: Bool) {
+            guard let tableView, !messages.isEmpty else { return }
+            let lastRow = messages.count - 1
+            if animated {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.allowsImplicitAnimation = true
+                    tableView.scrollRowToVisible(lastRow)
+                }
+            } else {
+                tableView.scrollRowToVisible(lastRow)
+            }
+        }
+
+        func scrollToTop() {
+            guard let tableView, !messages.isEmpty else { return }
+            tableView.scrollRowToVisible(0)
+        }
+
+        /// Throttled scroll during streaming — every 200ms to avoid per-token overhead.
+        func scrollToBottomThrottled() {
+            let now = Date()
+            if now.timeIntervalSince(lastStreamingScrollTime) >= Self.streamingScrollInterval {
+                lastStreamingScrollTime = now
+                scrollToBottom(animated: false)
+            }
+        }
+    }
+}
+
+/// Custom NSTableView subclass to disable default selection/keyboard behavior
+/// so the parent SwiftUI view handles Cmd+Up/Down.
+private class ChatNSTableView: NSTableView {
+    override func keyDown(with event: NSEvent) {
+        // Don't handle keyboard events — let them propagate to SwiftUI
+        nextResponder?.keyDown(with: event)
     }
 
-    private func scrollTo(_ id: UUID, proxy: ScrollViewProxy) {
-        proxy.scrollTo(id, anchor: .top)
-    }
+    override var acceptsFirstResponder: Bool { false }
 }
 
 // MARK: - Message Content Analysis (computed once, cached)
@@ -290,12 +584,17 @@ private struct MessageAnalysis {
 
 // MARK: - Message Bubble
 
+/// A single chat message bubble. Used both for display (in NSTableView cells)
+/// and for height measurement (in the coordinator).
+///
+/// `isExpanded` is managed externally by the table coordinator's `expandedMessages` set
+/// so that expansion state survives cell reuse.
 private struct MessageBubble: View {
     let message: Message
     var isStreamingThis: Bool = false
+    var isExpanded: Bool = false
     let onRetry: () -> Void
     let onCollapseToggle: () -> Void
-    @State private var isExpanded = false
     @State private var isHovering = false
     @State private var analysis: MessageAnalysis?
     /// Content length at last analysis recomputation — used to throttle during streaming.
@@ -358,8 +657,7 @@ private struct MessageBubble: View {
         }
         .onHover { isHovering = $0 }
         .task(id: message.content.count) {
-            // Throttle analysis recomputation during streaming:
-            // only recompute every N characters to avoid CPU overhead per token.
+            // Throttle analysis recomputation during streaming
             let currentLength = message.content.count
             let delta = abs(currentLength - lastAnalyzedLength)
             if analysis == nil || !isStreamingThis || delta >= Self.analysisRecomputeThrottle {
@@ -392,11 +690,7 @@ private struct MessageBubble: View {
                 Text(info.collapsedPreview)
                     .textSelection(.enabled)
             } else if message.content.count > largeTextThreshold && !isStreamingThis {
-                // Use NSTextView for large content — SwiftUI Text chokes on big strings
-                // Full-height NSTextView — no inner scrolling. The outer chat
-                // ScrollView handles navigation.
-                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor,
-                              onLayoutComplete: onCollapseToggle)
+                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor)
             } else {
                 HStack(alignment: .bottom, spacing: 4) {
                     Text(message.content)
@@ -413,9 +707,6 @@ private struct MessageBubble: View {
             // Collapse/expand toggle
             if info.isLong && !isStreamingThis {
                 Button(isExpanded ? "Show less" : "Show more (\(info.lineCountDisplay) lines)") {
-                    isExpanded.toggle()
-                    // Scroll to this message after expand/collapse so the user
-                    // stays anchored to it instead of drifting
                     onCollapseToggle()
                 }
                 .font(.caption)
@@ -494,12 +785,11 @@ private struct MessageBubble: View {
 
 // MARK: - Large Text View (NSTextView for performance with big strings)
 
-/// Uses NSTextView for rendering large text content. Scrollable, selectable, performant
+/// Uses NSTextView for rendering large text content. Selectable, performant
 /// even with hundreds of thousands of characters — unlike SwiftUI Text which freezes.
 private struct LargeTextView: NSViewRepresentable {
     let text: String
     let textColor: NSColor
-    var onLayoutComplete: (() -> Void)?
 
     func makeNSView(context: Context) -> NSTextView {
         let textView = NSTextView()
@@ -526,14 +816,6 @@ private struct LargeTextView: NSViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-        var didInitialLayout = false
-    }
-
     func sizeThatFits(_ proposal: ProposedViewSize, nsView textView: NSTextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 400
 
@@ -541,14 +823,6 @@ private struct LargeTextView: NSViewRepresentable {
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let usedRect = textView.layoutManager?.usedRect(for: textView.textContainer!) ?? .zero
         let height = usedRect.height + textView.textContainerInset.height * 2
-
-        // Notify once after the first layout — so the parent can scroll to this message
-        if !context.coordinator.didInitialLayout && height > 10 {
-            context.coordinator.didInitialLayout = true
-            DispatchQueue.main.async {
-                self.onLayoutComplete?()
-            }
-        }
 
         return CGSize(width: width, height: height)
     }
@@ -705,4 +979,3 @@ struct ChatInputBar: View {
         .padding(12)
     }
 }
-
