@@ -328,6 +328,12 @@ struct ChatTableView: NSViewRepresentable {
             .padding(.horizontal, 16)
 
             let cell = NSHostingView(rootView: bubble)
+            // Pre-set frame width to match table column so the cell doesn't
+            // briefly render at a narrow intrinsic width before layout.
+            let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
+            if columnWidth > 0 {
+                cell.frame.size.width = columnWidth
+            }
             return cell
         }
 
@@ -440,25 +446,48 @@ struct ChatTableView: NSViewRepresentable {
 
             guard let tableView else { return }
 
-            // ID-based scroll preservation: remember which row is at top of viewport
-            let visibleRange = tableView.rows(in: tableView.visibleRect)
-            let anchorRow = visibleRange.location
+            // Update the existing cell's content in place (no reload = no flash).
+            // Find the current cell and swap its rootView with updated expand state.
+            if let existingCell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) {
+                let message = messages[row]
+                let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
+                let isExpanded = expandedMessages.contains(message.id)
 
+                let updatedBubble = MessageBubble(
+                    message: message,
+                    isStreamingThis: isStreamingThis,
+                    isExpanded: isExpanded,
+                    onRetry: { [weak self] in self?.onRetry(message) },
+                    onCollapseToggle: { [weak self] in
+                        self?.toggleExpanded(for: message.id, row: row)
+                    }
+                )
+                .padding(.horizontal, 16)
+
+                // Replace the cell's content with a new hosting view
+                // (cheaper than reloadData which destroys + recreates)
+                let newHosting = NSHostingView(rootView: updatedBubble)
+                newHosting.frame = existingCell.bounds
+                existingCell.subviews.forEach { $0.removeFromSuperview() }
+                newHosting.autoresizingMask = [.width, .height]
+                existingCell.addSubview(newHosting)
+            }
+
+            // Save the scroll position BEFORE the height change so we can restore it.
+            // This keeps the viewport exactly where it was — the expansion happens
+            // "below" the current view, so the user sees no scroll jump.
+            let savedOrigin = scrollView?.contentView.bounds.origin ?? .zero
+
+            // Animate only the height change — the cell content is already updated
             NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.25
                 ctx.allowsImplicitAnimation = true
                 tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
-                tableView.reloadData(forRowIndexes: IndexSet(integer: row),
-                                     columnIndexes: IndexSet(integer: 0))
             }
 
-            // Restore: keep the same row at top of viewport
-            DispatchQueue.main.async {
-                if anchorRow < self.messages.count && anchorRow != row {
-                    tableView.scrollRowToVisible(anchorRow)
-                } else {
-                    tableView.scrollRowToVisible(row)
-                }
-            }
+            // Restore exact scroll position — no visible jump
+            scrollView?.contentView.setBoundsOrigin(savedOrigin)
+            scrollView?.reflectScrolledClipView(scrollView!.contentView)
         }
 
         // MARK: - Scrolling
