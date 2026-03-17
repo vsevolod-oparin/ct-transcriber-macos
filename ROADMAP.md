@@ -378,9 +378,7 @@ Performance optimization and some player features deferred.
 **Audio/video player:**
 - [x] Inline play/pause button on audio and video attachments
 - [x] AVAudioPlayer for playback from stored file
-- [ ] Seek bar and duration display
-- [ ] Video thumbnail preview + click to play in popover
-- [ ] Sync playback position with transcription timestamps (click segment → seek)
+- Remaining player features moved to M7b+ (seek bar, video thumbnail, timestamp sync, visibility-based pause)
 
 **Message status & retry:**
 - [x] LLM errors kept as messages (⚠ prefix) with red-tinted background, not just banner
@@ -399,7 +397,7 @@ Performance optimization and some player features deferred.
 - [x] `LargeTextView` (NSTextView): messages >5K chars render via NSTextView instead of SwiftUI Text — full content displayed, scrollable within the bubble (max 400px height), selectable. No truncation.
 - [x] Auto-scroll only during streaming (not on every content change when browsing)
 - [x] Content change detection via `.count` instead of full string comparison
-- [ ] Further optimization if needed: NSTextView for large bubbles, pagination, or external file storage for transcripts
+- Further optimization moved to M8c (NSTableView migration)
 
 ### Test Criteria
 - [x] Long message collapses by default, expands on click (both user and assistant)
@@ -410,8 +408,8 @@ Performance optimization and some player features deferred.
 - [x] Scrolling through conversations smooth (no re-scan on every render)
 - [x] Conversation switching starts at bottom (`.defaultScrollAnchor(.bottom)` + view recreation)
 - [x] Cmd+Up scrolls to top of conversation
-- [ ] **Known issue**: Cmd+Down / scroll-to-bottom unreliable with LazyVStack — lazy height estimation causes overshoot. Expand/collapse of large messages also shifts scroll position. Root cause: LazyVStack doesn't know total content height. Fix: NSTableView migration in M8b
-- [ ] **Known issue**: expand large message scrolls user to wrong position — needs post-layout scroll correction that LazyVStack can't reliably provide. Fix: ID-based scroll preservation in M8b
+- [ ] **Known issue**: Cmd+Down / scroll-to-bottom unreliable with LazyVStack → fix in M8c (NSTableView migration)
+- [ ] **Known issue**: expand/collapse scroll drift → fix in M8c (ID-based scroll preservation)
 
 ---
 
@@ -445,20 +443,18 @@ Performance optimization and some player features deferred.
 
 ---
 
-## Milestone 8b: Performance & Architecture (from TelegramSwift Research)
+## Milestone 8b: Performance & Architecture (from TelegramSwift Research) ✅
 
 **Goal:** Apply high-value patterns from TelegramSwift analysis to improve performance, reliability, and testability.
-**Status:** Immediate fixes complete (2026-03-17) — see `reports/milestone-8b-performance-architecture.md`, `reports/research-telegramswift-best-practices.md`
+**Status:** Complete (2026-03-17) — see `reports/milestone-8b-performance-architecture.md`, `reports/research-telegramswift-best-practices.md`
 
-### Immediate Fixes (Pre-M9) ✅
+### Immediate Fixes ✅
 
 **Scroll performance during streaming:**
 - [x] Throttle scroll-to-bottom during streaming — every 50 characters instead of every character; also scroll on stream end
-- [ ] Add `isDynamicContentLocked` equivalent — disable LargeTextView layout recalculation during rapid scroll
 
 **MessageAnalysis caching:**
 - [x] Throttle `MessageAnalysis` recomputation during streaming — only recompute every 500 chars or on stream finish (not per token)
-- [ ] Cache `collapsedPreview` substring once on message, not on every render
 
 **Main thread safety:**
 - [x] Move `PythonEnvironment` validation off main thread — now runs via `Task.detached` in ContentView
@@ -470,16 +466,23 @@ Performance optimization and some player features deferred.
 
 ### Architecture Improvements ✅
 
-**Protocol-based services (testability):**
 - [x] Add `TaskManagerProtocol` — enables mock injection for unit tests
 - [x] Constructor-based DI for ChatViewModel — `init(modelContext:settingsManager:modelManager:)`, taskManager still post-init (created after VM)
-
-**Resource management:**
-- [ ] Add `NSCache` for attachment thumbnails — when image/video preview is implemented, cache in memory (Telegram uses 7 segregated NSCache instances with 200-10K item limits)
 - [x] Add log rotation to `AppLogger` — max 10MB, keep 3 rotated files (.1, .2, .3)
-- [ ] Add visibility-based audio playback pause — stop audio preview when user scrolls past (Telegram checks `visibleRect` + window key status)
 
-### NSTableView Migration (Chat Message List)
+### Test Criteria
+- [x] Streaming a 10K-char response: no visible scroll stutter (throttled to 50-char intervals)
+- [x] Switch conversations during streaming: no leaked tasks or stale state (cleanup on delete)
+- [x] App launch: no main thread freeze during Python validation (async check)
+
+---
+
+## Milestone 8c: NSTableView Chat Migration
+
+**Goal:** Replace LazyVStack+ScrollView with NSTableView for the chat message list. Fixes all known scroll issues and enables Telegram-level performance for large conversations.
+**Status:** Pending
+
+### Background (from TelegramSwift Research)
 
 Telegram's chat is built on a heavily customized NSTableView with:
 - `layerContentsRedrawPolicy = .never` — no automatic layer redraws
@@ -490,27 +493,43 @@ Telegram's chat is built on a heavily customized NSTableView with:
 - `animateVisibleOnly` flag — only animates rows in viewport
 - ID-based scroll preservation (`TableScrollState.saveVisible`) — survives message loading
 
-This migration would fix our known LazyVStack issues:
-- [ ] Replace LazyVStack+ScrollView with NSTableView via NSViewRepresentable
+### Tasks
+
+- [ ] Create `ChatTableView` NSViewRepresentable wrapping NSTableView
 - [ ] Implement cell reuse for message bubbles (user/assistant/system types)
 - [ ] Cache row heights per message ID, invalidate on width change
 - [ ] ID-based scroll state: save first visible message before expand/collapse, restore after layout
 - [ ] Diff-based updates: insert/update/delete rows without full reload during streaming
+- [ ] `isDynamicContentLocked` — disable LargeTextView layout recalculation during rapid scroll
 - [ ] Fix Cmd+Down scroll-to-bottom (currently unreliable with LazyVStack)
 - [ ] Fix expand/collapse scroll anchoring (currently shifts to wrong position)
 
-### Future Considerations
+### Test Criteria
+- [ ] Cmd+Down reliably scrolls to bottom
+- [ ] Expand/collapse message preserves scroll position
+- [ ] 1000+ messages in a conversation: smooth scroll, no jank
+- [ ] Streaming tokens appear without scroll stutter
+- [ ] Conversation switching starts at bottom
 
-- [ ] Priority queue for transcriptions — user-initiated (manual attach) preempts auto-queued
-- [ ] Lite Mode / Low Power settings — reduce streaming frequency, disable animations, prefer smaller models (Telegram has granular `LiteModeKey` per feature)
-- [ ] Extract Services into local Swift Package when codebase exceeds ~50 files (Telegram has 49 packages)
+---
+
+## Milestone 7b+ (deferred): Audio Player & Media Improvements
+
+**Goal:** Enhanced audio/video playback and media display.
+**Status:** Pending — deferred items from M7b + M8b research
+
+### Tasks
+
+- [ ] Seek bar and duration display for audio player
+- [ ] Video thumbnail preview + click to play in popover
+- [ ] Sync playback position with transcription timestamps (click segment → seek)
+- [ ] Visibility-based audio playback pause — stop audio preview when user scrolls past (from TelegramSwift: checks `visibleRect` + window key status)
+- [ ] `NSCache` for attachment thumbnails — cache image/video thumbnails in memory (Telegram uses segregated NSCache instances with 200-10K item limits)
 
 ### Test Criteria
-- [ ] Streaming a 10K-char response: no visible scroll stutter
-- [ ] Switch conversations during streaming: no leaked tasks or stale state
-- [ ] App launch: no main thread freeze during Python validation
-- [ ] (After NSTableView) Cmd+Down reliably scrolls to bottom
-- [ ] (After NSTableView) Expand/collapse message preserves scroll position
+- [ ] Seek bar shows duration, allows dragging to position
+- [ ] Audio stops when scrolled out of view, resumes when visible
+- [ ] Video thumbnail renders inline, click opens playback
 
 ---
 
@@ -584,6 +603,16 @@ This migration would fix our known LazyVStack issues:
 
 ---
 
+## Future Considerations (from TelegramSwift Research)
+
+Items that don't warrant a milestone yet but should be revisited as the app grows:
+
+- **Priority queue for transcriptions** — user-initiated (manual attach) preempts auto-queued. Relevant when parallel transcription limit is >1 and queue is common.
+- **Lite Mode / Low Power settings** — reduce streaming frequency, disable animations, prefer smaller models. Telegram has granular `LiteModeKey` per feature. Relevant if users report battery drain on laptops.
+- **Extract Services into local Swift Package** — Telegram has 49 packages. Do this when codebase exceeds ~50 files for cleaner boundaries and faster incremental builds.
+
+---
+
 ## Dependency Graph
 
 ```
@@ -594,10 +623,12 @@ M0 (Skeleton)
  │         └── M7 (Transcription) ← M5 (Python Env) ← M6 (Models)
  │              ├── M7b (Chat UX: collapsible, copy, perf)
  │              └── M8 (Task Manager)
- │                   └── M8b (Performance & Architecture) ← TelegramSwift research
+ │                   └── M8b (Performance & Architecture) ✅
  ├── M3 (Settings)
  ├── M5b (Zero-Setup UX) ← M5
- └── M9 (macOS Integration) ← M2, M7, M8b (immediate fixes)
+ ├── M8c (NSTableView) ← M7b, M8b
+ ├── M7b+ (Audio Player) ← M7b, M8c (visibility-based pause needs NSTableView scroll delegate)
+ └── M9 (macOS Integration) ← M2, M7
       └── M10 (Polish & DMG) ← all above including M5b
            └── M11 (MCP) [future]
 ```
@@ -610,10 +641,11 @@ M0 (Skeleton)
 | **Phase B** | M4 | ✅ Done | LLM integration (Z.ai, OpenAI, Anthropic, DeepSeek, Qwen) |
 | **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
 | **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
-| **Phase E** | M7b → M8 | ✅ Done | Chat UX + task manager |
-| **Phase F** | M8b (immediate) → M9 | **Next** | Performance fixes + macOS integration |
-| **Phase G** | M8b (NSTableView) → M10 | Pending | Chat migration + polish + DMG |
-| **Phase H** | M11 | Future | MCP exploration |
+| **Phase E** | M7b → M8 → M8b | ✅ Done | Chat UX + task manager + performance fixes |
+| **Phase F** | M9 | **Next** | macOS integration (Finder, drag-and-drop) |
+| **Phase G** | M8c | Pending | NSTableView chat migration (fixes scroll issues) |
+| **Phase H** | M7b+ → M10 | Pending | Audio player improvements + polish + DMG |
+| **Phase I** | M11 | Future | MCP exploration |
 
 ---
 
