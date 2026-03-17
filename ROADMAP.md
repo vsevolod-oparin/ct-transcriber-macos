@@ -256,7 +256,7 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 **Pre-built wheel:**
 - [x] Build CTranslate2 metal-backend wheel (421 KB) + dylib (3.4 MB) → 1.3 MB archive
-- [x] Archive hosted at `https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/pre-release-dep/ctranslate2-metal-4.7.1-macosx-arm64.tar.gz`
+- [x] Archive hosted at `https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/dev/ctranslate2-4.7.1-cp312-cp312-macosx_14_0_arm64.whl.tar.gz`
 - [x] `setup_env.sh` wheel mode: download archive → pip install wheel → copy dylib
 - [x] Source-build path preserved as fallback (`--source` flag)
 
@@ -357,7 +357,7 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 **Flash attention:**
 - [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
-- [ ] **Blocked**: Metal kernel `fused_sdpa_decode_half` not found at runtime. The kernel source IS in `msl_strings.h` (inside `kSdpaMSL`, lines 1143–1237) and the dylib references it, but Metal shader compilation at runtime fails to produce it. The kernel was hand-added to `msl_strings.h` (not in `sdpa.metal` — only 55 lines of causal mask). Needs debugging in CTranslate2: check `compile_library_once()` and whether the MSL string is too long or has a syntax error that causes silent failure. The error occurs during `detect_language()` → encoder → SDPA attention. Default: **off** until fixed
+- [x] **Fixed**: threadgroup memory alignment bug (`length(4) must be a multiple of 16 bytes`) resolved in CTranslate2 metal-backend. Updated wheel deployed.
 - [ ] Benchmark: flash attention vs standard attention on Metal once the kernel issue is resolved
 - [ ] Investigate compatibility with timestamps mode (may interact with the timestamps state corruption bug)
 
@@ -368,6 +368,24 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 - [ ] Note: Metal backend has a known issue with timestamps mode (state corruption with 3-token prefix, see CTranslate2 e2e test). Skipping timestamps may also improve stability
 - [ ] **Investigate timestamps bug**: determine if the state corruption is in CTranslate2 Metal backend or faster-whisper's seek/retry logic. Reproduce with direct CT2 API (bypass faster-whisper) to isolate. May require a fix in the CTranslate2 metal-backend branch
 - [ ] Display plain text segments without `[start → end]` formatting when timestamps are off
+
+**Audio/video player:**
+- [ ] Inline audio player in attachment bubbles — play/pause button, seek bar, duration
+- [ ] Use AVPlayer/AVAudioPlayer for playback from the stored file
+- [ ] For video attachments: thumbnail preview + click to play in a popover/sheet
+- [ ] Sync playback position with transcription timestamps (click a segment → seek to that position)
+
+**Message status & retry:**
+- [ ] Visual status indicator on each message: sent, streaming, error, transcription-in-progress
+- [ ] On error (LLM or transcription failure): show error state on the message bubble with a "Retry" button
+- [ ] Retry re-sends the same user message / re-runs the same transcription
+- [ ] Failed messages should be distinguishable from successful ones (red tint, icon, or label)
+
+**LLM API key test:**
+- [ ] "Test Connection" button in LLM Settings next to each provider's API key field
+- [ ] Sends a minimal request (e.g., "Hi" with max_tokens=1) to validate the key works
+- [ ] Shows result inline: green checkmark on success, red error with message on failure (auth error, insufficient funds, rate limit, network error)
+- [ ] Useful for catching configuration issues before the user tries to chat
 
 **Performance optimization for large conversations:**
 - [ ] Conversations with hour-long transcription bubbles are extremely slow to load and navigate
@@ -380,6 +398,8 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 - [ ] Copy button on bubble → full text in clipboard
 - [ ] Conversation with large transcription loads in under 1 second
 - [ ] Scrolling through long conversations is smooth
+- [ ] Failed LLM message shows error state with Retry button; retry re-sends successfully
+- [ ] "Test Connection" in Settings with valid key → green checkmark; with invalid key → error message
 
 ---
 

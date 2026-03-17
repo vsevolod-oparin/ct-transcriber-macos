@@ -110,9 +110,21 @@ enum TranscriptionService {
 
                     process.arguments = args
 
-                    let pipe = Pipe()
-                    process.standardOutput = pipe
-                    process.standardError = FileHandle.nullDevice
+                    AppLogger.info("Transcription command: \(pythonPath) \(args.joined(separator: " "))", category: "transcription")
+
+                    // Set DYLD_LIBRARY_PATH so the subprocess can find libctranslate2.dylib
+                    var env = ProcessInfo.processInfo.environment
+                    let pythonBinDir = (pythonPath as NSString).deletingLastPathComponent
+                    let envLibDir = ((pythonBinDir as NSString).deletingLastPathComponent as NSString)
+                        .appendingPathComponent("lib")
+                    let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
+                    env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? envLibDir : "\(envLibDir):\(existingDyld)"
+                    process.environment = env
+
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
 
                     try process.run()
 
@@ -122,7 +134,7 @@ enum TranscriptionService {
                     var duration = 0.0
                     var segmentIndex = 0
 
-                    for try await line in pipe.fileHandleForReading.bytes.lines {
+                    for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
                         try Task.checkCancellation()
 
                         guard let data = line.data(using: .utf8),
@@ -164,8 +176,17 @@ enum TranscriptionService {
                     process.waitUntilExit()
 
                     if process.terminationStatus != 0 && segments.isEmpty {
-                        throw TranscriptionError.transcriptionFailed(
-                            "transcribe.py exited with code \(process.terminationStatus)")
+                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                        let stderrText = String(data: stderrData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                        let lastLines = stderrText.split(separator: "\n").suffix(5).joined(separator: "\n")
+                        AppLogger.error("transcribe.py exited with code \(process.terminationStatus). Stderr:\n\(stderrText)", category: "transcription")
+
+                        let errorDetail = lastLines.isEmpty
+                            ? "exit code \(process.terminationStatus)"
+                            : lastLines
+                        throw TranscriptionError.transcriptionFailed(errorDetail)
                     }
 
                     continuation.finish()

@@ -5,7 +5,7 @@
   "transcription": {
     "condaEnvName": "ct-transcriber-metal-env",
     "ctranslate2SourcePath": "",
-    "ct2PackageURL": "https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/pre-release-dep/ctranslate2-metal-4.7.1-macosx-arm64.tar.gz",
+    "ct2PackageURL": "https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/dev/ctranslate2-4.7.1-cp312-cp312-macosx_14_0_arm64.whl.tar.gz",
     "modelsDirectory": "",
     "selectedModelID": "whisper-large-v3-turbo",
     "models": [
@@ -36,19 +36,19 @@
     "language": "",
     "vadFilter": true,
     "conditionOnPreviousText": false,
-    "flashAttention": false,
+    "flashAttention": true,
     "device": "mps"
   },
   "llm": {
-    "activeProviderID": "00000000-0000-0000-0000-000000000001",
+    "activeProviderID": "00000000-0000-0000-0000-000000000006",
     "providers": [
       {
-        "id": "00000000-0000-0000-0000-000000000001",
-        "name": "Z.ai",
+        "id": "00000000-0000-0000-0000-000000000006",
+        "name": "Z.ai Coding",
         "apiType": "OpenAI Compatible",
         "baseURL": "https://api.z.ai",
-        "completionsPath": "api/paas/v4/chat/completions",
-        "modelsPath": "api/paas/v4/models",
+        "completionsPath": "api/coding/paas/v4/chat/completions",
+        "modelsPath": "api/coding/paas/v4/models",
         "defaultModel": "glm-4.7",
         "fallbackModels": ["glm-5", "glm-4.7", "glm-4-flash"],
         "temperature": 0.7,
@@ -59,12 +59,12 @@
         }
       },
       {
-        "id": "00000000-0000-0000-0000-000000000006",
-        "name": "Z.ai Coding",
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Z.ai",
         "apiType": "OpenAI Compatible",
         "baseURL": "https://api.z.ai",
-        "completionsPath": "api/coding/paas/v4/chat/completions",
-        "modelsPath": "api/coding/paas/v4/models",
+        "completionsPath": "api/paas/v4/chat/completions",
+        "modelsPath": "api/paas/v4/models",
         "defaultModel": "glm-4.7",
         "fallbackModels": ["glm-5", "glm-4.7", "glm-4-flash"],
         "temperature": 0.7,
