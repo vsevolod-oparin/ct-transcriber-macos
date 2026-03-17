@@ -1,51 +1,79 @@
-# Milestone 7b: Chat UX Improvements (partial)
+# Milestone 7b: Chat UX Improvements
 
 **Date:** 2026-03-17
-**Status:** Partially Complete (performance optimization deferred)
+**Status:** Complete (with known scroll issues documented)
 
 ---
 
 ## What Was Done
 
 ### Collapsible Bubbles
-- Messages with more than 15 lines auto-collapse (configurable via `collapseThreshold`)
-- Collapsed view shows first 5 lines + "..." + "Show more (N lines)" toggle
-- Click to expand/collapse with animation
-- Streaming messages are never collapsed (always expanded during streaming)
+- Messages >15 lines auto-collapse, show 5 preview lines + "Show more (~N lines)"
+- Line count estimated via sampling (first 4KB) for large messages — shows "~1,577" not "16"
+- Click to expand/collapse; "Show more" button white on user bubbles, accent on assistant
+- Large expanded messages (>5K chars) use `LargeTextView` (NSTextView) instead of SwiftUI Text
+
+### Large Text Rendering (NSTextView)
+- `LargeTextView` NSViewRepresentable for messages >5K characters
+- `allowsNonContiguousLayout = true` — only lays out visible text
+- Full content rendered (no truncation), selectable
+- `sizeThatFits` reports actual rendered height to SwiftUI
+- Length-first comparison in `updateNSView` avoids O(n) string comparison
+
+### MessageAnalysis Cache
+- Pre-computes `isError`, `lineCount`, `isLong`, `collapsedPreview`, `hasTimestamps` once per content change
+- Early-exit newline counting on UTF-8 bytes
+- Sampling-based line estimation for large strings (>4KB)
+- Recomputed via `.task(id: content.count)` only when content length changes
 
 ### Bubble Copy
-- **Hover**: copy button (doc.on.doc icon) appears top-right on hover
-- **Context menu** (right-click):
-  - "Copy" — copies full message text
-  - "Copy without timestamps" — strips `[0:00 → 0:03]` prefixes (shown only for transcription results)
-- **Retry** option in context menu for failed messages
+- Copy button appears on hover — left of user messages, right of assistant
+- Uses `opacity` toggle (not conditional view) to prevent layout shift
+- Right-click context menu: "Copy" and "Copy without timestamps"
 
-### Audio/Video Player
-- Audio and video attachments show a play/pause button (play.circle.fill / pause.circle.fill)
-- Uses `AVAudioPlayer` for playback from the stored file
-- Play/pause toggles inline — no separate window
-- Player stops on view disappear (switching conversations)
+### Audio Player
+- Play/pause button on audio/video attachments
+- AVAudioPlayer inline playback
 
 ### Message Status & Retry
-- **Error detection**: messages starting with "Transcription failed" or "Transcription cancelled" are marked as errors
-- **Visual indicator**: error messages get a red-tinted background (`.red.opacity(0.15)`)
-- **Status row**: shows error icon + timestamp + "Retry" button
-- **Context menu**: "Retry" option for failed messages
-- **Retry logic** (`ChatViewModel.retryMessage`):
-  - For assistant/system messages: deletes the failed message, re-triggers LLM response
-  - For user messages: deletes the message + any following response, re-creates and re-sends
+- LLM errors kept as messages with ⚠ prefix, red-tinted background
+- Error icon + "Retry" button in timestamp row + context menu
+- `retryMessage()` deletes failed message and re-triggers
 
 ### LLM API Key Test
-- "Test Connection" button in Settings → LLM → Authentication section
-- Sends a minimal request ("Hi", max_tokens=1) using the configured provider
-- Shows result inline:
-  - Spinner while testing
-  - Green "Connected" checkmark on success
-  - Red error message on failure (auth error, insufficient funds, network error, etc.)
-- Disabled when no API key is entered
+- "Test Connection" button sends minimal request ("Hi", max_tokens=1)
+- Shows spinner → green checkmark or red error inline
+- Resets when switching providers
+
+### Message Input
+- Scrollable TextEditor (replaces TextField)
+- Grows 1-5 lines, scrolls beyond
+- Placeholder aligned with cursor baseline
+
+### Scroll Behavior
+- `.defaultScrollAnchor(.bottom)` + `.id(conversationID)` — conversations start at bottom
+- Cmd+Up scrolls to first message (works reliably)
+- Cmd+Down scrolls to last message (unreliable — LazyVStack limitation)
+- Auto-scroll during streaming
+
+### Performance
+- `MessageAnalysis` struct avoids recomputing on every render
+- NSTextView with non-contiguous layout for large text
+- Content change detection via `.count` (O(1)) not full string comparison
+- Auto-scroll only during streaming
 
 ---
 
-## Files Created/Modified
+## Known Issues
 
-- **Modified:** `Views/ChatView.swift` (complete rewrite: collapsible bubbles, copy on hover + context menu, audio player, error status + retry, transcription timestamp stripping), `ViewModels/ChatViewModel.swift` (added `retryMessage`), `Views/SettingsView.swift` (added Test Connection button + logic)
+1. **Cmd+Down / scroll-to-bottom**: unreliable with LazyVStack. Lazy height estimation causes overshoot. Pressing Cmd+Down twice usually works.
+2. **Expand large message**: shifts scroll position because content height changes dramatically after expand. Post-layout scroll correction is unreliable with LazyVStack.
+3. **Root cause**: LazyVStack doesn't know total content height upfront. Fix requires migrating the message list to NSTableView with `usesAutomaticRowHeights`.
+
+---
+
+## Files Modified
+
+- `Views/ChatView.swift` — major rewrite: collapsible bubbles, LargeTextView, MessageAnalysis, copy button, audio player, retry, scroll behavior, TextEditor input
+- `ViewModels/ChatViewModel.swift` — retryMessage(), error messages in chat
+- `Views/SettingsView.swift` — Test Connection button, single-line API key

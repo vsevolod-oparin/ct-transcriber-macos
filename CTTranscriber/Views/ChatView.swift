@@ -145,8 +145,6 @@ private struct MessageListView: View {
         messages.last?.content.count ?? 0
     }
 
-    private let bottomAnchorID = "bottomAnchor"
-
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -160,45 +158,35 @@ private struct MessageListView: View {
                     }
                 }
                 .padding()
-
-                Color.clear
-                    .frame(height: 1)
-                    .id(bottomAnchorID)
             }
             .defaultScrollAnchor(.bottom)
-            .id(conversationID) // Recreate ScrollView per conversation — starts at bottom
+            .id(conversationID)
             .onChange(of: messages.count) { _, _ in
-                scrollToBottom(proxy: proxy)
+                scrollToLast(proxy: proxy)
             }
             .onChange(of: lastContentLength) { _, _ in
                 if isStreaming {
-                    scrollToBottom(proxy: proxy)
+                    scrollToLast(proxy: proxy)
                 }
             }
             .onChange(of: scrollToTopTrigger) { _, _ in
                 if let firstID = messages.first?.id {
-                    withAnimation { proxy.scrollTo(firstID, anchor: .top) }
+                    proxy.scrollTo(firstID, anchor: .top)
                 }
             }
             .onChange(of: scrollToBottomTrigger) { _, _ in
-                withAnimation { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
+                scrollToLast(proxy: proxy)
             }
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-        }
+    private func scrollToLast(proxy: ScrollViewProxy) {
+        guard let lastID = messages.last?.id else { return }
+        proxy.scrollTo(lastID, anchor: .bottom)
     }
 
     private func scrollTo(_ id: UUID, proxy: ScrollViewProxy) {
-        // Small delay to let SwiftUI finish the collapse animation and resize
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo(id, anchor: .top)
-            }
-        }
+        proxy.scrollTo(id, anchor: .top)
     }
 }
 
@@ -377,7 +365,8 @@ private struct MessageBubble: View {
                 // Use NSTextView for large content — SwiftUI Text chokes on big strings
                 // Full-height NSTextView — no inner scrolling. The outer chat
                 // ScrollView handles navigation.
-                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor)
+                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor,
+                              onLayoutComplete: onCollapseToggle)
             } else {
                 HStack(alignment: .bottom, spacing: 4) {
                     Text(message.content)
@@ -394,14 +383,10 @@ private struct MessageBubble: View {
             // Collapse/expand toggle
             if info.isLong && !isStreamingThis {
                 Button(isExpanded ? "Show less" : "Show more (\(info.lineCountDisplay) lines)") {
-                    let wasExpanded = isExpanded
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
-                    }
-                    if wasExpanded {
-                        // Collapsing — scroll to this message so we don't end up in empty space
-                        onCollapseToggle()
-                    }
+                    isExpanded.toggle()
+                    // Scroll to this message after expand/collapse so the user
+                    // stays anchored to it instead of drifting
+                    onCollapseToggle()
                 }
                 .font(.caption)
                 .buttonStyle(.borderless)
@@ -484,6 +469,7 @@ private struct MessageBubble: View {
 private struct LargeTextView: NSViewRepresentable {
     let text: String
     let textColor: NSColor
+    var onLayoutComplete: (() -> Void)?
 
     func makeNSView(context: Context) -> NSTextView {
         let textView = NSTextView()
@@ -510,14 +496,29 @@ private struct LargeTextView: NSViewRepresentable {
         }
     }
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+        var didInitialLayout = false
+    }
+
     func sizeThatFits(_ proposal: ProposedViewSize, nsView textView: NSTextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 400
 
-        // Set the text container width so layout calculates correct height
         textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let usedRect = textView.layoutManager?.usedRect(for: textView.textContainer!) ?? .zero
         let height = usedRect.height + textView.textContainerInset.height * 2
+
+        // Notify once after the first layout — so the parent can scroll to this message
+        if !context.coordinator.didInitialLayout && height > 10 {
+            context.coordinator.didInitialLayout = true
+            DispatchQueue.main.async {
+                self.onLayoutComplete?()
+            }
+        }
 
         return CGSize(width: width, height: height)
     }

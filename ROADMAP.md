@@ -406,8 +406,12 @@ Performance optimization and some player features deferred.
 - [x] Copy button on bubble → full text in clipboard
 - [x] Failed LLM message shows error state with Retry button; retry re-sends successfully
 - [x] "Test Connection" in Settings with valid key → green checkmark; with invalid key → error message
-- [x] Large transcription bubbles collapse by default, expanded text capped at 50K chars
+- [x] Large transcription bubbles collapse by default, full text via NSTextView when expanded
 - [x] Scrolling through conversations smooth (no re-scan on every render)
+- [x] Conversation switching starts at bottom (`.defaultScrollAnchor(.bottom)` + view recreation)
+- [x] Cmd+Up scrolls to top of conversation
+- [ ] **Known issue**: Cmd+Down / scroll-to-bottom unreliable with LazyVStack — lazy height estimation causes overshoot. Expand/collapse of large messages also shifts scroll position. Root cause: LazyVStack doesn't know total content height. Fix requires NSTableView migration for the message list
+- [ ] **Known issue**: expand large message scrolls user to wrong position — needs post-layout scroll correction that LazyVStack can't reliably provide
 
 ---
 
