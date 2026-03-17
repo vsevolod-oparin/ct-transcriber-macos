@@ -342,7 +342,7 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 
 **Goal:** Make long conversations and large transcription bubbles usable.
 **Status:** Partially complete (2026-03-17) — see `reports/milestone-7b-chat-ux-improvements.md`
-Performance optimization deferred.
+Performance optimization and some player features deferred.
 
 ### Tasks
 
@@ -350,25 +350,30 @@ Performance optimization deferred.
 - [x] Long messages (>15 lines) auto-collapse, show first 5 lines + "Show more (N lines)"
 - [x] Click to expand/collapse with animation
 - [x] Streaming messages always expanded
+- [x] "Show more" button visible on user messages (white on blue) and assistant messages (accent color)
 
 **Bubble copy:**
-- [x] Copy button on hover (top-right)
+- [x] Copy button on hover — left of user messages, right of assistant messages (not overlapping content)
 - [x] Right-click context menu: "Copy" and "Copy without timestamps" (for transcription results)
 - [x] Copies full message text to clipboard
 
+**Message input:**
+- [x] Scrollable multi-line input using TextEditor (grows up to ~5 lines, then scrolls)
+- [x] Placeholder "Message..." aligned with cursor baseline
+- [x] Enter to send, Shift+Enter for newline
+
 **Flash attention:**
 - [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
-- [x] **Fixed**: threadgroup memory alignment bug (`length(4) must be a multiple of 16 bytes`) resolved in CTranslate2 metal-backend. Updated wheel deployed.
-- [ ] Benchmark: flash attention vs standard attention on Metal once the kernel issue is resolved
-- [ ] Investigate compatibility with timestamps mode (may interact with the timestamps state corruption bug)
+- [x] **Fixed**: threadgroup memory alignment bug resolved in CTranslate2 metal-backend. Default: **on**
+- [ ] Benchmark: flash attention vs standard attention on Metal (M1–M4)
+- [ ] Investigate compatibility with timestamps mode
 
 **Transcription speed option:**
 - [ ] Add "Skip timestamps" toggle in transcription settings
-- [ ] When enabled, pass `--notimestamps` to transcribe.py / faster-whisper (simpler decoder prefix, fewer tokens, no seek retries)
-- [ ] Investigate actual speedup vs. timestamps mode — hypothesis: significantly faster for long audio
-- [ ] Note: Metal backend has a known issue with timestamps mode (state corruption with 3-token prefix, see CTranslate2 e2e test). Skipping timestamps may also improve stability
-- [ ] **Investigate timestamps bug**: determine if the state corruption is in CTranslate2 Metal backend or faster-whisper's seek/retry logic. Reproduce with direct CT2 API (bypass faster-whisper) to isolate. May require a fix in the CTranslate2 metal-backend branch
-- [ ] Display plain text segments without `[start → end]` formatting when timestamps are off
+- [ ] When enabled, pass `--notimestamps` to transcribe.py / faster-whisper
+- [ ] Investigate actual speedup vs. timestamps mode
+- [ ] **Investigate timestamps bug**: determine if state corruption is in CTranslate2 Metal or faster-whisper
+- [ ] Display plain text segments without `[start → end]` when timestamps off
 
 **Audio/video player:**
 - [x] Inline play/pause button on audio and video attachments
@@ -378,29 +383,30 @@ Performance optimization deferred.
 - [ ] Sync playback position with transcription timestamps (click segment → seek)
 
 **Message status & retry:**
-- [x] Error messages get red-tinted background
-- [x] Error icon + "Retry" button in timestamp row
-- [x] Right-click context menu "Retry" for failed messages
+- [x] LLM errors kept as messages (⚠ prefix) with red-tinted background, not just banner
+- [x] No-API-key creates error message directly in chat
+- [x] Error icon + "Retry" button in timestamp row + right-click context menu
 - [x] Retry logic: deletes failed message, re-triggers LLM or re-sends user message
 
 **LLM API key test:**
 - [x] "Test Connection" button in Settings → LLM → Authentication
 - [x] Sends minimal request ("Hi", max_tokens=1), shows spinner → green checkmark or red error
-- [x] Catches auth errors, insufficient funds, network issues before chatting
+- [x] Test result resets when switching providers
+- [x] API key field stays single-line regardless of key length
 
 **Performance optimization for large conversations:**
 - [ ] Conversations with hour-long transcription bubbles are extremely slow to load and navigate
-- [ ] Investigate: lazy text rendering, virtualized message list, or storing long transcripts as separate files (not inline in SwiftData)
+- [ ] Investigate: lazy text rendering, virtualized message list, or storing long transcripts as separate files
 - [ ] Consider pagination or chunked loading for conversations with many/large messages
 - [ ] Profile and fix the specific bottleneck (SwiftData fetch? SwiftUI Text rendering? ScrollView layout?)
 
 ### Test Criteria
-- [ ] Hour-long transcription bubble collapses by default, expands on click
-- [ ] Copy button on bubble → full text in clipboard
+- [x] Long message collapses by default, expands on click (both user and assistant)
+- [x] Copy button on bubble → full text in clipboard
+- [x] Failed LLM message shows error state with Retry button; retry re-sends successfully
+- [x] "Test Connection" in Settings with valid key → green checkmark; with invalid key → error message
 - [ ] Conversation with large transcription loads in under 1 second
 - [ ] Scrolling through long conversations is smooth
-- [ ] Failed LLM message shows error state with Retry button; retry re-sends successfully
-- [ ] "Test Connection" in Settings with valid key → green checkmark; with invalid key → error message
 
 ---
 
