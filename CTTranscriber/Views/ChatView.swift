@@ -6,12 +6,17 @@ struct ChatView: View {
     let conversation: Conversation
     @Bindable var viewModel: ChatViewModel
     @FocusState private var isInputFocused: Bool
+    @State private var scrollToTopTrigger = 0
+    @State private var scrollToBottomTrigger = 0
 
     var body: some View {
         VStack(spacing: 0) {
             MessageListView(messages: viewModel.sortedMessages(for: conversation),
                             isStreaming: viewModel.isStreaming,
-                            onRetry: { message in viewModel.retryMessage(message, in: conversation) })
+                            onRetry: { message in viewModel.retryMessage(message, in: conversation) },
+                            conversationID: conversation.id,
+                            scrollToTopTrigger: scrollToTopTrigger,
+                            scrollToBottomTrigger: scrollToBottomTrigger)
 
             if viewModel.isTranscribing {
                 TranscriptionProgressBar(
@@ -39,6 +44,20 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
+        }
+        .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
+            if keyPress.modifiers.contains(.command) {
+                scrollToTopTrigger += 1
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
+            if keyPress.modifiers.contains(.command) {
+                scrollToBottomTrigger += 1
+                return .handled
+            }
+            return .ignored
         }
     }
 }
@@ -117,11 +136,16 @@ private struct MessageListView: View {
     let messages: [Message]
     let isStreaming: Bool
     let onRetry: (Message) -> Void
+    let conversationID: UUID?
+    let scrollToTopTrigger: Int
+    let scrollToBottomTrigger: Int
 
     /// Track content length to detect changes without expensive string comparison.
     private var lastContentLength: Int {
         messages.last?.content.count ?? 0
     }
+
+    private let bottomAnchorID = "bottomAnchor"
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -130,28 +154,49 @@ private struct MessageListView: View {
                     ForEach(messages) { message in
                         MessageBubble(message: message,
                                       isStreamingThis: isStreaming && message == messages.last && message.role == .assistant,
-                                      onRetry: { onRetry(message) })
+                                      onRetry: { onRetry(message) },
+                                      onCollapseToggle: { scrollTo(message.id, proxy: proxy) })
                             .id(message.id)
                     }
                 }
                 .padding()
+
+                Color.clear
+                    .frame(height: 1)
+                    .id(bottomAnchorID)
             }
+            .defaultScrollAnchor(.bottom)
+            .id(conversationID) // Recreate ScrollView per conversation — starts at bottom
             .onChange(of: messages.count) { _, _ in
                 scrollToBottom(proxy: proxy)
             }
             .onChange(of: lastContentLength) { _, _ in
-                // Only auto-scroll during streaming — avoids scroll jumps when browsing
                 if isStreaming {
                     scrollToBottom(proxy: proxy)
                 }
+            }
+            .onChange(of: scrollToTopTrigger) { _, _ in
+                if let firstID = messages.first?.id {
+                    withAnimation { proxy.scrollTo(firstID, anchor: .top) }
+                }
+            }
+            .onChange(of: scrollToBottomTrigger) { _, _ in
+                withAnimation { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
             }
         }
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastID = messages.last?.id {
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+        }
+    }
+
+    private func scrollTo(_ id: UUID, proxy: ScrollViewProxy) {
+        // Small delay to let SwiftUI finish the collapse animation and resize
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo(lastID, anchor: .bottom)
+                proxy.scrollTo(id, anchor: .top)
             }
         }
     }
@@ -242,6 +287,7 @@ private struct MessageBubble: View {
     let message: Message
     var isStreamingThis: Bool = false
     let onRetry: () -> Void
+    let onCollapseToggle: () -> Void
     @State private var isExpanded = false
     @State private var isHovering = false
     @State private var analysis: MessageAnalysis?
@@ -348,8 +394,13 @@ private struct MessageBubble: View {
             // Collapse/expand toggle
             if info.isLong && !isStreamingThis {
                 Button(isExpanded ? "Show less" : "Show more (\(info.lineCountDisplay) lines)") {
+                    let wasExpanded = isExpanded
                     withAnimation(.easeInOut(duration: 0.2)) {
                         isExpanded.toggle()
+                    }
+                    if wasExpanded {
+                        // Collapsing — scroll to this message so we don't end up in empty space
+                        onCollapseToggle()
                     }
                 }
                 .font(.caption)
