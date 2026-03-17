@@ -454,15 +454,29 @@ struct ChatInputBar: View {
                 }
             }
 
-            TextField("Message...", text: $viewModel.messageText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
+            TextEditor(text: $viewModel.messageText)
+                .font(.body)
+                .frame(minHeight: 20, maxHeight: 90)
+                .fixedSize(horizontal: false, vertical: true)
+                .scrollContentBackground(.hidden)
                 .focused(isInputFocused)
                 .disabled(viewModel.isStreaming)
-                .onSubmit {
+                .overlay(alignment: .topLeading) {
+                    if viewModel.messageText.isEmpty {
+                        Text("Message...")
+                            .font(.body)
+                            .foregroundStyle(.placeholder)
+                            .allowsHitTesting(false)
+                            .padding(.leading, 5)
+                            .padding(.top, 0)
+                    }
+                }
+                .onKeyPress(.return) {
                     if !NSEvent.modifierFlags.contains(.shift) {
                         viewModel.sendMessage()
+                        return .handled
                     }
+                    return .ignored
                 }
 
             if viewModel.isStreaming {
@@ -488,3 +502,4 @@ struct ChatInputBar: View {
         .padding(12)
     }
 }
+
