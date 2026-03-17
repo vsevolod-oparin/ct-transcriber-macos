@@ -25,10 +25,21 @@
 
 3. **Flash + skip timestamps is slower than just skip timestamps** — suggesting flash attention adds overhead that isn't offset by any speedup.
 
+### Long Audio Benchmark (83 minutes)
+
+| Configuration | Time (s) | RTF | vs Baseline |
+|--------------|----------|-----|-------------|
+| flash=OFF, skip_ts=True | **595.0** (9.9 min) | 0.1193 | baseline |
+| flash=ON, skip_ts=True | **606.1** (10.1 min) | 0.1215 | **+1.9% slower** |
+
+Consistent result: flash attention is 1.9% slower on long audio. The effect is smaller than on short audio (3-5%) but still negative.
+
+**RTF 0.12 means 83 minutes of audio transcribed in ~10 minutes — 8.4x real-time on Metal.**
+
 ### Recommendation
 
-- **Flash attention**: default OFF. It doesn't help and slightly hurts.
-- **Skip timestamps**: advertise as the speed option (22% faster).
+- **Flash attention**: default OFF. It doesn't help and slightly hurts on Metal with Whisper.
+- **Skip timestamps**: advertise as the speed option (22% faster on short audio).
 
 ---
 

@@ -365,7 +365,7 @@ Performance optimization and some player features deferred.
 **Flash attention:**
 - [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
 - [x] **Fixed**: threadgroup memory alignment bug resolved in CTranslate2 metal-backend. Default: **on**
-- [x] **Benchmarked**: flash attention is 3-5% *slower* on 60s audio with whisper-large-v3-turbo on Metal. Default changed to **off**. See `reports/research-flash-attention-timestamps.md`
+- [x] **Benchmarked**: flash attention is 1.9–5% *slower* on Metal (tested on 60s and 83min audio, whisper-large-v3-turbo). Default: **off**. 83min audio: 595s without flash vs 606s with flash. See `reports/research-flash-attention-timestamps.md`
 - [x] **Timestamps mode stable**: no state corruption detected with current CT2 4.7.1 build (direct API test)
 
 **Transcription speed option:**
