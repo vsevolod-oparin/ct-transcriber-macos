@@ -58,12 +58,15 @@ def main():
     parser.add_argument("--condition-on-previous-text", action="store_true", default=False)
     parser.add_argument("--no-condition-on-previous-text", action="store_false",
                         dest="condition_on_previous_text")
+    parser.add_argument("--flash-attention", action="store_true", default=True,
+                        help="Enable flash attention (default: True)")
+    parser.add_argument("--no-flash-attention", action="store_false", dest="flash_attention")
     args = parser.parse_args()
 
     compute_type = "float16" if args.device == "mps" else "float32"
     language = args.language if args.language else None
 
-    progress(f"Loading model from {args.model} ({args.device}, {compute_type})...")
+    progress(f"Loading model from {args.model} ({args.device}, {compute_type}, flash_attn={args.flash_attention})...")
 
     try:
         from faster_whisper import WhisperModel
@@ -72,7 +75,8 @@ def main():
         sys.exit(1)
 
     try:
-        model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
+        model = WhisperModel(args.model, device=args.device, compute_type=compute_type,
+                             flash_attention=args.flash_attention)
     except Exception as e:
         emit({"type": "error", "message": f"Failed to load model: {e}"})
         sys.exit(1)

@@ -48,6 +48,7 @@ struct TranscriptionSettings: Codable, Equatable {
     var language: String // empty = auto-detect
     var vadFilter: Bool
     var conditionOnPreviousText: Bool
+    var flashAttention: Bool
     var device: String // "mps" or "cpu"
 
     var isValid: Bool {

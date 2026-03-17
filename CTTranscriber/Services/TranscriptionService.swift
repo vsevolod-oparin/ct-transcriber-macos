@@ -102,6 +102,12 @@ enum TranscriptionService {
                         args.append("--condition-on-previous-text")
                     }
 
+                    if settings.flashAttention {
+                        args.append("--flash-attention")
+                    } else {
+                        args.append("--no-flash-attention")
+                    }
+
                     process.arguments = args
 
                     let pipe = Pipe()

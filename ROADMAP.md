@@ -356,9 +356,9 @@ Together these mean: user opens app → progress bar → ready. No terminal comm
 - [ ] For transcription results: option to copy with or without timestamps
 
 **Flash attention:**
-- [ ] Enable `flash_attention=True` in faster-whisper `WhisperModel()` loading — Metal implementation exists in CTranslate2 (`flash_attention_metal.mm`, 303 lines) but is not enabled
-- [ ] Add "Flash Attention" toggle in transcription settings (default: on)
-- [ ] Benchmark: flash attention vs standard attention on Metal (M1–M4), measure speedup and verify output quality matches
+- [x] `flash_attention` flag wired through: settings.json → Settings UI toggle → transcribe.py → WhisperModel
+- [ ] **Blocked**: Metal kernel `fused_sdpa_decode_half` not found at runtime. The kernel source IS in `msl_strings.h` (inside `kSdpaMSL`, lines 1143–1237) and the dylib references it, but Metal shader compilation at runtime fails to produce it. The kernel was hand-added to `msl_strings.h` (not in `sdpa.metal` — only 55 lines of causal mask). Needs debugging in CTranslate2: check `compile_library_once()` and whether the MSL string is too long or has a syntax error that causes silent failure. The error occurs during `detect_language()` → encoder → SDPA attention. Default: **off** until fixed
+- [ ] Benchmark: flash attention vs standard attention on Metal once the kernel issue is resolved
 - [ ] Investigate compatibility with timestamps mode (may interact with the timestamps state corruption bug)
 
 **Transcription speed option:**

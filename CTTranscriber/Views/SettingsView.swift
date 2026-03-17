@@ -112,6 +112,8 @@ private struct TranscriptionSettingsTab: View {
                 Toggle("VAD Filter (skip silence)", isOn: $settings.vadFilter)
 
                 Toggle("Condition on Previous Text", isOn: $settings.conditionOnPreviousText)
+
+                Toggle("Flash Attention", isOn: $settings.flashAttention)
             }
         }
         .formStyle(.grouped)
