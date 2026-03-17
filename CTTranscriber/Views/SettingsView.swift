@@ -297,6 +297,8 @@ private struct ProviderConfigEditor: View {
 
             Section("Authentication") {
                 SecureField("API Key", text: $config.apiKey)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .onSubmit { fetchModels() }
 
                 HStack {
@@ -406,6 +408,7 @@ private struct ProviderConfigEditor: View {
         fallbackModelsText = config.fallbackModels.joined(separator: ", ")
         extraHeadersText = formatHeaders(config.extraHeaders)
         availableModels = config.fallbackModels
+        testResult = .idle
         fetchModels()
     }
 
