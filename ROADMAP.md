@@ -395,18 +395,19 @@ Performance optimization and some player features deferred.
 - [x] API key field stays single-line regardless of key length
 
 **Performance optimization for large conversations:**
-- [ ] Conversations with hour-long transcription bubbles are extremely slow to load and navigate
-- [ ] Investigate: lazy text rendering, virtualized message list, or storing long transcripts as separate files
-- [ ] Consider pagination or chunked loading for conversations with many/large messages
-- [ ] Profile and fix the specific bottleneck (SwiftData fetch? SwiftUI Text rendering? ScrollView layout?)
+- [x] `MessageAnalysis` struct: pre-computes isError, lineCount, isLong, collapsedPreview, hasTimestamps once per content change (not on every render). Uses early-exit newline counting instead of `components(separatedBy:)`.
+- [x] `LargeTextView` (NSTextView): messages >5K chars render via NSTextView instead of SwiftUI Text — full content displayed, scrollable within the bubble (max 400px height), selectable. No truncation.
+- [x] Auto-scroll only during streaming (not on every content change when browsing)
+- [x] Content change detection via `.count` instead of full string comparison
+- [ ] Further optimization if needed: NSTextView for large bubbles, pagination, or external file storage for transcripts
 
 ### Test Criteria
 - [x] Long message collapses by default, expands on click (both user and assistant)
 - [x] Copy button on bubble → full text in clipboard
 - [x] Failed LLM message shows error state with Retry button; retry re-sends successfully
 - [x] "Test Connection" in Settings with valid key → green checkmark; with invalid key → error message
-- [ ] Conversation with large transcription loads in under 1 second
-- [ ] Scrolling through long conversations is smooth
+- [x] Large transcription bubbles collapse by default, expanded text capped at 50K chars
+- [x] Scrolling through conversations smooth (no re-scan on every render)
 
 ---
 

@@ -118,6 +118,11 @@ private struct MessageListView: View {
     let isStreaming: Bool
     let onRetry: (Message) -> Void
 
+    /// Track content length to detect changes without expensive string comparison.
+    private var lastContentLength: Int {
+        messages.last?.content.count ?? 0
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -131,30 +136,107 @@ private struct MessageListView: View {
                 }
                 .padding()
             }
-            .onChange(of: messages.last?.content) { _, _ in
-                if let lastID = messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+            .onChange(of: messages.count) { _, _ in
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: lastContentLength) { _, _ in
+                // Only auto-scroll during streaming — avoids scroll jumps when browsing
+                if isStreaming {
+                    scrollToBottom(proxy: proxy)
                 }
             }
-            .onChange(of: messages.count) { _, _ in
-                if let lastID = messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
-                }
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        if let lastID = messages.last?.id {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(lastID, anchor: .bottom)
             }
         }
     }
 }
 
-// MARK: - Message Bubble
+// MARK: - Message Content Analysis (computed once, cached)
 
 /// Number of lines above which a message is auto-collapsed.
 private let collapseThreshold = 15
 /// Number of preview lines shown when collapsed.
 private let collapsedPreviewLines = 5
+/// Character count above which we use NSTextView instead of SwiftUI Text.
+private let largeTextThreshold = 5_000
+
+/// Pre-analyzed message metadata to avoid recomputing on every render.
+private struct MessageAnalysis {
+    let isError: Bool
+    /// Estimated line count. Exact for short messages, sampled estimate for large ones.
+    let lineCount: Int
+    let isLong: Bool
+    let collapsedPreview: String
+    let hasTimestamps: Bool
+    /// Display string for line count (e.g., "~1,200" or "42").
+    let lineCountDisplay: String
+
+    /// Sample size in bytes for estimating line count in large strings.
+    private static let lineCountSampleSize = 4096
+
+    init(content: String) {
+        // Only scan the first few characters for error markers
+        let prefix100 = content.prefix(100)
+        isError = prefix100.contains("⚠") ||
+                  prefix100.hasPrefix("Transcription failed") ||
+                  prefix100.hasPrefix("Transcription cancelled")
+
+        hasTimestamps = content.utf8.count > 5 && content.contains("[") && content.contains("→")
+
+        // Line counting: exact for small, estimated for large
+        let utf8 = content.utf8
+        let totalBytes = utf8.count
+
+        if totalBytes <= Self.lineCountSampleSize {
+            // Small string: exact count
+            var count = 1
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { count += 1 }
+            }
+            lineCount = count
+            lineCountDisplay = "\(count)"
+        } else {
+            // Large string: sample first N bytes and extrapolate
+            var newlines = 0
+            var scanned = 0
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { newlines += 1 }
+                scanned += 1
+                if scanned >= Self.lineCountSampleSize { break }
+            }
+            let estimated = Int(Double(newlines) / Double(scanned) * Double(totalBytes)) + 1
+            lineCount = estimated
+            lineCountDisplay = "~\(estimated)"
+        }
+        isLong = lineCount > collapseThreshold
+
+        // Only compute preview if long
+        if isLong {
+            var lines: [Substring] = []
+            var remaining = content[...]
+            for _ in 0..<collapsedPreviewLines {
+                if let newline = remaining.firstIndex(of: "\n") {
+                    lines.append(remaining[..<newline])
+                    remaining = remaining[remaining.index(after: newline)...]
+                } else {
+                    lines.append(remaining)
+                    break
+                }
+            }
+            collapsedPreview = lines.joined(separator: "\n") + "\n..."
+        } else {
+            collapsedPreview = ""
+        }
+    }
+}
+
+// MARK: - Message Bubble
 
 private struct MessageBubble: View {
     let message: Message
@@ -162,18 +244,17 @@ private struct MessageBubble: View {
     let onRetry: () -> Void
     @State private var isExpanded = false
     @State private var isHovering = false
+    @State private var analysis: MessageAnalysis?
 
     private var isUser: Bool { message.role == .user }
-    private var isError: Bool {
-        message.content.contains("⚠") ||
-        message.content.hasPrefix("Transcription failed") ||
-        message.content.hasPrefix("Transcription cancelled")
-    }
-    private var isLong: Bool {
-        message.content.components(separatedBy: "\n").count > collapseThreshold
+
+    private var currentAnalysis: MessageAnalysis {
+        analysis ?? MessageAnalysis(content: message.content)
     }
 
     var body: some View {
+        let info = currentAnalysis
+
         HStack(alignment: .top, spacing: 4) {
             if isUser {
                 Spacer(minLength: 60)
@@ -186,14 +267,14 @@ private struct MessageBubble: View {
                 }
 
                 if !message.content.isEmpty {
-                    bubbleContent
-                        .contextMenu { bubbleContextMenu }
+                    bubbleContent(info: info)
+                        .contextMenu { bubbleContextMenu(info: info) }
                 } else if isStreamingThis {
                     thinkingBubble
                 }
 
                 HStack(spacing: 4) {
-                    if isError {
+                    if info.isError {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(.red)
@@ -203,7 +284,7 @@ private struct MessageBubble: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
 
-                    if isError {
+                    if info.isError {
                         Button("Retry") { onRetry() }
                             .font(.caption2)
                             .buttonStyle(.borderless)
@@ -218,51 +299,55 @@ private struct MessageBubble: View {
             }
         }
         .onHover { isHovering = $0 }
-    }
-
-    @ViewBuilder
-    private var copyButton: some View {
-        if isHovering && !message.content.isEmpty && !isStreamingThis {
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(message.content, forType: .string)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help("Copy message")
-            .padding(.top, 6)
-        } else {
-            // Invisible placeholder to keep layout stable
-            Color.clear.frame(width: 16)
+        .task(id: message.content.count) {
+            // Recompute analysis when content changes (e.g., streaming)
+            analysis = MessageAnalysis(content: message.content)
         }
     }
 
     @ViewBuilder
-    private var bubbleContent: some View {
+    private var copyButton: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message.content, forType: .string)
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help("Copy message")
+        .padding(.top, 6)
+        .opacity(isHovering && !message.content.isEmpty && !isStreamingThis ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private func bubbleContent(info: MessageAnalysis) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .bottom, spacing: 4) {
-                if isLong && !isExpanded && !isStreamingThis {
-                    // Collapsed: show preview
-                    Text(collapsedPreview)
-                        .textSelection(.enabled)
-                } else {
+            if info.isLong && !isExpanded && !isStreamingThis {
+                Text(info.collapsedPreview)
+                    .textSelection(.enabled)
+            } else if message.content.count > largeTextThreshold && !isStreamingThis {
+                // Use NSTextView for large content — SwiftUI Text chokes on big strings
+                // Full-height NSTextView — no inner scrolling. The outer chat
+                // ScrollView handles navigation.
+                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor)
+            } else {
+                HStack(alignment: .bottom, spacing: 4) {
                     Text(message.content)
                         .textSelection(.enabled)
-                }
 
-                if isStreamingThis {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .padding(.bottom, 2)
+                    if isStreamingThis {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .padding(.bottom, 2)
+                    }
                 }
             }
 
             // Collapse/expand toggle
-            if isLong && !isStreamingThis {
-                Button(isExpanded ? "Show less" : "Show more (\(lineCount) lines)") {
+            if info.isLong && !isStreamingThis {
+                Button(isExpanded ? "Show less" : "Show more (\(info.lineCountDisplay) lines)") {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         isExpanded.toggle()
                     }
@@ -274,13 +359,13 @@ private struct MessageBubble: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(bubbleBackground)
+        .background(bubbleBackground(info: info))
         .foregroundStyle(isUser ? .white : .primary)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private var bubbleBackground: some ShapeStyle {
-        if isError {
+    private func bubbleBackground(info: MessageAnalysis) -> some ShapeStyle {
+        if info.isError {
             return AnyShapeStyle(Color.red.opacity(0.15))
         }
         if isUser {
@@ -305,7 +390,7 @@ private struct MessageBubble: View {
     }
 
     @ViewBuilder
-    private var bubbleContextMenu: some View {
+    private func bubbleContextMenu(info: MessageAnalysis) -> some View {
         Button {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(message.content, forType: .string)
@@ -313,8 +398,7 @@ private struct MessageBubble: View {
             Label("Copy", systemImage: "doc.on.doc")
         }
 
-        // For transcription results, offer copy without timestamps
-        if message.content.contains("[") && message.content.contains("→") {
+        if info.hasTimestamps {
             Button {
                 let plain = message.content
                     .split(separator: "\n")
@@ -333,21 +417,58 @@ private struct MessageBubble: View {
             }
         }
 
-        if isError {
+        if info.isError {
             Divider()
             Button { onRetry() } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }
         }
     }
+}
 
-    private var lineCount: Int {
-        message.content.components(separatedBy: "\n").count
+// MARK: - Large Text View (NSTextView for performance with big strings)
+
+/// Uses NSTextView for rendering large text content. Scrollable, selectable, performant
+/// even with hundreds of thousands of characters — unlike SwiftUI Text which freezes.
+private struct LargeTextView: NSViewRepresentable {
+    let text: String
+    let textColor: NSColor
+
+    func makeNSView(context: Context) -> NSTextView {
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = textColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isVerticallyResizable = false
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+        return textView
     }
 
-    private var collapsedPreview: String {
-        let lines = message.content.components(separatedBy: "\n")
-        return lines.prefix(collapsedPreviewLines).joined(separator: "\n") + "\n..."
+    func updateNSView(_ textView: NSTextView, context: Context) {
+        let currentLength = textView.string.count
+        if currentLength != text.count || textView.string != text {
+            textView.string = text
+            textView.textColor = textColor
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView textView: NSTextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 400
+
+        // Set the text container width so layout calculates correct height
+        textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let usedRect = textView.layoutManager?.usedRect(for: textView.textContainer!) ?? .zero
+        let height = usedRect.height + textView.textContainerInset.height * 2
+
+        return CGSize(width: width, height: height)
     }
 }
 
