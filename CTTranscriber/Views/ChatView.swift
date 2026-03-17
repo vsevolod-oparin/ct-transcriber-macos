@@ -269,7 +269,7 @@ private struct MessageBubble: View {
                 }
                 .font(.caption)
                 .buttonStyle(.borderless)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(isUser ? .white.opacity(0.8) : Color.accentColor)
             }
         }
         .padding(.horizontal, 12)
