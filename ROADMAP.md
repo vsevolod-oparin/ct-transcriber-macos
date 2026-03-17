@@ -410,8 +410,8 @@ Performance optimization and some player features deferred.
 - [x] Scrolling through conversations smooth (no re-scan on every render)
 - [x] Conversation switching starts at bottom (`.defaultScrollAnchor(.bottom)` + view recreation)
 - [x] Cmd+Up scrolls to top of conversation
-- [ ] **Known issue**: Cmd+Down / scroll-to-bottom unreliable with LazyVStack — lazy height estimation causes overshoot. Expand/collapse of large messages also shifts scroll position. Root cause: LazyVStack doesn't know total content height. Fix requires NSTableView migration for the message list
-- [ ] **Known issue**: expand large message scrolls user to wrong position — needs post-layout scroll correction that LazyVStack can't reliably provide
+- [ ] **Known issue**: Cmd+Down / scroll-to-bottom unreliable with LazyVStack — lazy height estimation causes overshoot. Expand/collapse of large messages also shifts scroll position. Root cause: LazyVStack doesn't know total content height. Fix: NSTableView migration in M8b
+- [ ] **Known issue**: expand large message scrolls user to wrong position — needs post-layout scroll correction that LazyVStack can't reliably provide. Fix: ID-based scroll preservation in M8b
 
 ---
 
@@ -442,6 +442,75 @@ Performance optimization and some player features deferred.
 - [x] Delete completed task — removed from list
 - [x] Task badge shows active count
 - [x] Attach multiple audios — each gets a placeholder immediately after its audio, transcribed one by one
+
+---
+
+## Milestone 8b: Performance & Architecture (from TelegramSwift Research)
+
+**Goal:** Apply high-value patterns from TelegramSwift analysis to improve performance, reliability, and testability.
+**Status:** Pending — see `reports/research-telegramswift-best-practices.md`
+
+### Immediate Fixes (Pre-M9)
+
+**Scroll performance during streaming:**
+- [ ] Throttle scroll-to-bottom during streaming — every 200ms or 50 characters, not every character (`onChange(of: lastContentLength)` currently fires per char)
+- [ ] Add `isDynamicContentLocked` equivalent — disable LargeTextView layout recalculation during rapid scroll
+
+**MessageAnalysis caching:**
+- [ ] Cache `MessageAnalysis` per message ID — don't recompute during streaming; only on stream finish or every 500 chars
+- [ ] Cache `collapsedPreview` substring once on message, not on every render
+
+**Main thread safety:**
+- [ ] Move `PythonEnvironment` validation off main thread — `runPython().waitUntilExit()` currently blocks UI on startup
+- [ ] Move `ModelManager.directorySize()` to background — synchronous file enumeration can block on large models
+
+**Task lifecycle:**
+- [ ] Clean up `transcriptionTasks` dictionary entries when conversation is deleted — prevents Task leaks
+- [ ] Add `deinit` logging to ChatViewModel, TaskManager, ModelManager — catch retain cycles early
+
+### Architecture Improvements
+
+**Protocol-based services (testability):**
+- [ ] Add `TaskManagerProtocol` — enables mock injection for unit tests
+- [ ] Constructor-based DI for ChatViewModel — move from post-init property assignment to `init(settingsManager:modelManager:taskManager:modelContext:)`
+
+**Resource management:**
+- [ ] Add `NSCache` for attachment thumbnails — when image/video preview is implemented, cache in memory (Telegram uses 7 segregated NSCache instances with 200-10K item limits)
+- [ ] Add log rotation to `AppLogger` — max 10MB, keep 3 files (currently grows unbounded)
+- [ ] Add visibility-based audio playback pause — stop audio preview when user scrolls past (Telegram checks `visibleRect` + window key status)
+
+### NSTableView Migration (Chat Message List)
+
+Telegram's chat is built on a heavily customized NSTableView with:
+- `layerContentsRedrawPolicy = .never` — no automatic layer redraws
+- `usesAutomaticRowHeights = false` — all heights cached, recomputed only on width change
+- `isCompatibleWithResponsiveScrolling = true` — async content rendering during scroll
+- Cell reuse via identifier pool (`makeView(withIdentifier:)`)
+- `TableUpdateTransition` with diff-based insert/update/delete (no full reload)
+- `animateVisibleOnly` flag — only animates rows in viewport
+- ID-based scroll preservation (`TableScrollState.saveVisible`) — survives message loading
+
+This migration would fix our known LazyVStack issues:
+- [ ] Replace LazyVStack+ScrollView with NSTableView via NSViewRepresentable
+- [ ] Implement cell reuse for message bubbles (user/assistant/system types)
+- [ ] Cache row heights per message ID, invalidate on width change
+- [ ] ID-based scroll state: save first visible message before expand/collapse, restore after layout
+- [ ] Diff-based updates: insert/update/delete rows without full reload during streaming
+- [ ] Fix Cmd+Down scroll-to-bottom (currently unreliable with LazyVStack)
+- [ ] Fix expand/collapse scroll anchoring (currently shifts to wrong position)
+
+### Future Considerations
+
+- [ ] Priority queue for transcriptions — user-initiated (manual attach) preempts auto-queued
+- [ ] Lite Mode / Low Power settings — reduce streaming frequency, disable animations, prefer smaller models (Telegram has granular `LiteModeKey` per feature)
+- [ ] Extract Services into local Swift Package when codebase exceeds ~50 files (Telegram has 49 packages)
+
+### Test Criteria
+- [ ] Streaming a 10K-char response: no visible scroll stutter
+- [ ] Switch conversations during streaming: no leaked tasks or stale state
+- [ ] App launch: no main thread freeze during Python validation
+- [ ] (After NSTableView) Cmd+Down reliably scrolls to bottom
+- [ ] (After NSTableView) Expand/collapse message preserves scroll position
 
 ---
 
@@ -525,9 +594,10 @@ M0 (Skeleton)
  │         └── M7 (Transcription) ← M5 (Python Env) ← M6 (Models)
  │              ├── M7b (Chat UX: collapsible, copy, perf)
  │              └── M8 (Task Manager)
+ │                   └── M8b (Performance & Architecture) ← TelegramSwift research
  ├── M3 (Settings)
  ├── M5b (Zero-Setup UX) ← M5
- └── M9 (macOS Integration) ← M2, M7
+ └── M9 (macOS Integration) ← M2, M7, M8b (immediate fixes)
       └── M10 (Polish & DMG) ← all above including M5b
            └── M11 (MCP) [future]
 ```
@@ -540,9 +610,10 @@ M0 (Skeleton)
 | **Phase B** | M4 | ✅ Done | LLM integration (Z.ai, OpenAI, Anthropic, DeepSeek, Qwen) |
 | **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
 | **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
-| **Phase E** | M7b → M8 → M9 | **Next** | Chat UX + task manager + macOS integration |
-| **Phase F** | M10 | Pending | Polish + DMG distribution |
-| **Phase G** | M11 | Future | MCP exploration |
+| **Phase E** | M7b → M8 | ✅ Done | Chat UX + task manager |
+| **Phase F** | M8b (immediate) → M9 | **Next** | Performance fixes + macOS integration |
+| **Phase G** | M8b (NSTableView) → M10 | Pending | Chat migration + polish + DMG |
+| **Phase H** | M11 | Future | MCP exploration |
 
 ---
 
