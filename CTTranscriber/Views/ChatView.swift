@@ -8,12 +8,16 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     @State private var scrollToTopTrigger = 0
     @State private var scrollToBottomTrigger = 0
-
     var body: some View {
         VStack(spacing: 0) {
             ChatTableView(messages: viewModel.sortedMessages(for: conversation),
                           isStreaming: viewModel.isStreaming,
                           onRetry: { message in viewModel.retryMessage(message, in: conversation) },
+                          onDropFiles: { urls in
+                              for url in urls {
+                                  viewModel.attachFile(from: url, to: conversation)
+                              }
+                          },
                           conversationID: conversation.id,
                           scrollToTopTrigger: scrollToTopTrigger,
                           scrollToBottomTrigger: scrollToBottomTrigger)
@@ -60,6 +64,7 @@ struct ChatView: View {
             return .ignored
         }
     }
+
 }
 
 // MARK: - Transcription Progress
@@ -141,6 +146,7 @@ struct ChatTableView: NSViewRepresentable {
     let messages: [Message]
     let isStreaming: Bool
     let onRetry: (Message) -> Void
+    let onDropFiles: ([URL]) -> Void
     let conversationID: UUID?
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
@@ -177,8 +183,13 @@ struct ChatTableView: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.contentView.postsBoundsChangedNotifications = true
 
+        // Register as drag-and-drop target for files
+        tableView.registerForDraggedTypes([.fileURL])
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
+
         context.coordinator.tableView = tableView
         context.coordinator.scrollView = scrollView
+        context.coordinator.onDropFiles = onDropFiles
 
         return scrollView
     }
@@ -190,6 +201,7 @@ struct ChatTableView: NSViewRepresentable {
         let oldConversationID = coordinator.conversationID
 
         coordinator.onRetry = onRetry
+        coordinator.onDropFiles = onDropFiles
         coordinator.isStreaming = isStreaming
 
         guard let tableView = coordinator.tableView else { return }
@@ -200,6 +212,7 @@ struct ChatTableView: NSViewRepresentable {
             coordinator.messages = messages
             coordinator.heightCache.removeAll()
             coordinator.expandedMessages.removeAll()
+            coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) })
             tableView.reloadData()
             DispatchQueue.main.async {
                 coordinator.scrollToBottom(animated: false)
@@ -211,26 +224,45 @@ struct ChatTableView: NSViewRepresentable {
         let newIDs = messages.map(\.id)
 
         if oldIDs == newIDs {
-            // Same messages — check for content changes (streaming)
+            // Same messages — find which rows have content changes
             coordinator.messages = messages
 
-            if isStreaming, let lastRow = messages.indices.last {
-                // Only update the last row during streaming
-                let lastID = messages[lastRow].id
-                coordinator.heightCache.removeValue(forKey: lastID)
-                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: lastRow))
-                tableView.reloadData(forRowIndexes: IndexSet(integer: lastRow),
-                                     columnIndexes: IndexSet(integer: 0))
-                coordinator.scrollToBottomThrottled()
-            } else if oldStreaming && !isStreaming {
-                // Streaming just ended — final reload of last row
-                if let lastRow = messages.indices.last {
-                    let lastID = messages[lastRow].id
-                    coordinator.heightCache.removeValue(forKey: lastID)
-                    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: lastRow))
-                    tableView.reloadData(forRowIndexes: IndexSet(integer: lastRow),
-                                         columnIndexes: IndexSet(integer: 0))
+            // Detect content changes using a snapshot of content lengths.
+            // SwiftData models are reference types — oldMessages and messages
+            // share the same objects, so we can't compare them directly.
+            var changedRows = IndexSet()
+            for i in messages.indices {
+                let msg = messages[i]
+                let currentLen = msg.content.count
+                let snapshotLen = coordinator.contentLengthSnapshot[msg.id]
+                if snapshotLen == nil || snapshotLen != currentLen {
+                    changedRows.insert(i)
                 }
+            }
+
+            if isStreaming, let lastRow = messages.indices.last {
+                changedRows.insert(lastRow)
+            }
+
+            // Update snapshot
+            for msg in messages {
+                coordinator.contentLengthSnapshot[msg.id] = msg.content.count
+            }
+
+            if !changedRows.isEmpty {
+                for row in changedRows {
+                    coordinator.heightCache.removeValue(forKey: messages[row].id)
+                }
+                tableView.noteHeightOfRows(withIndexesChanged: changedRows)
+                tableView.reloadData(forRowIndexes: changedRows,
+                                     columnIndexes: IndexSet(integer: 0))
+
+                if isStreaming {
+                    coordinator.scrollToBottomThrottled()
+                }
+            }
+
+            if oldStreaming && !isStreaming {
                 coordinator.scrollToBottom(animated: true)
             }
         } else {
@@ -281,6 +313,7 @@ struct ChatTableView: NSViewRepresentable {
         var messages: [Message] = []
         var isStreaming: Bool = false
         var onRetry: (Message) -> Void = { _ in }
+        var onDropFiles: ([URL]) -> Void = { _ in }
         var conversationID: UUID?
 
         weak var tableView: NSTableView?
@@ -288,6 +321,10 @@ struct ChatTableView: NSViewRepresentable {
 
         /// Cached row heights keyed by message ID. Invalidated on width change or content change.
         var heightCache: [UUID: CGFloat] = [:]
+        /// Snapshot of content lengths per message ID — used to detect in-place content changes.
+        /// Needed because SwiftData Message objects are reference types: comparing old vs new
+        /// messages gives the same object, so content appears unchanged.
+        var contentLengthSnapshot: [UUID: Int] = [:]
         /// Messages the user has expanded (for long/collapsible messages).
         var expandedMessages: Set<UUID> = []
 
@@ -306,6 +343,27 @@ struct ChatTableView: NSViewRepresentable {
 
         func numberOfRows(in tableView: NSTableView) -> Int {
             messages.count
+        }
+
+        // MARK: - Drag and Drop
+
+        func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+            // Accept file drops anywhere on the table
+            if info.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: nil) {
+                return .copy
+            }
+            return []
+        }
+
+        func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [
+                .urlReadingFileURLsOnly: true
+            ]) as? [URL], !urls.isEmpty else {
+                return false
+            }
+            AppLogger.info("Table drop: \(urls.count) file(s)", category: "drop")
+            onDropFiles(urls)
+            return true
         }
 
         // MARK: - Delegate (cell creation)
@@ -374,6 +432,11 @@ struct ChatTableView: NSViewRepresentable {
             let measuringView = NSHostingView(rootView: bubble)
             let targetWidth = max(currentWidth, 200)
 
+            // For collapsed long messages, ensure minimum height shows the preview lines.
+            // The NSHostingView measurement can underestimate when the Text view
+            // hasn't computed its multi-line layout at the constrained width.
+            let isCollapsedLong = !isExpanded && message.content.count > 200 && MessageAnalysis(content: message.content).isLong
+
             // For large expanded messages, compute text height directly via NSTextStorage
             // because nested NSViewRepresentable (LargeTextView) inside a measuring
             // NSHostingView doesn't report correct height.
@@ -406,7 +469,25 @@ struct ChatTableView: NSViewRepresentable {
                 widthConstraint.isActive = false
             }
 
-            let height = max(fittingHeight, 30)
+            var height = max(fittingHeight, 30)
+
+            // For collapsed long messages, ensure minimum height to show preview lines.
+            // NSHostingView measurement can underestimate multi-line SwiftUI Text.
+            if isCollapsedLong {
+                let analysis = MessageAnalysis(content: message.content)
+                let previewText = analysis.collapsedPreview
+                let bubbleHPadding: CGFloat = 12 * 2
+                let outerHPadding: CGFloat = 16 * 2
+                let spacerWidth: CGFloat = 60 + 4 + 24
+                let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
+                let previewHeight = Self.measureTextHeight(previewText, width: max(textWidth, 100))
+                let bubbleVPadding: CGFloat = 8 * 2
+                let timestampHeight: CGFloat = 20
+                let collapseButtonHeight: CGFloat = 24
+                let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * 30
+                let minHeight = previewHeight + bubbleVPadding + timestampHeight + collapseButtonHeight + attachmentHeight
+                height = max(height, minHeight)
+            }
 
             if !isStreamingThis {
                 heightCache[message.id] = height
@@ -976,6 +1057,25 @@ struct ChatInputBar: View {
                             .padding(.leading, 5)
                             .padding(.top, 0)
                     }
+                }
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    for provider in providers {
+                        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
+                            let url: URL?
+                            if let fileURL = item as? URL {
+                                url = fileURL
+                            } else if let data = item as? Data {
+                                url = URL(dataRepresentation: data, relativeTo: nil)
+                            } else {
+                                url = nil
+                            }
+                            guard let url else { return }
+                            DispatchQueue.main.async {
+                                viewModel.attachFile(from: url, to: conversation)
+                            }
+                        }
+                    }
+                    return true
                 }
                 .onKeyPress(.return) {
                     if !NSEvent.modifierFlags.contains(.shift) {

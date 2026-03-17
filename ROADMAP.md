@@ -537,27 +537,34 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 ---
 
-## Milestone 9: macOS Integration
+## Milestone 9: macOS Integration ✅
 
 **Goal:** Open audio files with the app from Finder, system-level integration.
+**Status:** Complete (2026-03-17) — see `reports/milestone-9-macos-integration.md`
 
 ### Tasks
-- [ ] Register app as handler for audio file types in `Info.plist`:
-  - UTTypes: `public.audio`, `public.mp3`, `com.apple.m4a-audio`, `public.wav-audio`, `public.flac-audio`
-  - Document types with role Viewer
-- [ ] Handle `onOpenURL` / NSDocument open events:
-  - Single file: prompt to add to existing conversation or create new
-  - Multiple files: batch into one conversation or separate
-- [ ] Drag-and-drop onto app icon in Dock
-- [ ] Drag-and-drop audio files into chat area
-- [ ] Share extension (optional): "Open in CT Transcriber" in Finder share menu
+- [x] Register app as handler for audio/video file types in `Info.plist`:
+  - Audio: `public.audio`, `public.mp3`, `com.apple.m4a-audio`, `com.microsoft.waveform-audio`, `org.xiph.flac`, `public.aiff-audio`, `com.apple.coreaudio-format`
+  - Video: `public.movie`, `public.mpeg-4`, `com.apple.quicktime-movie`, `public.avi`
+  - Role: Viewer, Rank: Alternate (doesn't hijack default handlers)
+- [x] Handle file-open events via `AppDelegate.application(_:open:)` — routes to existing window, no duplicate windows
+- [x] `openFiles(urls:)` in ChatViewModel — creates new conversation titled from first filename, attaches all files, auto-transcribes audio/video
+- [x] Drag-and-drop into chat message area — native NSTableView drag delegate (`validateDrop` + `acceptDrop`)
+- [x] Drag-and-drop onto input bar — `.onDrop` on TextEditor, attaches files instead of pasting path
+- [x] Drag-and-drop onto empty state (no conversation selected) — creates new conversation
+- [x] Drag-and-drop onto Dock icon — handled by document type registration + AppDelegate
+- [x] Single-window enforcement — `AppDelegate` reuses existing window, "New Window" removed from File menu
+- [x] Content-change detection via `contentLengthSnapshot` — fixes stale row heights after transcription completes (SwiftData reference-type bug)
+- [ ] Share extension (optional, deferred) — "Open in CT Transcriber" in Finder share menu
 
 ### Test Criteria
-- [ ] Right-click audio file in Finder → Open With → CT Transcriber → app opens with file
-- [ ] Double-click audio file (if set as default) → opens in app
-- [ ] Drag audio file onto Dock icon → app opens, prompts for conversation
-- [ ] Drag audio file into chat area → starts transcription
-- [ ] Open multiple files at once → handled correctly
+- [x] Right-click audio file in Finder → Open With → CT Transcriber → reuses existing window
+- [x] Drag audio file into chat area → attaches and starts transcription
+- [x] Drag audio file onto input bar → attaches (not pasted as path text)
+- [x] Drag files onto empty state → creates new conversation with files
+- [x] Open multiple files at once → batched into one conversation
+- [x] Transcription result shows collapsed preview (header + 3 lines) immediately after completion
+- [ ] Double-click audio file (if set as default) — requires user to manually set default app
 
 ---
 
@@ -646,8 +653,8 @@ M0 (Skeleton)
 | **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
 | **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
 | **Phase E** | M7b → M8 → M8b → M8c | ✅ Done | Chat UX + task manager + performance + NSTableView migration |
-| **Phase F** | M9 | **Next** | macOS integration (Finder, drag-and-drop) |
-| **Phase G** | M7b+ → M10 | Pending | Audio player improvements + polish + DMG |
+| **Phase F** | M9 | ✅ Done | macOS integration (Finder, drag-and-drop) |
+| **Phase G** | M7b+ → M10 | **Next** | Audio player improvements + polish + DMG |
 | **Phase I** | M11 | Future | MCP exploration |
 
 ---

@@ -1,10 +1,13 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SettingsManager.self) private var settingsManager
     @Binding var modelManager: ModelManager?
+    /// AppDelegate receives file-open events from macOS and queues URLs here.
+    @ObservedObject var appDelegate: AppDelegate
     @State private var viewModel: ChatViewModel?
     @State private var taskManager: TaskManager?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
@@ -24,8 +27,12 @@ struct ContentView: View {
                 ContentUnavailableView(
                     "No Conversation Selected",
                     systemImage: "bubble.left.and.bubble.right",
-                    description: Text("Select a conversation or create a new one to get started.")
+                    description: Text("Select a conversation, create a new one, or drop audio files here.")
                 )
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    handleEmptyStateDrop(providers: providers)
+                    return true
+                }
             }
         }
         .toolbar {
@@ -77,10 +84,19 @@ struct ContentView: View {
                 AppLogger.info("ViewModel created", category: "app")
             }
 
+            // Process any files that were opened before the ViewModel was ready
+            processPendingURLs()
+
             // Check Python environment on a background thread to avoid blocking UI.
             // PythonEnvironment.check() calls waitUntilExit() on a subprocess.
             await checkEnvironmentAsync()
             AppLogger.info("Environment check done", category: "app")
+        }
+        .onChange(of: appDelegate.pendingOpenURLs) { _, urls in
+            // Handle URLs that arrive after startup (e.g., second file open from Finder)
+            if !urls.isEmpty {
+                processPendingURLs()
+            }
         }
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
@@ -92,6 +108,35 @@ struct ContentView: View {
                 TaskManagerView(taskManager: taskManager)
             }
         }
+    }
+
+    private func handleEmptyStateDrop(providers: [NSItemProvider]) {
+        var urls: [URL] = []
+        let group = DispatchGroup()
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                group.enter()
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                    if let data = data as? Data,
+                       let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        urls.append(url)
+                    }
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            guard let viewModel, !urls.isEmpty else { return }
+            viewModel.openFiles(urls: urls)
+        }
+    }
+
+    private func processPendingURLs() {
+        guard let viewModel, !appDelegate.pendingOpenURLs.isEmpty else { return }
+        let urls = appDelegate.pendingOpenURLs
+        appDelegate.pendingOpenURLs.removeAll()
+        viewModel.openFiles(urls: urls)
+        AppLogger.info("Processed \(urls.count) file(s) from Finder/Dock", category: "app")
     }
 
     private func checkEnvironmentAsync() async {
@@ -115,7 +160,7 @@ struct ContentView: View {
 #Preview {
     @Previewable @State var mm: ModelManager? = nil
     let sm = SettingsManager()
-    ContentView(modelManager: $mm)
+    ContentView(modelManager: $mm, appDelegate: AppDelegate())
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self], inMemory: true)
         .environment(sm)
 }

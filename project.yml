@@ -23,10 +23,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.branch.ct-transcriber
         PRODUCT_NAME: CT Transcriber
-        INFOPLIST_GENERATION_MODE: GeneratedFile
+        INFOPLIST_FILE: CTTranscriber/Resources/Info.plist
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: 1
-        GENERATE_INFOPLIST_FILE: true
+        GENERATE_INFOPLIST_FILE: false
         INFOPLIST_KEY_CFBundleDisplayName: CT Transcriber
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
 

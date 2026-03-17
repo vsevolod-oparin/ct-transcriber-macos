@@ -338,6 +338,31 @@ final class ChatViewModel {
         }
     }
 
+    // MARK: - Open Files (Finder / Dock drop / onOpenURL)
+
+    /// Opens files from external sources (Finder "Open With", Dock drop, etc.).
+    /// Creates a new conversation and attaches all files to it.
+    func openFiles(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+
+        let conversation = Conversation()
+        // Title from first filename
+        let firstName = urls.first?.deletingPathExtension().lastPathComponent ?? "Audio"
+        let suffix = urls.count > 1 ? " (+\(urls.count - 1) more)" : ""
+        conversation.title = "\(firstName)\(suffix)"
+
+        modelContext.insert(conversation)
+        saveContext()
+        refreshConversations()
+        selectedConversationID = conversation.id
+
+        for url in urls {
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            attachFile(from: url, to: conversation)
+        }
+    }
+
     // MARK: - File Attachment
 
     func attachFile(from url: URL, to conversation: Conversation) {
