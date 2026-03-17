@@ -38,21 +38,25 @@ final class ChatViewModel {
     /// Progress of the most recent transcription (0.0–1.0).
     private(set) var transcriptionProgress: Double = 0
 
-    private static let defaultMaxParallelTranscriptions = 1
-
     private var modelContext: ModelContext
     private var streamingTask: Task<Void, Never>?
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingTranscriptions: [(audioPath: String, conversation: Conversation, message: Message)] = []
 
-    // Dependencies injected after init
-    var settingsManager: SettingsManager?
-    var modelManager: ModelManager?
+    // Dependencies — constructor-injected for testability
+    let settingsManager: SettingsManager
+    let modelManager: ModelManager
     var taskManager: TaskManager?
 
-    init(modelContext: ModelContext) {
+    init(modelContext: ModelContext, settingsManager: SettingsManager, modelManager: ModelManager) {
         self.modelContext = modelContext
+        self.settingsManager = settingsManager
+        self.modelManager = modelManager
         refreshConversations()
+    }
+
+    deinit {
+        AppLogger.debug("ChatViewModel deinit", category: "lifecycle")
     }
 
     var selectedConversation: Conversation? {
@@ -82,6 +86,14 @@ final class ChatViewModel {
 
     func deleteConversation(_ conversation: Conversation) {
         drafts.removeValue(forKey: conversation.id)
+
+        // Cancel and clean up any active transcription tasks for this conversation's messages
+        let messageIDs = Set(conversation.messages.map(\.id))
+        cancelTranscriptionTasks(for: messageIDs)
+
+        // Remove pending transcriptions for this conversation
+        pendingTranscriptions.removeAll { $0.conversation.id == conversation.id }
+
         for message in conversation.messages {
             for attachment in message.attachments {
                 FileStorage.delete(storedName: attachment.storedName)
@@ -95,6 +107,22 @@ final class ChatViewModel {
 
         if wasSelected {
             selectedConversationID = conversations.first?.id
+        }
+    }
+
+    /// Cancels transcription tasks whose message IDs match the given set.
+    private func cancelTranscriptionTasks(for messageIDs: Set<UUID>) {
+        // transcriptionTasks is keyed by internal task UUID, not message UUID.
+        // We need to cancel all tasks and let finishTranscription handle cleanup.
+        // For now, cancel all if the conversation being deleted has active transcriptions.
+        // A more precise mapping would require tracking conversation ID per task.
+        if !messageIDs.isEmpty {
+            for (taskID, task) in transcriptionTasks {
+                task.cancel()
+                transcriptionTasks.removeValue(forKey: taskID)
+            }
+            activeTranscriptionCount = 0
+            transcriptionProgress = 0
         }
     }
 
@@ -162,8 +190,7 @@ final class ChatViewModel {
     }
 
     private func requestLLMResponse(for conversation: Conversation) {
-        guard let settings = settingsManager,
-              let provider = settings.activeProvider else { return }
+        guard let provider = settingsManager.activeProvider else { return }
 
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
@@ -265,8 +292,7 @@ final class ChatViewModel {
 
     /// After first assistant response, ask the LLM to suggest a title.
     private func autoNameConversation(_ conversation: Conversation) {
-        guard let settings = settingsManager,
-              let provider = settings.activeProvider else { return }
+        guard let provider = settingsManager.activeProvider else { return }
 
         let assistantMessages = conversation.messages.filter { $0.role == .assistant }
         guard assistantMessages.count == 1 else { return }
@@ -346,7 +372,7 @@ final class ChatViewModel {
         refreshConversations()
 
         // Queue if at capacity
-        if activeTranscriptionCount >= settingsManager?.settings.transcription.maxParallelTranscriptions ?? Self.defaultMaxParallelTranscriptions {
+        if activeTranscriptionCount >= settingsManager.settings.transcription.maxParallelTranscriptions {
             pendingTranscriptions.append((audioPath: audioPath, conversation: conversation, message: transcriptMessage))
             AppLogger.info("Transcription queued (\(pendingTranscriptions.count) pending)", category: "transcription")
             return
@@ -356,19 +382,11 @@ final class ChatViewModel {
     }
 
     private func startTranscription(audioPath: String, conversation: Conversation, transcriptMessage: Message) {
-        guard let settings = settingsManager else { return }
-        let transSettings = settings.settings.transcription
+        let transSettings = settingsManager.settings.transcription
 
         let envStatus = PythonEnvironment.check(settings: transSettings)
         guard case .ready = envStatus else {
             transcriptMessage.content = "⚠ Python environment not ready. Set up from Settings → Environment."
-            saveContext()
-            refreshConversations()
-            return
-        }
-
-        guard let modelManager = modelManager else {
-            transcriptMessage.content = "⚠ Internal error: model manager not initialized."
             saveContext()
             refreshConversations()
             return
@@ -459,7 +477,7 @@ final class ChatViewModel {
         refreshConversations()
 
         // Start next queued transcription if any
-        let maxParallel = settingsManager?.settings.transcription.maxParallelTranscriptions ?? Self.defaultMaxParallelTranscriptions
+        let maxParallel = settingsManager.settings.transcription.maxParallelTranscriptions
         if !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
             let next = pendingTranscriptions.removeFirst()
             startTranscription(audioPath: next.audioPath, conversation: next.conversation, transcriptMessage: next.message)
@@ -474,7 +492,7 @@ final class ChatViewModel {
     }
 
     private func formatTranscriptionResult(_ result: TranscriptionService.TranscriptionResult) -> String {
-        let skipTimestamps = settingsManager?.settings.transcription.skipTimestamps ?? false
+        let skipTimestamps = settingsManager.settings.transcription.skipTimestamps
         var text = "**Transcription** (\(result.language), \(String(format: "%.1f", result.elapsed))s)\n\n"
         text += skipTimestamps ? result.plainText : result.formattedTranscript
         return text

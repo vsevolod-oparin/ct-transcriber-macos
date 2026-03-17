@@ -28,6 +28,10 @@ final class ModelManager {
         refreshStatuses()
     }
 
+    deinit {
+        AppLogger.debug("ModelManager deinit", category: "lifecycle")
+    }
+
     // MARK: - Public
 
     /// Rescans the models directory and updates statuses.
@@ -38,8 +42,22 @@ final class ModelManager {
         for model in settings.models {
             let modelPath = (modelsDir as NSString).appendingPathComponent(model.id)
             if isValidModel(at: modelPath) {
-                let size = directorySize(path: modelPath)
-                modelStatuses[model.id] = .ready(path: modelPath, sizeMB: size)
+                // Mark ready immediately with 0 size, compute size in background
+                if case .ready = modelStatuses[model.id] {
+                    // Already ready — keep existing size
+                } else {
+                    modelStatuses[model.id] = .ready(path: modelPath, sizeMB: 0)
+                }
+                let modelID = model.id
+                Task.detached(priority: .utility) { [weak self] in
+                    let size = Self.directorySize(path: modelPath)
+                    await MainActor.run {
+                        // Only update if still in ready state (not downloading/deleted)
+                        if case .ready(let p, _) = self?.modelStatuses[modelID] {
+                            self?.modelStatuses[modelID] = .ready(path: p, sizeMB: size)
+                        }
+                    }
+                }
             } else if case .downloading = modelStatuses[model.id] {
                 // Keep downloading status
             } else {
@@ -110,7 +128,7 @@ final class ModelManager {
                         case "progress":
                             self.modelStatuses[model.id] = .downloading(step: step.message ?? "Working...")
                         case "done":
-                            let size = self.directorySize(path: outputDir)
+                            let size = Self.directorySize(path: outputDir)
                             self.modelStatuses[model.id] = .ready(path: outputDir, sizeMB: size)
                         case "error":
                             self.modelStatuses[model.id] = .error(step.message ?? "Unknown error")
@@ -188,7 +206,7 @@ final class ModelManager {
         return requiredFiles.allSatisfy { fm.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }
     }
 
-    private func directorySize(path: String) -> Int {
+    private static func directorySize(path: String) -> Int {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: path) else { return 0 }
         var totalBytes: Int64 = 0

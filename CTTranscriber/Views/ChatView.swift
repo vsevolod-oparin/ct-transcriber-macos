@@ -145,6 +145,11 @@ private struct MessageListView: View {
         messages.last?.content.count ?? 0
     }
 
+    /// Minimum character delta before scroll-during-streaming triggers.
+    private static let streamingScrollCharThrottle = 50
+
+    @State private var lastScrolledLength: Int = 0
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -163,10 +168,24 @@ private struct MessageListView: View {
             .id(conversationID)
             .onChange(of: messages.count) { _, _ in
                 scrollToLast(proxy: proxy)
+                lastScrolledLength = lastContentLength
             }
-            .onChange(of: lastContentLength) { _, _ in
+            .onChange(of: lastContentLength) { _, newValue in
+                // Throttle: only scroll every N characters during streaming
+                // to avoid per-character layout/scroll overhead
                 if isStreaming {
+                    let delta = abs(newValue - lastScrolledLength)
+                    if delta >= Self.streamingScrollCharThrottle {
+                        scrollToLast(proxy: proxy)
+                        lastScrolledLength = newValue
+                    }
+                }
+            }
+            .onChange(of: isStreaming) { _, streaming in
+                // Always scroll to bottom when streaming ends
+                if !streaming {
                     scrollToLast(proxy: proxy)
+                    lastScrolledLength = 0
                 }
             }
             .onChange(of: scrollToTopTrigger) { _, _ in
@@ -279,6 +298,11 @@ private struct MessageBubble: View {
     @State private var isExpanded = false
     @State private var isHovering = false
     @State private var analysis: MessageAnalysis?
+    /// Content length at last analysis recomputation — used to throttle during streaming.
+    @State private var lastAnalyzedLength: Int = 0
+
+    /// Minimum character delta before recomputing MessageAnalysis during streaming.
+    private static let analysisRecomputeThrottle = 500
 
     private var isUser: Bool { message.role == .user }
 
@@ -334,8 +358,14 @@ private struct MessageBubble: View {
         }
         .onHover { isHovering = $0 }
         .task(id: message.content.count) {
-            // Recompute analysis when content changes (e.g., streaming)
-            analysis = MessageAnalysis(content: message.content)
+            // Throttle analysis recomputation during streaming:
+            // only recompute every N characters to avoid CPU overhead per token.
+            let currentLength = message.content.count
+            let delta = abs(currentLength - lastAnalyzedLength)
+            if analysis == nil || !isStreamingThis || delta >= Self.analysisRecomputeThrottle {
+                analysis = MessageAnalysis(content: message.content)
+                lastAnalyzedLength = currentLength
+            }
         }
     }
 

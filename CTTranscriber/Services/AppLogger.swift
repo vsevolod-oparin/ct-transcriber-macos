@@ -3,9 +3,18 @@ import os
 
 /// Simple app logger that writes to both os_log and a file at
 /// ~/Library/Application Support/CTTranscriber/ct-transcriber.log
+///
+/// Includes automatic log rotation: when the log exceeds `maxLogSizeBytes`,
+/// the current file is moved to `.1` (previous `.1` to `.2`, etc.) and a
+/// fresh file is started. Up to `maxLogFiles` rotated files are kept.
 enum AppLogger {
     private static let subsystem = "com.branch.ct-transcriber"
     private static let osLog = Logger(subsystem: subsystem, category: "app")
+
+    /// Maximum log file size before rotation (10 MB).
+    private static let maxLogSizeBytes: UInt64 = 10 * 1_048_576
+    /// Number of rotated log files to keep (e.g., .1, .2, .3).
+    private static let maxLogFiles = 3
 
     private static let logFileURL: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -43,8 +52,10 @@ enum AppLogger {
         default: osLog.info("\(message)")
         }
 
-        // File log (append)
+        // File log (append) with rotation
         if let data = line.data(using: .utf8) {
+            rotateIfNeeded()
+
             if FileManager.default.fileExists(atPath: logFileURL.path) {
                 if let handle = try? FileHandle(forWritingTo: logFileURL) {
                     handle.seekToEndOfFile()
@@ -55,6 +66,35 @@ enum AppLogger {
                 try? data.write(to: logFileURL)
             }
         }
+    }
+
+    /// Rotates log files when the current file exceeds `maxLogSizeBytes`.
+    /// ct-transcriber.log → ct-transcriber.log.1 → .2 → .3 (oldest deleted).
+    private static func rotateIfNeeded() {
+        let fm = FileManager.default
+        guard let attrs = try? fm.attributesOfItem(atPath: logFileURL.path),
+              let size = attrs[.size] as? UInt64,
+              size >= maxLogSizeBytes else {
+            return
+        }
+
+        let basePath = logFileURL.path
+
+        // Delete the oldest rotated file
+        let oldestPath = "\(basePath).\(maxLogFiles)"
+        try? fm.removeItem(atPath: oldestPath)
+
+        // Shift existing rotated files: .2 → .3, .1 → .2, etc.
+        for i in stride(from: maxLogFiles - 1, through: 1, by: -1) {
+            let src = "\(basePath).\(i)"
+            let dst = "\(basePath).\(i + 1)"
+            if fm.fileExists(atPath: src) {
+                try? fm.moveItem(atPath: src, toPath: dst)
+            }
+        }
+
+        // Move current log to .1
+        try? fm.moveItem(atPath: basePath, toPath: "\(basePath).1")
     }
 
     /// Returns the log file path for display in UI.

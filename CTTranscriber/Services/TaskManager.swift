@@ -2,9 +2,19 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+/// Protocol for task management — enables mock injection for testing.
+protocol TaskManagerProtocol: AnyObject {
+    var tasks: [BackgroundTask] { get }
+    var activeCount: Int { get }
+    func createTask(kind: TaskKind, title: String, context: String?) -> BackgroundTask
+    func deleteTask(_ task: BackgroundTask)
+    func cancelTask(_ task: BackgroundTask)
+    func clearCompleted()
+}
+
 /// Manages all long-running background tasks (transcriptions, downloads, env setup).
 @Observable
-final class TaskManager {
+final class TaskManager: TaskManagerProtocol {
     private(set) var tasks: [BackgroundTask] = []
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
     private var modelContext: ModelContext
@@ -18,6 +28,10 @@ final class TaskManager {
         self.modelContext = modelContext
         refreshTasks()
         recoverFromCrash()
+    }
+
+    deinit {
+        AppLogger.debug("TaskManager deinit", category: "lifecycle")
     }
 
     // MARK: - Task CRUD

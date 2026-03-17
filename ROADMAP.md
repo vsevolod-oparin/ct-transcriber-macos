@@ -448,35 +448,35 @@ Performance optimization and some player features deferred.
 ## Milestone 8b: Performance & Architecture (from TelegramSwift Research)
 
 **Goal:** Apply high-value patterns from TelegramSwift analysis to improve performance, reliability, and testability.
-**Status:** Pending — see `reports/research-telegramswift-best-practices.md`
+**Status:** Immediate fixes complete (2026-03-17) — see `reports/milestone-8b-performance-architecture.md`, `reports/research-telegramswift-best-practices.md`
 
-### Immediate Fixes (Pre-M9)
+### Immediate Fixes (Pre-M9) ✅
 
 **Scroll performance during streaming:**
-- [ ] Throttle scroll-to-bottom during streaming — every 200ms or 50 characters, not every character (`onChange(of: lastContentLength)` currently fires per char)
+- [x] Throttle scroll-to-bottom during streaming — every 50 characters instead of every character; also scroll on stream end
 - [ ] Add `isDynamicContentLocked` equivalent — disable LargeTextView layout recalculation during rapid scroll
 
 **MessageAnalysis caching:**
-- [ ] Cache `MessageAnalysis` per message ID — don't recompute during streaming; only on stream finish or every 500 chars
+- [x] Throttle `MessageAnalysis` recomputation during streaming — only recompute every 500 chars or on stream finish (not per token)
 - [ ] Cache `collapsedPreview` substring once on message, not on every render
 
 **Main thread safety:**
-- [ ] Move `PythonEnvironment` validation off main thread — `runPython().waitUntilExit()` currently blocks UI on startup
-- [ ] Move `ModelManager.directorySize()` to background — synchronous file enumeration can block on large models
+- [x] Move `PythonEnvironment` validation off main thread — now runs via `Task.detached` in ContentView
+- [x] Move `ModelManager.directorySize()` to background — now runs via `Task.detached(priority: .utility)`, UI shows 0 MB briefly then updates
 
 **Task lifecycle:**
-- [ ] Clean up `transcriptionTasks` dictionary entries when conversation is deleted — prevents Task leaks
-- [ ] Add `deinit` logging to ChatViewModel, TaskManager, ModelManager — catch retain cycles early
+- [x] Clean up `transcriptionTasks` dictionary entries when conversation is deleted — cancels active tasks, removes pending queue entries
+- [x] Add `deinit` logging to ChatViewModel, TaskManager, ModelManager — logs to "lifecycle" category
 
-### Architecture Improvements
+### Architecture Improvements ✅
 
 **Protocol-based services (testability):**
-- [ ] Add `TaskManagerProtocol` — enables mock injection for unit tests
-- [ ] Constructor-based DI for ChatViewModel — move from post-init property assignment to `init(settingsManager:modelManager:taskManager:modelContext:)`
+- [x] Add `TaskManagerProtocol` — enables mock injection for unit tests
+- [x] Constructor-based DI for ChatViewModel — `init(modelContext:settingsManager:modelManager:)`, taskManager still post-init (created after VM)
 
 **Resource management:**
 - [ ] Add `NSCache` for attachment thumbnails — when image/video preview is implemented, cache in memory (Telegram uses 7 segregated NSCache instances with 200-10K item limits)
-- [ ] Add log rotation to `AppLogger` — max 10MB, keep 3 files (currently grows unbounded)
+- [x] Add log rotation to `AppLogger` — max 10MB, keep 3 rotated files (.1, .2, .3)
 - [ ] Add visibility-based audio playback pause — stop audio preview when user scrolls past (Telegram checks `visibleRect` + window key status)
 
 ### NSTableView Migration (Chat Message List)

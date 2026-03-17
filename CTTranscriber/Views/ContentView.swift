@@ -69,15 +69,17 @@ struct ContentView: View {
             }
 
             if viewModel == nil {
-                let vm = ChatViewModel(modelContext: modelContext)
-                vm.settingsManager = settingsManager
-                vm.modelManager = modelManager
+                let vm = ChatViewModel(modelContext: modelContext,
+                                       settingsManager: settingsManager,
+                                       modelManager: modelManager!)
                 vm.taskManager = taskManager
                 viewModel = vm
                 AppLogger.info("ViewModel created", category: "app")
             }
 
-            checkEnvironment()
+            // Check Python environment on a background thread to avoid blocking UI.
+            // PythonEnvironment.check() calls waitUntilExit() on a subprocess.
+            await checkEnvironmentAsync()
             AppLogger.info("Environment check done", category: "app")
         }
         .sheet(isPresented: $showSetupSheet) {
@@ -92,14 +94,20 @@ struct ContentView: View {
         }
     }
 
-    private func checkEnvironment() {
-        let status = PythonEnvironment.check(settings: settingsManager.settings.transcription)
-        switch status {
-        case .missing(let reason):
-            setupReason = reason
-            showSetupSheet = true
-        case .ready, .notChecked:
-            break
+    private func checkEnvironmentAsync() async {
+        let settings = settingsManager.settings.transcription
+        // Run the blocking subprocess check off the main thread
+        let status = await Task.detached(priority: .userInitiated) {
+            PythonEnvironment.check(settings: settings)
+        }.value
+        await MainActor.run {
+            switch status {
+            case .missing(let reason):
+                setupReason = reason
+                showSetupSheet = true
+            case .ready, .notChecked:
+                break
+            }
         }
     }
 }
