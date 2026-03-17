@@ -31,18 +31,24 @@ final class ChatViewModel {
     /// Error message from the last LLM request, shown inline in the chat.
     var lastError: String?
 
-    /// True while a transcription is in progress.
-    private(set) var isTranscribing: Bool = false
-    /// Progress of the current transcription (0.0–1.0).
+    /// Number of active transcriptions.
+    private(set) var activeTranscriptionCount: Int = 0
+    /// True while any transcription is in progress.
+    var isTranscribing: Bool { activeTranscriptionCount > 0 }
+    /// Progress of the most recent transcription (0.0–1.0).
     private(set) var transcriptionProgress: Double = 0
+
+    private static let defaultMaxParallelTranscriptions = 1
 
     private var modelContext: ModelContext
     private var streamingTask: Task<Void, Never>?
-    private var transcriptionTask: Task<Void, Never>?
+    private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
+    private var pendingTranscriptions: [(audioPath: String, conversation: Conversation, message: Message)] = []
 
     // Dependencies injected after init
     var settingsManager: SettingsManager?
     var modelManager: ModelManager?
+    var taskManager: TaskManager?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -332,49 +338,59 @@ final class ChatViewModel {
     // MARK: - Transcription
 
     func transcribeAudio(at audioPath: String, in conversation: Conversation) {
-        guard !isTranscribing else {
-            lastError = "A transcription is already in progress."
-            return
-        }
-
-        guard let settings = settingsManager else { return }
-        let transSettings = settings.settings.transcription
-
-        // Check environment
-        let envStatus = PythonEnvironment.check(settings: transSettings)
-        guard case .ready = envStatus else {
-            lastError = "Python environment not ready. Set up from Settings → Environment."
-            return
-        }
-
-        // Check model
-        guard let modelManager = modelManager else {
-            AppLogger.error("modelManager is nil", category: "transcription")
-            lastError = "Internal error: model manager not initialized."
-            return
-        }
-
-        let selectedID = transSettings.selectedModelID
-        AppLogger.info("Looking for model '\(selectedID)', statuses: \(modelManager.modelStatuses.keys.sorted())", category: "transcription")
-
-        guard let modelPath = modelManager.modelPath(for: selectedID) else {
-            AppLogger.error("Model '\(selectedID)' not found. Status: \(String(describing: modelManager.modelStatuses[selectedID]))", category: "transcription")
-            lastError = TranscriptionError.modelNotDownloaded.localizedDescription
-            return
-        }
-
-        AppLogger.info("Using model at: \(modelPath)", category: "transcription")
-
-        isTranscribing = true
-        transcriptionProgress = 0
-
-        // Create a placeholder system message for the transcription
-        let transcriptMessage = Message(role: .assistant, content: "Transcribing...")
+        // Create placeholder message immediately so it appears right after the audio
+        let fileName = (audioPath as NSString).lastPathComponent
+        let transcriptMessage = Message(role: .assistant, content: "⏳ Queued: \(fileName)")
         conversation.messages.append(transcriptMessage)
         saveContext()
         refreshConversations()
 
-        transcriptionTask = Task { [weak self] in
+        // Queue if at capacity
+        if activeTranscriptionCount >= settingsManager?.settings.transcription.maxParallelTranscriptions ?? Self.defaultMaxParallelTranscriptions {
+            pendingTranscriptions.append((audioPath: audioPath, conversation: conversation, message: transcriptMessage))
+            AppLogger.info("Transcription queued (\(pendingTranscriptions.count) pending)", category: "transcription")
+            return
+        }
+
+        startTranscription(audioPath: audioPath, conversation: conversation, transcriptMessage: transcriptMessage)
+    }
+
+    private func startTranscription(audioPath: String, conversation: Conversation, transcriptMessage: Message) {
+        guard let settings = settingsManager else { return }
+        let transSettings = settings.settings.transcription
+
+        let envStatus = PythonEnvironment.check(settings: transSettings)
+        guard case .ready = envStatus else {
+            transcriptMessage.content = "⚠ Python environment not ready. Set up from Settings → Environment."
+            saveContext()
+            refreshConversations()
+            return
+        }
+
+        guard let modelManager = modelManager else {
+            transcriptMessage.content = "⚠ Internal error: model manager not initialized."
+            saveContext()
+            refreshConversations()
+            return
+        }
+
+        let selectedID = transSettings.selectedModelID
+        guard let modelPath = modelManager.modelPath(for: selectedID) else {
+            transcriptMessage.content = "⚠ \(TranscriptionError.modelNotDownloaded.localizedDescription)"
+            saveContext()
+            refreshConversations()
+            return
+        }
+
+        activeTranscriptionCount += 1
+        transcriptionProgress = 0
+        transcriptMessage.content = "Transcribing..."
+
+        let fileName = (audioPath as NSString).lastPathComponent
+        let bgTask = taskManager?.createTask(kind: .transcription, title: "Transcribing \(fileName)")
+        let taskID = UUID()
+
+        transcriptionTasks[taskID] = Task { [weak self] in
             let stream = TranscriptionService.transcribe(
                 audioPath: audioPath,
                 modelPath: modelPath,
@@ -391,9 +407,11 @@ final class ChatViewModel {
                         switch progress {
                         case .started(let language, let duration):
                             transcriptMessage.content = "Transcribing... (detected: \(language), \(String(format: "%.0f", duration))s)"
+                            bgTask?.status = .running
                         case .segment(_, let text, let prog):
                             self.transcriptionProgress = prog
                             transcriptMessage.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                            bgTask?.progress = prog
                         case .completed(let res):
                             result = res
                         case .error(let msg):
@@ -406,38 +424,53 @@ final class ChatViewModel {
                 await MainActor.run {
                     if let result {
                         transcriptMessage.content = self.formatTranscriptionResult(result)
+                        bgTask?.status = .completed
+                        bgTask?.progress = 1.0
                     }
-                    self.isTranscribing = false
-                    self.transcriptionProgress = 0
-                    self.saveContext()
-                    self.refreshConversations()
+                    self.finishTranscription(taskID: taskID)
                 }
             } catch let error as TranscriptionError where error.localizedDescription == TranscriptionError.cancelled.localizedDescription {
                 guard let self else { return }
                 await MainActor.run {
                     transcriptMessage.content = "Transcription cancelled."
-                    self.isTranscribing = false
-                    self.transcriptionProgress = 0
-                    self.saveContext()
-                    self.refreshConversations()
+                    bgTask?.status = .cancelled
+                    self.finishTranscription(taskID: taskID)
                 }
             } catch {
                 guard let self else { return }
                 await MainActor.run {
                     self.lastError = error.localizedDescription
-                    transcriptMessage.content = "Transcription failed."
-                    self.isTranscribing = false
-                    self.transcriptionProgress = 0
-                    self.saveContext()
-                    self.refreshConversations()
+                    transcriptMessage.content = "⚠ Transcription failed: \(error.localizedDescription)"
+                    bgTask?.status = .failed
+                    bgTask?.errorMessage = error.localizedDescription
+                    self.finishTranscription(taskID: taskID)
                 }
             }
         }
     }
 
+    private func finishTranscription(taskID: UUID) {
+        activeTranscriptionCount = max(0, activeTranscriptionCount - 1)
+        transcriptionTasks.removeValue(forKey: taskID)
+        if activeTranscriptionCount == 0 {
+            transcriptionProgress = 0
+        }
+        saveContext()
+        refreshConversations()
+
+        // Start next queued transcription if any
+        let maxParallel = settingsManager?.settings.transcription.maxParallelTranscriptions ?? Self.defaultMaxParallelTranscriptions
+        if !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
+            let next = pendingTranscriptions.removeFirst()
+            startTranscription(audioPath: next.audioPath, conversation: next.conversation, transcriptMessage: next.message)
+        }
+    }
+
     func stopTranscription() {
-        transcriptionTask?.cancel()
-        transcriptionTask = nil
+        for (_, task) in transcriptionTasks {
+            task.cancel()
+        }
+        transcriptionTasks.removeAll()
     }
 
     private func formatTranscriptionResult(_ result: TranscriptionService.TranscriptionResult) -> String {

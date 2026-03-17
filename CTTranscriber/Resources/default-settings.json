@@ -38,6 +38,7 @@
     "conditionOnPreviousText": false,
     "flashAttention": false,
     "skipTimestamps": false,
+    "maxParallelTranscriptions": 1,
     "device": "mps"
   },
   "llm": {

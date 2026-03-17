@@ -116,6 +116,16 @@ private struct TranscriptionSettingsTab: View {
                 Toggle("Flash Attention", isOn: $settings.flashAttention)
 
                 Toggle("Skip Timestamps (faster)", isOn: $settings.skipTimestamps)
+
+                HStack {
+                    Text("Max Parallel Transcriptions")
+                    Spacer()
+                    TextField("", value: $settings.maxParallelTranscriptions, format: .number)
+                        .frame(width: 40)
+                        .multilineTextAlignment(.trailing)
+                    Stepper("", value: $settings.maxParallelTranscriptions, in: 1...4)
+                        .labelsHidden()
+                }
             }
         }
         .formStyle(.grouped)

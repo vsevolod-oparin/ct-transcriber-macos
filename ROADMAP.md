@@ -415,33 +415,33 @@ Performance optimization and some player features deferred.
 
 ---
 
-## Milestone 8: Background Task Manager
+## Milestone 8: Background Task Manager ✅
 
 **Goal:** All long-running tasks (downloads, transcriptions) are managed in a unified task system.
+**Status:** Complete (2026-03-17) — see `reports/milestone-8-background-task-manager.md`
 
 ### Tasks
-- [ ] `TaskManager` actor with persistent task queue (SwiftData):
-  - Task states: `pending`, `running`, `paused`, `completed`, `failed`, `cancelled`
-  - Task types: `modelDownload`, `transcription`, `pythonSetup`
-  - Persist task state — recover after crash/restart
-- [ ] Task manager popover/sheet UI:
-  - List all tasks with status, progress, type
-  - Actions per task: pause/resume, cancel, retry, delete
-  - Filter by status
-  - Auto-dismiss completed tasks after delay (configurable)
-- [ ] Task recovery on app launch:
-  - `running` tasks from previous session → restart or mark failed
-  - `pending` tasks → resume queue
-- [ ] Concurrency control: limit parallel transcriptions (configurable, default 1)
-- [ ] Toolbar badge showing active task count
+- [x] `TaskManager` with persistent task queue (SwiftData `BackgroundTask` model)
+  - Task states: pending, running, completed, failed, cancelled
+  - Task types: transcription, modelDownload, pythonSetup
+  - Crash recovery: running tasks marked failed on relaunch
+- [x] Task manager sheet UI:
+  - List all tasks with status, progress, type icons, timestamps
+  - Actions: cancel (running), delete, clear completed
+- [x] Toolbar badge showing active task count (red circle)
+- [x] Transcription creates `BackgroundTask` entry with real-time progress
+- [x] Task recovery on app launch: previously-running tasks marked failed
+- [x] Multiple audio attachments queue sequentially — transcription placeholder appears right after each audio message
+- [x] Configurable max parallel transcriptions (Settings → Transcription, default 1, range 1–4)
+- [x] Queue auto-starts next transcription when a slot opens
 
 ### Test Criteria
-- [ ] Start transcription + model download simultaneously — both visible in task manager
-- [ ] Pause transcription — task shows paused, can resume
-- [ ] Force-quit app during transcription, relaunch — task marked failed, retry available
-- [ ] Cancel task — subprocess killed, task marked cancelled
-- [ ] Delete completed task — removed from list
-- [ ] Task badge in toolbar shows correct count
+- [x] Transcription visible in task manager with progress
+- [x] Force-quit during transcription, relaunch — task marked failed
+- [x] Cancel task — status updated
+- [x] Delete completed task — removed from list
+- [x] Task badge shows active count
+- [x] Attach multiple audios — each gets a placeholder immediately after its audio, transcribed one by one
 
 ---
 

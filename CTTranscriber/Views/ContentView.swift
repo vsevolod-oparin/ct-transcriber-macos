@@ -6,8 +6,10 @@ struct ContentView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @Binding var modelManager: ModelManager?
     @State private var viewModel: ChatViewModel?
+    @State private var taskManager: TaskManager?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
     @State private var showSetupSheet = false
+    @State private var showTaskManager = false
     @State private var setupReason = ""
 
     var body: some View {
@@ -26,6 +28,26 @@ struct ContentView: View {
                 )
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button { showTaskManager = true } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "list.bullet.rectangle")
+                        if let tm = taskManager, tm.activeCount > 0 {
+                            Text("\(tm.activeCount)")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.white)
+                                .padding(2)
+                                .background(Color.red)
+                                .clipShape(Circle())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
+                }
+                .help("Background Tasks")
+            }
+        }
         .frame(minWidth: 700, minHeight: 500)
         .onChange(of: viewModel?.selectedConversationID) { oldID, newID in
             viewModel?.conversationDidChange(from: oldID, to: newID)
@@ -36,17 +58,21 @@ struct ContentView: View {
         .task {
             AppLogger.info("ContentView.task starting", category: "app")
 
-            // Create ModelManager if needed
             if modelManager == nil {
                 modelManager = ModelManager(settingsManager: settingsManager)
                 AppLogger.info("ModelManager created", category: "app")
             }
 
-            // Create ViewModel
+            if taskManager == nil {
+                taskManager = TaskManager(modelContext: modelContext)
+                AppLogger.info("TaskManager created", category: "app")
+            }
+
             if viewModel == nil {
                 let vm = ChatViewModel(modelContext: modelContext)
                 vm.settingsManager = settingsManager
                 vm.modelManager = modelManager
+                vm.taskManager = taskManager
                 viewModel = vm
                 AppLogger.info("ViewModel created", category: "app")
             }
@@ -57,6 +83,11 @@ struct ContentView: View {
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
                 showSetupSheet = false
+            }
+        }
+        .sheet(isPresented: $showTaskManager) {
+            if let taskManager {
+                TaskManagerView(taskManager: taskManager)
             }
         }
     }
@@ -77,6 +108,6 @@ struct ContentView: View {
     @Previewable @State var mm: ModelManager? = nil
     let sm = SettingsManager()
     ContentView(modelManager: $mm)
-        .modelContainer(for: [Conversation.self, Message.self, Attachment.self], inMemory: true)
+        .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self], inMemory: true)
         .environment(sm)
 }

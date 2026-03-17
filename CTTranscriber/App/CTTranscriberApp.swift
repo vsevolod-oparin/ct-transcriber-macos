@@ -13,7 +13,7 @@ struct CTTranscriberApp: App {
                 .environment(settingsManager)
                 .preferredColorScheme(settingsManager.colorScheme)
         }
-        .modelContainer(for: [Conversation.self, Message.self, Attachment.self],
+        .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
                          inMemory: isUITesting)
 
         Settings {

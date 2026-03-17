@@ -50,6 +50,7 @@ struct TranscriptionSettings: Codable, Equatable {
     var conditionOnPreviousText: Bool
     var flashAttention: Bool
     var skipTimestamps: Bool
+    var maxParallelTranscriptions: Int
     var device: String // "mps" or "cpu"
 
     var isValid: Bool {
