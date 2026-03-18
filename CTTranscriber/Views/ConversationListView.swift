@@ -88,6 +88,15 @@ struct ConversationListView: View {
                     }
                 }
             }
+            .onChange(of: viewModel.selectedConversationID) { _, newID in
+                if let newID {
+                    DispatchQueue.main.async {
+                        withAnimation {
+                            proxy.scrollTo(newID)
+                        }
+                    }
+                }
+            }
             .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
                 guard editingConversationID == nil else { return .ignored }
                 if keyPress.modifiers.contains(.command) {
