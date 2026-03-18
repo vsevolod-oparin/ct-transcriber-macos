@@ -16,6 +16,8 @@ final class Attachment {
     var storedName: String
     /// Original filename as provided by the user (e.g., "meeting.mp3")
     var originalName: String
+    /// Persisted playback position (seconds) — resumes from here on next play.
+    var playbackPosition: Double = 0
 
     var message: Message?
 

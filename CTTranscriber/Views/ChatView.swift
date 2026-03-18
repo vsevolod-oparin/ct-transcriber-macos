@@ -18,6 +18,7 @@ struct ChatView: View {
                                   viewModel.attachFile(from: url, to: conversation)
                               }
                           },
+                          seekRequest: $viewModel.seekRequest,
                           conversationID: conversation.id,
                           scrollToTopTrigger: scrollToTopTrigger,
                           scrollToBottomTrigger: scrollToBottomTrigger)
@@ -141,6 +142,7 @@ struct ChatTableView: NSViewRepresentable {
     let isStreaming: Bool
     let onRetry: (Message) -> Void
     let onDropFiles: ([URL]) -> Void
+    @Binding var seekRequest: (storedName: String, time: TimeInterval)?
     let conversationID: UUID?
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
@@ -184,6 +186,7 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.tableView = tableView
         context.coordinator.scrollView = scrollView
         context.coordinator.onDropFiles = onDropFiles
+        context.coordinator.seekRequest = $seekRequest
 
         return scrollView
     }
@@ -196,6 +199,7 @@ struct ChatTableView: NSViewRepresentable {
 
         coordinator.onRetry = onRetry
         coordinator.onDropFiles = onDropFiles
+        coordinator.seekRequest = $seekRequest
         coordinator.isStreaming = isStreaming
 
         guard let tableView = coordinator.tableView else { return }
@@ -308,6 +312,8 @@ struct ChatTableView: NSViewRepresentable {
         var isStreaming: Bool = false
         var onRetry: (Message) -> Void = { _ in }
         var onDropFiles: ([URL]) -> Void = { _ in }
+        /// Shared seek request state — passed through to AudioPlayerView bindings.
+        var seekRequest: Binding<(storedName: String, time: TimeInterval)?>?
         var conversationID: UUID?
 
         weak var tableView: NSTableView?
@@ -368,6 +374,7 @@ struct ChatTableView: NSViewRepresentable {
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
             let isExpanded = expandedMessages.contains(message.id)
 
+            let seekBinding = seekRequest ?? .constant(nil)
             let bubble = MessageBubble(
                 message: message,
                 isStreamingThis: isStreamingThis,
@@ -375,7 +382,8 @@ struct ChatTableView: NSViewRepresentable {
                 onRetry: { [weak self] in self?.onRetry(message) },
                 onCollapseToggle: { [weak self] in
                     self?.toggleExpanded(for: message.id, row: row)
-                }
+                },
+                seekRequest: seekBinding
             )
             .padding(.horizontal, 16)
 
@@ -419,7 +427,8 @@ struct ChatTableView: NSViewRepresentable {
                 isStreamingThis: isStreamingThis,
                 isExpanded: isExpanded,
                 onRetry: {},
-                onCollapseToggle: {}
+                onCollapseToggle: {},
+                seekRequest: .constant(nil)
             )
             .padding(.horizontal, 16)
 
@@ -528,6 +537,7 @@ struct ChatTableView: NSViewRepresentable {
                 let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
                 let isExpanded = expandedMessages.contains(message.id)
 
+                let seekBinding = self.seekRequest ?? .constant(nil)
                 let updatedBubble = MessageBubble(
                     message: message,
                     isStreamingThis: isStreamingThis,
@@ -535,7 +545,8 @@ struct ChatTableView: NSViewRepresentable {
                     onRetry: { [weak self] in self?.onRetry(message) },
                     onCollapseToggle: { [weak self] in
                         self?.toggleExpanded(for: message.id, row: row)
-                    }
+                    },
+                    seekRequest: seekBinding
                 )
                 .padding(.horizontal, 16)
 
@@ -699,6 +710,7 @@ private struct MessageBubble: View {
     var isExpanded: Bool = false
     let onRetry: () -> Void
     let onCollapseToggle: () -> Void
+    @Binding var seekRequest: (storedName: String, time: TimeInterval)?
     @State private var isHovering = false
     @State private var analysis: MessageAnalysis?
     /// Content length at last analysis recomputation — used to throttle during streaming.
@@ -724,7 +736,7 @@ private struct MessageBubble: View {
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 ForEach(message.attachments) { attachment in
-                    AttachmentView(attachment: attachment)
+                    AttachmentView(attachment: attachment, seekRequest: $seekRequest)
                 }
 
                 if !message.content.isEmpty {
@@ -936,23 +948,249 @@ private struct LargeTextView: NSViewRepresentable {
 
 private struct AttachmentView: View {
     let attachment: Attachment
-    @State private var isPlaying = false
-    @State private var player: AVAudioPlayer?
+    @Binding var seekRequest: (storedName: String, time: TimeInterval)?
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Play button for audio/video
-            if attachment.kind == .audio || attachment.kind == .video {
+        switch attachment.kind {
+        case .audio, .video:
+            AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
+        case .image:
+            ImageAttachmentView(attachment: attachment)
+        case .text:
+            FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
+        }
+    }
+}
+
+// MARK: - Audio/Video Player with Seek Bar
+
+private struct AudioPlayerView: View {
+    let attachment: Attachment
+    /// Binding to the ViewModel's seek request — when a transcript timestamp is tapped,
+    /// this gets set with (storedName, time) so the matching player can seek.
+    @Binding var seekRequest: (storedName: String, time: TimeInterval)?
+    @State private var player: AVAudioPlayer?
+    @State private var isPlaying = false
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 0
+    @State private var isDragging = false
+    @State private var timer: Timer?
+    @State private var videoThumbnail: NSImage?
+
+    /// Update interval for the seek bar position (seconds).
+    private static let progressUpdateInterval: TimeInterval = 0.1
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Video thumbnail (if video)
+            if attachment.kind == .video, let thumbnail = videoThumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            HStack(spacing: 6) {
                 Button(action: togglePlayback) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title3)
+                        .font(.title2)
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.borderless)
-            } else {
-                Image(systemName: iconName)
+
+                // Seek slider
+                Slider(value: Binding(
+                    get: { duration > 0 ? currentTime / duration : 0 },
+                    set: { newValue in
+                        isDragging = true
+                        currentTime = newValue * duration
+                    }
+                ), in: 0...1) { editing in
+                    if !editing {
+                        // Drag ended — seek to position
+                        player?.currentTime = currentTime
+                        isDragging = false
+                        persistPosition()
+                    }
+                }
+                .controlSize(.small)
+                .frame(minWidth: 80)
+
+                // Time display: current / duration
+                Text("\(formatTime(currentTime)) / \(formatTime(duration))")
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, alignment: .trailing)
             }
 
+            Text(attachment.originalName)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .onAppear { loadMetadata() }
+        .onDisappear { cleanup() }
+        .onChange(of: seekRequest?.time) { _, _ in
+            guard let req = seekRequest, req.storedName == attachment.storedName else { return }
+            if player == nil { loadMetadata() }
+            player?.currentTime = req.time
+            currentTime = req.time
+            if !isPlaying {
+                startPlayback()
+            }
+            seekRequest = nil
+        }
+    }
+
+    private func loadMetadata() {
+        let url = FileStorage.url(for: attachment.storedName)
+        do {
+            let p = try AVAudioPlayer(contentsOf: url)
+            duration = p.duration
+            player = p
+            // Restore persisted playback position
+            let saved = attachment.playbackPosition
+            if saved > 0 && saved < p.duration {
+                p.currentTime = saved
+                currentTime = saved
+            }
+        } catch {
+            AppLogger.error("Failed to load audio: \(error)", category: "audio")
+        }
+
+        // Generate video thumbnail
+        if attachment.kind == .video {
+            Task.detached(priority: .utility) {
+                let thumb = await Self.generateThumbnail(url: url)
+                await MainActor.run { videoThumbnail = thumb }
+            }
+        }
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            pausePlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    private func startPlayback() {
+        if player == nil { loadMetadata() }
+
+        // Pause any other playing audio first
+        AudioPlaybackManager.shared.didStartPlaying(
+            storedName: attachment.storedName,
+            onPause: { [self] in pausePlayback() }
+        )
+
+        player?.play()
+        isPlaying = true
+        startTimer()
+    }
+
+    private func pausePlayback() {
+        player?.pause()
+        isPlaying = false
+        stopTimer()
+        persistPosition()
+        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+    }
+
+    private func startTimer() {
+        timer = Timer.scheduledTimer(withTimeInterval: Self.progressUpdateInterval, repeats: true) { _ in
+            guard let player, !isDragging else { return }
+            currentTime = player.currentTime
+            if !player.isPlaying {
+                isPlaying = false
+                persistPosition()
+                stopTimer()
+                AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+            }
+        }
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func cleanup() {
+        persistPosition()
+        player?.stop()
+        stopTimer()
+        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+    }
+
+    /// Saves current playback position to the SwiftData Attachment model.
+    private func persistPosition() {
+        let pos = player?.currentTime ?? currentTime
+        if pos > 0 {
+            attachment.playbackPosition = pos
+        }
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// Generates a thumbnail from the first frame of a video file.
+    private static func generateThumbnail(url: URL) async -> NSImage? {
+        let asset = AVAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 320, height: 320)
+
+        do {
+            let cgImage = try generator.copyCGImage(at: .zero, actualTime: nil)
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Image Attachment
+
+private struct ImageAttachmentView: View {
+    let attachment: Attachment
+    @State private var image: NSImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            FileAttachmentBadge(attachment: attachment, iconName: "photo")
+        }
+        .onAppear {
+            let url = FileStorage.url(for: attachment.storedName)
+            image = NSImage(contentsOf: url)
+        }
+    }
+}
+
+// MARK: - Generic File Badge
+
+private struct FileAttachmentBadge: View {
+    let attachment: Attachment
+    let iconName: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: iconName)
             Text(attachment.originalName)
                 .lineLimit(1)
         }
@@ -962,34 +1200,6 @@ private struct AttachmentView: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onDisappear {
-            player?.stop()
-        }
-    }
-
-    private func togglePlayback() {
-        if isPlaying {
-            player?.stop()
-            isPlaying = false
-        } else {
-            let url = FileStorage.url(for: attachment.storedName)
-            do {
-                player = try AVAudioPlayer(contentsOf: url)
-                player?.play()
-                isPlaying = true
-            } catch {
-                AppLogger.error("Failed to play audio: \(error)", category: "audio")
-            }
-        }
-    }
-
-    private var iconName: String {
-        switch attachment.kind {
-        case .audio: "waveform"
-        case .video: "film"
-        case .image: "photo"
-        case .text:  "doc.text"
-        }
     }
 }
 

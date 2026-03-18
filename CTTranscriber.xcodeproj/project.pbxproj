@@ -25,6 +25,7 @@
 		70EF0A3E614395B956C9EC6A /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */; };
 		7D233FC3F692C3701B4494A6 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AF36BE09F983DF2B4D426D /* ModelManager.swift */; };
 		988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */; };
+		992803DC943ED97DF62E8A4E /* AudioPlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */; };
 		9F23569AA86BCB32B960D72C /* LLMServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383E65F1A53A9EEBC09491B3 /* LLMServiceFactory.swift */; };
 		A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */; };
 		B49014C1B036F3886E105AA6 /* TaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39A15CB2114DD69C3DDE6BBF /* TaskManager.swift */; };
@@ -88,6 +89,7 @@
 		D6DCE79BC5B3122843750F3D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStorage.swift; sourceTree = "<group>"; };
 		FF7A27F7EC2A302BBF0DB51A /* transcribe.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = transcribe.py; sourceTree = "<group>"; };
+		FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -173,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */,
+				FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */,
 				733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */,
 				29AF36BE09F983DF2B4D426D /* ModelManager.swift */,
 				3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */,
@@ -321,6 +324,7 @@
 				70EF0A3E614395B956C9EC6A /* AppLogger.swift in Sources */,
 				452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */,
 				17D2DE8BA27288D04F267D64 /* Attachment.swift in Sources */,
+				992803DC943ED97DF62E8A4E /* AudioPlaybackManager.swift in Sources */,
 				F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */,
 				33C143E5D5FC26D377B0EF8E /* CTTranscriberApp.swift in Sources */,
 				B74AB71BE888405154B99885 /* ChatView.swift in Sources */,

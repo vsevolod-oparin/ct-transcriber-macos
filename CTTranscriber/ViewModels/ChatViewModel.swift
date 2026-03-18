@@ -36,6 +36,10 @@ final class ChatViewModel {
     /// Error message from the last LLM request, shown inline in the chat.
     var lastError: String?
 
+    /// Seek request: when a user clicks a timestamp in a transcript, this is set to
+    /// (storedName, timeInSeconds) so the audio player can seek to that position.
+    var seekRequest: (storedName: String, time: TimeInterval)?
+
     /// Number of active transcriptions.
     private(set) var activeTranscriptionCount: Int = 0
     /// True while any transcription is in progress.
