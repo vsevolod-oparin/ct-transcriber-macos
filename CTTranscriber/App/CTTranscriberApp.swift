@@ -12,18 +12,53 @@ struct CTTranscriberApp: App {
         WindowGroup {
             ContentView(modelManager: $modelManager, appDelegate: appDelegate)
                 .environment(settingsManager)
+                .environment(\.fontScale, settingsManager.fontScale)
                 .preferredColorScheme(settingsManager.colorScheme)
+                .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
         }
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
                          inMemory: isUITesting)
         .commands {
             // Remove "New Window" from File menu — single-window app
             CommandGroup(replacing: .newItem) { }
+
+            CommandGroup(after: .textFormatting) {
+                Button("Increase Font Size") {
+                    settingsManager.increaseFontScale()
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Decrease Font Size") {
+                    settingsManager.decreaseFontScale()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Reset Font Size") {
+                    settingsManager.settings.general.fontScale = 1.0
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
         }
 
         Settings {
             SettingsView(settingsManager: settingsManager, modelManager: modelManager ?? ModelManager(settingsManager: settingsManager))
         }
+    }
+}
+
+/// Maps a font scale factor (0.7–2.0) to the nearest DynamicTypeSize.
+private func dynamicTypeForScale(_ scale: Double) -> DynamicTypeSize {
+    switch scale {
+    case ..<0.8:    return .xSmall
+    case ..<0.9:    return .small
+    case ..<1.0:    return .medium
+    case ..<1.1:    return .large       // default
+    case ..<1.2:    return .xLarge
+    case ..<1.3:    return .xxLarge
+    case ..<1.5:    return .xxxLarge
+    case ..<1.7:    return .accessibility1
+    case ..<1.9:    return .accessibility2
+    default:        return .accessibility3
     }
 }
 

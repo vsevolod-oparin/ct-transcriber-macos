@@ -16,6 +16,8 @@ struct GeneralSettings: Codable, Equatable {
     }
 
     var theme: AppTheme = .system
+    /// Global font scale factor (1.0 = default). Range: 0.7–2.0.
+    var fontScale: Double = 1.0
 }
 
 // MARK: - Transcription

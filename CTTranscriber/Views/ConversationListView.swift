@@ -220,21 +220,23 @@ private struct ConversationRow: View {
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         VStack(alignment: .leading, spacing: 4) {
             if isEditing {
                 SelectAllTextField(text: $editingTitle, onCommit: onCommitRename, onCancel: onCancelRename)
-                    .font(.headline)
+                    .font(sf.headline)
                     .accessibilityIdentifier("renameTextField")
             } else {
                 HStack(spacing: 4) {
                     Text(conversation.title)
-                        .font(.headline)
+                        .font(sf.headline)
                         .lineLimit(1)
                     if isActive {
                         Image(systemName: "chevron.right")
-                            .font(.caption2)
+                            .font(sf.caption2)
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -242,7 +244,7 @@ private struct ConversationRow: View {
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
-                .font(.caption)
+                .font(sf.caption)
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
         .padding(.vertical, 2)

@@ -27,6 +27,10 @@ struct SettingsView: View {
 private struct GeneralSettingsTab: View {
     @Binding var settings: GeneralSettings
 
+    private static let minFontScale = 0.7
+    private static let maxFontScale = 2.0
+    private static let fontScaleStep = 0.1
+
     var body: some View {
         Form {
             Picker("Theme", selection: $settings.theme) {
@@ -35,6 +39,31 @@ private struct GeneralSettingsTab: View {
                 }
             }
             .pickerStyle(.segmented)
+
+            Section("Font Size") {
+                HStack {
+                    Text("A")
+                        .font(.caption)
+                    Slider(value: $settings.fontScale,
+                           in: Self.minFontScale...Self.maxFontScale,
+                           step: Self.fontScaleStep)
+                    Text("A")
+                        .font(.title)
+                    Text("\(Int(settings.fontScale * 100))%")
+                        .monospacedDigit()
+                        .frame(width: 45, alignment: .trailing)
+                }
+                HStack {
+                    Button("Reset") {
+                        settings.fontScale = 1.0
+                    }
+                    .disabled(settings.fontScale == 1.0)
+                    Spacer()
+                    Text("Cmd+\u{2795} / Cmd+\u{2796} to adjust")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()

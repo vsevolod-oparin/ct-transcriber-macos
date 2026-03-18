@@ -1,6 +1,7 @@
 {
   "general": {
-    "theme": "system"
+    "theme": "system",
+    "fontScale": 1.0
   },
   "transcription": {
     "condaEnvName": "ct-transcriber-metal-env",

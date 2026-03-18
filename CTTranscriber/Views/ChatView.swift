@@ -8,6 +8,7 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     @State private var isRenamingTitle = false
     @State private var renameTitleText = ""
+    @Environment(\.fontScale) private var fontScale
     var body: some View {
         VStack(spacing: 0) {
             ChatTableView(messages: viewModel.sortedMessages(for: conversation),
@@ -20,6 +21,7 @@ struct ChatView: View {
                           },
                           onClickBackground: { viewModel.requestInputFocus() },
                           seekRequest: $viewModel.seekRequest,
+                          fontScale: fontScale,
                           conversationID: conversation.id,
                           scrollToTopTrigger: viewModel.scrollToTopTrigger,
                           scrollToBottomTrigger: viewModel.scrollToBottomTrigger)
@@ -47,6 +49,7 @@ struct ChatView: View {
                 if isRenamingTitle {
                     TitleRenameField(
                         text: $renameTitleText,
+                        fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale),
                         onCommit: {
                             let trimmed = renameTitleText.trimmingCharacters(in: .whitespacesAndNewlines)
                             if !trimmed.isEmpty {
@@ -61,7 +64,7 @@ struct ChatView: View {
                     .frame(width: 250)
                 } else {
                     Text(conversation.title)
-                        .font(.headline)
+                        .font(ScaledFont(scale: fontScale).headline)
                         .lineLimit(1)
                         .onTapGesture(count: 2) {
                             renameTitleText = conversation.title
@@ -82,17 +85,19 @@ struct ChatView: View {
 private struct TranscriptionProgressBar: View {
     let progress: Double
     let onStop: () -> Void
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         HStack(spacing: 8) {
             Image(systemName: "waveform")
                 .foregroundStyle(Color.accentColor)
             Text("Transcribing...")
-                .font(.caption)
+                .font(sf.caption)
             ProgressView(value: progress)
                 .progressViewStyle(.linear)
             Text("\(Int(progress * 100))%")
-                .font(.caption)
+                .font(sf.caption)
                 .monospacedDigit()
                 .frame(width: 35, alignment: .trailing)
             Button(action: onStop) {
@@ -113,13 +118,15 @@ private struct TranscriptionProgressBar: View {
 private struct ErrorBanner: View {
     let message: String
     let onDismiss: () -> Void
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         HStack {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
             Text(message)
-                .font(.caption)
+                .font(sf.caption)
                 .lineLimit(5)
                 .textSelection(.enabled)
             Spacer()
@@ -159,6 +166,7 @@ struct ChatTableView: NSViewRepresentable {
     let onDropFiles: ([URL]) -> Void
     let onClickBackground: () -> Void
     @Binding var seekRequest: (storedName: String, time: TimeInterval)?
+    let fontScale: Double
     let conversationID: UUID?
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
@@ -217,7 +225,18 @@ struct ChatTableView: NSViewRepresentable {
         coordinator.onRetry = onRetry
         coordinator.onDropFiles = onDropFiles
         coordinator.seekRequest = $seekRequest
+
+        let oldFontScale = coordinator.fontScale
+        coordinator.fontScale = fontScale
         coordinator.isStreaming = isStreaming
+
+        // Font scale changed — update intercell spacing, clear height cache, reload
+        if abs(fontScale - oldFontScale) > 0.01, let tableView = coordinator.tableView {
+            tableView.intercellSpacing = NSSize(width: 0, height: 12 * fontScale)
+            coordinator.heightCache.removeAll()
+            tableView.reloadData()
+            return
+        }
 
         guard let tableView = coordinator.tableView else { return }
 
@@ -331,6 +350,7 @@ struct ChatTableView: NSViewRepresentable {
         var onDropFiles: ([URL]) -> Void = { _ in }
         /// Shared seek request state — passed through to AudioPlayerView bindings.
         var seekRequest: Binding<(storedName: String, time: TimeInterval)?>?
+        var fontScale: Double = 1.0
         var conversationID: UUID?
 
         weak var tableView: NSTableView?
@@ -403,15 +423,22 @@ struct ChatTableView: NSViewRepresentable {
                 seekRequest: seekBinding
             )
             .padding(.horizontal, 16)
+            .environment(\.fontScale, fontScale)
 
-            let cell = NSHostingView(rootView: bubble)
-            // Pre-set frame width to match table column so the cell doesn't
-            // briefly render at a narrow intrinsic width before layout.
+            // Wrap in a container NSView so the hosting view fills the full row.
+            // NSHostingView's intrinsic content size can be smaller than the row height,
+            // causing SwiftUI Text truncation. The container + autoresizing ensures
+            // the hosting view gets the full row dimensions.
             let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
+            let container = NSView()
+            let hostingView = NSHostingView(rootView: bubble)
+            hostingView.autoresizingMask = [.width, .height]
             if columnWidth > 0 {
-                cell.frame.size.width = columnWidth
+                container.frame.size.width = columnWidth
+                hostingView.frame.size.width = columnWidth
             }
-            return cell
+            container.addSubview(hostingView)
+            return container
         }
 
         // MARK: - Delegate (row heights)
@@ -436,78 +463,45 @@ struct ChatTableView: NSViewRepresentable {
                 return cached
             }
 
-            // Measure height via a temporary NSHostingView
+            // Measure height using direct text measurement (NSTextStorage).
+            // NSHostingView.fittingSize is unreliable for SwiftUI Text wrapping.
             let isExpanded = expandedMessages.contains(message.id)
-
-            let bubble = MessageBubble(
-                message: message,
-                isStreamingThis: isStreamingThis,
-                isExpanded: isExpanded,
-                onRetry: {},
-                onCollapseToggle: {},
-                seekRequest: .constant(nil)
-            )
-            .padding(.horizontal, 16)
-
-            let measuringView = NSHostingView(rootView: bubble)
             let targetWidth = max(currentWidth, 200)
+            let s = CGFloat(fontScale)
+            let scaledFontSize = CGFloat(NSFont.systemFontSize) * s
 
-            // For collapsed long messages, ensure minimum height shows the preview lines.
-            // The NSHostingView measurement can underestimate when the Text view
-            // hasn't computed its multi-line layout at the constrained width.
-            let isCollapsedLong = !isExpanded && message.content.count > 200 && MessageAnalysis(content: message.content).isLong
+            // Layout constants (must match MessageBubble's padding/spacing)
+            let bubbleHPadding: CGFloat = 12 * 2 * s
+            let bubbleVPadding: CGFloat = 8 * 2 * s
+            let outerHPadding: CGFloat = 16 * 2 * s
+            let spacerWidth: CGFloat = (60 + 4 + 24) * s  // Spacer + spacing + copy button
+            let timestampHeight: CGFloat = 20 * s
+            let attachmentRowHeight: CGFloat = 40 * s      // per attachment (icon + name + padding)
+            let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * attachmentRowHeight
+            let collapseButtonHeight: CGFloat = 24 * s
 
-            // For large expanded messages, compute text height directly via NSTextStorage
-            // because nested NSViewRepresentable (LargeTextView) inside a measuring
-            // NSHostingView doesn't report correct height.
-            let useLargeText = isExpanded && message.content.count > largeTextThreshold
-            let fittingHeight: CGFloat
+            let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
 
-            if useLargeText {
-                // Measure text height directly using the text layout system
-                let bubbleHPadding: CGFloat = 12 * 2    // .padding(.horizontal, 12)
-                let bubbleVPadding: CGFloat = 8 * 2     // .padding(.vertical, 8)
-                let outerHPadding: CGFloat = 16 * 2     // .padding(.horizontal, 16)
-                let spacerWidth: CGFloat = 60 + 4 + 24  // Spacer(minLength:60) + spacing + copy button
-                let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
-
-                let textHeight = Self.measureTextHeight(
-                    message.content, width: max(textWidth, 100))
-
-                // bubble content + padding + timestamp row + attachments
-                let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * 30
-                let timestampHeight: CGFloat = 20
-                let collapseButtonHeight: CGFloat = 24
-                fittingHeight = textHeight + bubbleVPadding + timestampHeight + attachmentHeight + collapseButtonHeight
+            // Determine which text to measure
+            let analysis = MessageAnalysis(content: message.content)
+            let isCollapsedLong = !isExpanded && analysis.isLong
+            let displayText: String
+            if message.content.isEmpty {
+                displayText = isStreamingThis ? "Thinking..." : ""
+            } else if isCollapsedLong {
+                displayText = analysis.collapsedPreview
             } else {
-                // Normal messages: use Auto Layout measurement
-                measuringView.translatesAutoresizingMaskIntoConstraints = false
-                let widthConstraint = measuringView.widthAnchor.constraint(equalToConstant: targetWidth)
-                widthConstraint.isActive = true
-                measuringView.layoutSubtreeIfNeeded()
-                fittingHeight = measuringView.fittingSize.height
-                widthConstraint.isActive = false
+                displayText = message.content
             }
 
-            var height = max(fittingHeight, 30)
+            let textHeight = displayText.isEmpty ? 0 :
+                Self.measureTextHeight(displayText, width: max(textWidth, 100), fontSize: scaledFontSize)
 
-            // For collapsed long messages, ensure minimum height to show preview lines.
-            // NSHostingView measurement can underestimate multi-line SwiftUI Text.
-            if isCollapsedLong {
-                let analysis = MessageAnalysis(content: message.content)
-                let previewText = analysis.collapsedPreview
-                let bubbleHPadding: CGFloat = 12 * 2
-                let outerHPadding: CGFloat = 16 * 2
-                let spacerWidth: CGFloat = 60 + 4 + 24
-                let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
-                let previewHeight = Self.measureTextHeight(previewText, width: max(textWidth, 100))
-                let bubbleVPadding: CGFloat = 8 * 2
-                let timestampHeight: CGFloat = 20
-                let collapseButtonHeight: CGFloat = 24
-                let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * 30
-                let minHeight = previewHeight + bubbleVPadding + timestampHeight + collapseButtonHeight + attachmentHeight
-                height = max(height, minHeight)
+            var height = textHeight + bubbleVPadding + timestampHeight + attachmentHeight
+            if isCollapsedLong || (analysis.isLong && !isStreamingThis) {
+                height += collapseButtonHeight
             }
+            height = max(height, 30)
 
             if !isStreamingThis {
                 heightCache[message.id] = height
@@ -520,9 +514,9 @@ struct ChatTableView: NSViewRepresentable {
 
         /// Measures the rendered height of a text string at a given width using NSTextStorage.
         /// More reliable than NSHostingView measurement for large text blocks.
-        static func measureTextHeight(_ text: String, width: CGFloat) -> CGFloat {
+        static func measureTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat = NSFont.systemFontSize) -> CGFloat {
             let textStorage = NSTextStorage(string: text, attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                .font: NSFont.systemFont(ofSize: fontSize)
             ])
             let textContainer = NSTextContainer(containerSize: NSSize(width: width, height: .greatestFiniteMagnitude))
             textContainer.lineFragmentPadding = 0
@@ -566,6 +560,7 @@ struct ChatTableView: NSViewRepresentable {
                     seekRequest: seekBinding
                 )
                 .padding(.horizontal, 16)
+                .environment(\.fontScale, fontScale)
 
                 // Replace the cell's content with a new hosting view
                 // (cheaper than reloadData which destroys + recreates)
@@ -743,6 +738,10 @@ private struct MessageBubble: View {
     @State private var analysis: MessageAnalysis?
     /// Content length at last analysis recomputation — used to throttle during streaming.
     @State private var lastAnalyzedLength: Int = 0
+    @Environment(\.fontScale) private var fontScale
+    private var sf: ScaledFont { ScaledFont(scale: fontScale) }
+    /// Scale a base padding/spacing value by fontScale.
+    private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
 
     /// Minimum character delta before recomputing MessageAnalysis during streaming.
     private static let analysisRecomputeThrottle = 500
@@ -756,13 +755,13 @@ private struct MessageBubble: View {
     var body: some View {
         let info = currentAnalysis
 
-        HStack(alignment: .top, spacing: 4) {
+        HStack(alignment: .top, spacing: sp(4)) {
             if isUser {
-                Spacer(minLength: 60)
+                Spacer(minLength: sp(60))
                 copyButton
             }
 
-            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: isUser ? .trailing : .leading, spacing: sp(4)) {
                 ForEach(message.attachments) { attachment in
                     AttachmentView(attachment: attachment, seekRequest: $seekRequest)
                 }
@@ -777,17 +776,17 @@ private struct MessageBubble: View {
                 HStack(spacing: 4) {
                     if info.isError {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.caption2)
+                            .font(sf.caption2)
                             .foregroundStyle(.red)
                     }
 
                     Text(message.timestamp.formatted(.dateTime.hour().minute()))
-                        .font(.caption2)
+                        .font(sf.caption2)
                         .foregroundStyle(Color(nsColor: .secondaryLabelColor))
 
                     if info.isError {
                         Button("Retry") { onRetry() }
-                            .font(.caption2)
+                            .font(sf.caption2)
                             .buttonStyle(.borderless)
                             .foregroundStyle(Color.accentColor)
                     }
@@ -796,7 +795,7 @@ private struct MessageBubble: View {
 
             if !isUser {
                 copyButton
-                Spacer(minLength: 60)
+                Spacer(minLength: sp(60))
             }
         }
         .onHover { isHovering = $0 }
@@ -818,7 +817,7 @@ private struct MessageBubble: View {
             NSPasteboard.general.setString(message.content, forType: .string)
         } label: {
             Image(systemName: "doc.on.doc")
-                .font(.caption)
+                .font(sf.caption)
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
@@ -834,7 +833,8 @@ private struct MessageBubble: View {
                 Text(info.collapsedPreview)
                     .textSelection(.enabled)
             } else if message.content.count > largeTextThreshold && !isStreamingThis {
-                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor)
+                LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor,
+                              fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale))
             } else {
                 HStack(alignment: .bottom, spacing: 4) {
                     Text(message.content)
@@ -853,13 +853,13 @@ private struct MessageBubble: View {
                 Button(isExpanded ? "Show less" : "Show more (\(info.lineCountDisplay) lines)") {
                     onCollapseToggle()
                 }
-                .font(.caption)
+                .font(sf.caption)
                 .buttonStyle(.borderless)
                 .foregroundStyle(isUser ? .white.opacity(0.8) : Color.accentColor)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, sp(12))
+        .padding(.vertical, sp(8))
         .background(bubbleBackground(info: info))
         .foregroundStyle(isUser ? .white : .primary)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -883,13 +883,13 @@ private struct MessageBubble: View {
             ProgressView()
                 .controlSize(.mini)
             Text("Thinking...")
-                .font(.caption)
+                .font(sf.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, sp(12))
+        .padding(.vertical, sp(8))
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: sp(12)))
     }
 
     @ViewBuilder
@@ -936,13 +936,14 @@ private struct MessageBubble: View {
 private struct LargeTextView: NSViewRepresentable {
     let text: String
     let textColor: NSColor
+    var fontSize: CGFloat = NSFont.systemFontSize
 
     func makeNSView(context: Context) -> NSTextView {
         let textView = NSTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = false
-        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.font = .systemFont(ofSize: fontSize)
         textView.textColor = textColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
@@ -955,6 +956,7 @@ private struct LargeTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
+        textView.font = .systemFont(ofSize: fontSize)
         let currentLength = textView.string.count
         if currentLength != text.count || textView.string != text {
             textView.string = text
@@ -1006,25 +1008,29 @@ private struct AudioPlayerView: View {
     @State private var isDragging = false
     @State private var timer: Timer?
     @State private var videoThumbnail: NSImage?
+    @Environment(\.fontScale) private var fontScale
 
     /// Update interval for the seek bar position (seconds).
     private static let progressUpdateInterval: TimeInterval = 0.1
 
+    private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let sf = ScaledFont(scale: fontScale)
+        VStack(alignment: .leading, spacing: sp(4)) {
             // Video thumbnail (if video)
             if attachment.kind == .video, let thumbnail = videoThumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .frame(maxHeight: sp(160))
+                    .clipShape(RoundedRectangle(cornerRadius: sp(6)))
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: sp(6)) {
                 Button(action: togglePlayback) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title2)
+                        .font(sf.title2)
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.borderless)
@@ -1045,25 +1051,25 @@ private struct AudioPlayerView: View {
                     }
                 }
                 .controlSize(.small)
-                .frame(minWidth: 80)
+                .frame(minWidth: sp(80))
 
                 // Time display: current / duration
                 Text("\(formatTime(currentTime)) / \(formatTime(duration))")
-                    .font(.caption2)
+                    .font(sf.caption2)
                     .monospacedDigit()
                     .foregroundStyle(.primary)
-                    .frame(width: 80, alignment: .trailing)
+                    .frame(minWidth: sp(80), alignment: .trailing)
             }
 
             Text(attachment.originalName)
-                .font(.caption)
+                .font(sf.caption)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, sp(8))
+        .padding(.vertical, sp(6))
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: sp(6)))
         .onAppear { loadMetadata() }
         .onDisappear { cleanup() }
         .onChange(of: seekRequest?.time) { _, _ in
@@ -1217,6 +1223,7 @@ private struct ImageAttachmentView: View {
 private struct FileAttachmentBadge: View {
     let attachment: Attachment
     let iconName: String
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1224,7 +1231,7 @@ private struct FileAttachmentBadge: View {
             Text(attachment.originalName)
                 .lineLimit(1)
         }
-        .font(.caption)
+        .font(ScaledFont(scale: fontScale).caption)
         .foregroundStyle(.primary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -1239,6 +1246,7 @@ private struct FileAttachmentBadge: View {
 /// Uses NSViewRepresentable to avoid SwiftUI re-render focus loss.
 private struct TitleRenameField: NSViewRepresentable {
     @Binding var text: String
+    var fontSize: CGFloat = NSFont.systemFontSize
     var onCommit: () -> Void
     var onCancel: () -> Void
 
@@ -1248,7 +1256,7 @@ private struct TitleRenameField: NSViewRepresentable {
         field.bezelStyle = .roundedBezel
         field.focusRingType = .exterior
         field.delegate = context.coordinator
-        field.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        field.font = .systemFont(ofSize: fontSize, weight: .semibold)
         return field
     }
 
@@ -1327,12 +1335,14 @@ struct ChatInputBar: View {
     let conversation: Conversation
     var isInputFocused: FocusState<Bool>.Binding
     @State private var isShowingFilePicker = false
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         HStack(alignment: .bottom, spacing: 8) {
             Button(action: { isShowingFilePicker = true }) {
                 Image(systemName: "paperclip")
-                    .font(.title3)
+                    .font(sf.title3)
             }
             .buttonStyle(.borderless)
             .disabled(viewModel.isStreaming)
@@ -1352,7 +1362,7 @@ struct ChatInputBar: View {
             }
 
             TextEditor(text: $viewModel.messageText)
-                .font(.body)
+                .font(sf.body)
                 .frame(minHeight: 20, maxHeight: 90)
                 .fixedSize(horizontal: false, vertical: true)
                 .scrollContentBackground(.hidden)
@@ -1361,7 +1371,7 @@ struct ChatInputBar: View {
                 .overlay(alignment: .topLeading) {
                     if viewModel.messageText.isEmpty {
                         Text("Message...")
-                            .font(.body)
+                            .font(sf.body)
                             .foregroundStyle(.placeholder)
                             .allowsHitTesting(false)
                             .padding(.leading, 5)
@@ -1415,7 +1425,7 @@ struct ChatInputBar: View {
             if viewModel.isStreaming {
                 Button(action: viewModel.stopStreaming) {
                     Image(systemName: "stop.circle.fill")
-                        .font(.title2)
+                        .font(sf.title2)
                         .foregroundStyle(.red)
                 }
                 .accessibilityIdentifier("stopStreamingButton")
@@ -1424,7 +1434,7 @@ struct ChatInputBar: View {
             } else {
                 Button(action: viewModel.sendMessage) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
+                        .font(sf.title2)
                 }
                 .accessibilityIdentifier("sendMessageButton")
                 .buttonStyle(.borderless)
