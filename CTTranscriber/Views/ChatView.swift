@@ -167,6 +167,15 @@ private struct ErrorBanner: View {
 /// - Targeted row updates during streaming (no full list refresh)
 /// - Cell reuse for memory efficiency
 struct ChatTableView: NSViewRepresentable {
+    /// Hash of message state for change detection. Includes content length + attachment state.
+    static func messageHash(_ msg: Message) -> Int {
+        var h = msg.content.count
+        for att in msg.attachments {
+            h = h &* 31 &+ (att.convertedName?.count ?? 0)
+        }
+        return h
+    }
+
     let messages: [Message]
     let isStreaming: Bool
     let onRetry: (Message) -> Void
@@ -226,7 +235,7 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.conversationID = conversationID
         context.coordinator.isStreaming = isStreaming
         context.coordinator.contentLengthSnapshot = Dictionary(
-            uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) }
+            uniqueKeysWithValues: messages.map { ($0.id, Self.messageHash($0)) }
         )
 
         // Reload after setting data — the table already queried numberOfRows
@@ -280,7 +289,7 @@ struct ChatTableView: NSViewRepresentable {
             coordinator.heightCache.removeAll()
 
             coordinator.expandedMessages.removeAll()
-            coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) })
+            coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, Self.messageHash($0)) })
             tableView.reloadData()
             DispatchQueue.main.async {
                 coordinator.scrollToBottom(animated: false)
@@ -295,15 +304,16 @@ struct ChatTableView: NSViewRepresentable {
             // Same messages — find which rows have content changes
             coordinator.messages = messages
 
-            // Detect content changes using a snapshot of content lengths.
+            // Detect content changes using a snapshot.
             // SwiftData models are reference types — oldMessages and messages
             // share the same objects, so we can't compare them directly.
+            // Also track attachment state (convertedName) for video conversion completion.
             var changedRows = IndexSet()
             for i in messages.indices {
                 let msg = messages[i]
-                let currentLen = msg.content.count
-                let snapshotLen = coordinator.contentLengthSnapshot[msg.id]
-                if snapshotLen == nil || snapshotLen != currentLen {
+                let currentHash = Self.messageHash(msg)
+                let snapshotHash = coordinator.contentLengthSnapshot[msg.id]
+                if snapshotHash == nil || snapshotHash != currentHash {
                     changedRows.insert(i)
                 }
             }
@@ -314,7 +324,7 @@ struct ChatTableView: NSViewRepresentable {
 
             // Update snapshot
             for msg in messages {
-                coordinator.contentLengthSnapshot[msg.id] = msg.content.count
+                coordinator.contentLengthSnapshot[msg.id] = Self.messageHash(msg)
             }
 
             if !changedRows.isEmpty {
@@ -1365,11 +1375,16 @@ private struct VideoPlayerView: View {
         let sf = ScaledFont(scale: fontScale)
         let vs = videoSize
         VStack(alignment: .leading, spacing: sp(4)) {
-            // Video player with native macOS controls
+            // Video player — always reserve the frame for correct height measurement
             if let avPlayer {
                 VideoPlayerNSView(player: avPlayer)
                     .frame(width: vs.width, height: vs.height)
                     .clipShape(RoundedRectangle(cornerRadius: sp(6)))
+            } else {
+                // Placeholder with same dimensions — ensures correct row height before player loads
+                RoundedRectangle(cornerRadius: sp(6))
+                    .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
+                    .frame(width: vs.width, height: vs.height)
             }
 
             Text(attachment.originalName)
