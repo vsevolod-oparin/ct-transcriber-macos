@@ -52,9 +52,20 @@ enum FileStorage {
         try? FileManager.default.removeItem(at: url(for: storedName))
     }
 
+    /// Video file extensions not always recognized by UTType on macOS.
+    private static let videoExtensions: Set<String> = ["webm", "mkv", "avi", "flv", "wmv", "ts"]
+    /// Audio file extensions as fallback.
+    private static let audioExtensions: Set<String> = ["ogg", "opus", "wma"]
+
     /// Determines the attachment kind from a file URL based on its UTType.
     static func attachmentKind(for url: URL) -> AttachmentKind {
-        guard let utType = UTType(filenameExtension: url.pathExtension) else {
+        let ext = url.pathExtension.lowercased()
+
+        // Check extension-based fallbacks first (WebM, MKV, etc. may not have UTTypes on macOS)
+        if videoExtensions.contains(ext) { return .video }
+        if audioExtensions.contains(ext) { return .audio }
+
+        guard let utType = UTType(filenameExtension: ext) else {
             return .text
         }
 

@@ -117,6 +117,22 @@ run_in_env pip install --quiet torch transformers sentencepiece faster-whisper 2
 emit "install_deps" "done" "Python dependencies installed"
 
 # ==========================================================================
+# Step 3b: Install ffmpeg CLI (for video format conversion)
+# ==========================================================================
+ENV_FFMPEG="$MINICONDA_DIR/envs/$CONDA_ENV_NAME/bin/ffmpeg"
+if [ -x "$ENV_FFMPEG" ]; then
+    emit "install_ffmpeg" "done" "ffmpeg already installed"
+else
+    emit "install_ffmpeg" "start" "Installing ffmpeg for video support"
+    "$CONDA_BIN" install -n "$CONDA_ENV_NAME" -c conda-forge ffmpeg -y 2>&1 | tail -3
+    if [ -x "$ENV_FFMPEG" ]; then
+        emit "install_ffmpeg" "done" "ffmpeg installed"
+    else
+        emit "install_ffmpeg" "done" "ffmpeg not available (video conversion will be skipped)"
+    fi
+fi
+
+# ==========================================================================
 # Step 4: Install CTranslate2 Metal backend
 # ==========================================================================
 

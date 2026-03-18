@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
+import AVKit
 
 struct ChatView: View {
     let conversation: Conversation
@@ -496,11 +497,31 @@ struct ChatTableView: NSViewRepresentable {
             let outerHPadding: CGFloat = 16 * 2 * s
             let spacerWidth: CGFloat = (60 + 4 + 24) * s  // Spacer + spacing + copy button
             let timestampHeight: CGFloat = 20 * s
-            let attachmentRowHeight: CGFloat = 40 * s      // per attachment (icon + name + padding)
-            let attachmentHeight: CGFloat = message.attachments.isEmpty ? 0 : CGFloat(message.attachments.count) * attachmentRowHeight
             let collapseButtonHeight: CGFloat = 24 * s
-
             let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
+
+            // Compute attachment heights based on type
+            var attachmentHeight: CGFloat = 0
+            for att in message.attachments {
+                switch att.kind {
+                case .video:
+                    let playName = att.convertedName ?? att.storedName
+                    let url = FileStorage.url(for: playName)
+                    let ratio = Self.videoAspectRatio(url: url)
+                    let maxW: CGFloat = 350 * s
+                    let videoH = min(300 * s, maxW / ratio)
+                    attachmentHeight += videoH + 30 * s
+                case .audio:
+                    // Audio player: play button + seek bar + filename + padding
+                    attachmentHeight += 70 * s
+                case .image:
+                    // Image preview: max 200*s height + filename badge
+                    attachmentHeight += 220 * s
+                case .text:
+                    // Small file badge
+                    attachmentHeight += 30 * s
+                }
+            }
 
             // Determine which text to measure
             let analysis = MessageAnalysis(content: message.content)
@@ -528,6 +549,31 @@ struct ChatTableView: NSViewRepresentable {
             }
 
             return height
+        }
+
+        // MARK: - Video Aspect Ratio (synchronous)
+
+        /// Cache of video aspect ratios keyed by storedName.
+        private static var videoAspectRatioCache: [String: CGFloat] = [:]
+
+        /// Returns the aspect ratio (width/height) of a video file. Cached after first read.
+        static func videoAspectRatio(url: URL) -> CGFloat {
+            let key = url.lastPathComponent
+            if let cached = videoAspectRatioCache[key] {
+                return cached
+            }
+            let asset = AVAsset(url: url)
+            if let track = asset.tracks(withMediaType: .video).first {
+                let size = track.naturalSize.applying(track.preferredTransform)
+                let w = abs(size.width)
+                let h = abs(size.height)
+                if w > 0 && h > 0 {
+                    let ratio = w / h
+                    videoAspectRatioCache[key] = ratio
+                    return ratio
+                }
+            }
+            return 16.0 / 9.0 // fallback
         }
 
         // MARK: - Text Height Measurement
@@ -1002,10 +1048,30 @@ private struct AttachmentView: View {
     let attachment: Attachment
     @Binding var seekRequest: (storedName: String, time: TimeInterval)?
 
+    /// File extensions that AVPlayer cannot play natively on macOS.
+    private static let unsupportedVideoExtensions: Set<String> = ["webm", "mkv", "flv", "wmv"]
+
+    private var isUnsupportedVideo: Bool {
+        let ext = attachment.storedName.split(separator: ".").last.map(String.init)?.lowercased() ?? ""
+        // Also check original name
+        let origExt = attachment.originalName.split(separator: ".").last.map(String.init)?.lowercased() ?? ""
+        return Self.unsupportedVideoExtensions.contains(ext) || Self.unsupportedVideoExtensions.contains(origExt)
+    }
+
     var body: some View {
         switch attachment.kind {
-        case .audio, .video:
+        case .audio:
             AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
+        case .video:
+            if isUnsupportedVideo && attachment.convertedName == nil {
+                // WebM/MKV — converting or conversion failed
+                UnsupportedVideoView(attachment: attachment, isConverting: true)
+            } else if let convertedName = attachment.convertedName {
+                // Play the converted MP4 version
+                VideoPlayerView(attachment: attachment, playbackStoredName: convertedName, seekRequest: $seekRequest)
+            } else {
+                VideoPlayerView(attachment: attachment, seekRequest: $seekRequest)
+            }
         case .image:
             ImageAttachmentView(attachment: attachment)
         case .text:
@@ -1211,6 +1277,223 @@ private struct AudioPlayerView: View {
         } catch {
             return nil
         }
+    }
+}
+
+// MARK: - Video Player
+
+private struct VideoPlayerView: View {
+    let attachment: Attachment
+    /// Override storedName for playback (e.g., converted MP4). Nil = use attachment.storedName.
+    var playbackStoredName: String?
+    @Binding var seekRequest: (storedName: String, time: TimeInterval)?
+    @State private var avPlayer: AVPlayer?
+    @State private var isPlaying = false
+    @State private var currentTime: TimeInterval = 0
+    @State private var duration: TimeInterval = 0
+    @State private var isDragging = false
+    @State private var timeObserver: Any?
+    @State private var videoAspectRatio: CGFloat = 16.0 / 9.0
+    @Environment(\.fontScale) private var fontScale
+
+    private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
+
+    /// Compute video display dimensions from aspect ratio.
+    private var videoSize: (width: CGFloat, height: CGFloat) {
+        let maxW = sp(350)
+        let maxH = sp(300)
+        let h = min(maxH, maxW / videoAspectRatio)
+        let w = h * videoAspectRatio
+        return (w, h)
+    }
+
+    var body: some View {
+        let sf = ScaledFont(scale: fontScale)
+        let vs = videoSize
+        VStack(alignment: .leading, spacing: sp(4)) {
+            // Video player with native macOS controls
+            if let avPlayer {
+                VideoPlayerNSView(player: avPlayer)
+                    .frame(width: vs.width, height: vs.height)
+                    .clipShape(RoundedRectangle(cornerRadius: sp(6)))
+            }
+
+            Text(attachment.originalName)
+                .font(sf.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(maxWidth: vs.width, alignment: .leading)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(sp(4))
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: sp(6)))
+        .onAppear { loadVideo() }
+        .onDisappear { cleanup() }
+        .onChange(of: seekRequest?.time) { _, _ in
+            guard let req = seekRequest, req.storedName == attachment.storedName else { return }
+            avPlayer?.seek(to: CMTime(seconds: req.time, preferredTimescale: 600))
+            currentTime = req.time
+            if !isPlaying { startPlayback() }
+            seekRequest = nil
+        }
+    }
+
+    private func loadVideo() {
+        let url = FileStorage.url(for: playbackStoredName ?? attachment.storedName)
+
+        // Get aspect ratio synchronously so the frame is correct immediately
+        let asset = AVAsset(url: url)
+        if let track = asset.tracks(withMediaType: .video).first {
+            let size = track.naturalSize.applying(track.preferredTransform)
+            let w = abs(size.width)
+            let h = abs(size.height)
+            if w > 0 && h > 0 {
+                videoAspectRatio = w / h
+            }
+        }
+
+        let player = AVPlayer(url: url)
+        self.avPlayer = player
+
+        // Get duration async
+        Task {
+            if let d = try? await player.currentItem?.asset.load(.duration) {
+                let seconds = CMTimeGetSeconds(d)
+                if seconds.isFinite {
+                    await MainActor.run { duration = seconds }
+                }
+            }
+        }
+
+        // Restore saved position
+        let saved = attachment.playbackPosition
+        if saved > 0 {
+            player.seek(to: CMTime(seconds: saved, preferredTimescale: 600))
+            currentTime = saved
+        }
+
+        // Periodic time observer
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            guard !isDragging else { return }
+            let seconds = CMTimeGetSeconds(time)
+            if seconds.isFinite {
+                currentTime = seconds
+            }
+            // Detect end of playback
+            if let item = player.currentItem,
+               CMTimeGetSeconds(item.duration).isFinite,
+               seconds >= CMTimeGetSeconds(item.duration) - 0.1 {
+                isPlaying = false
+                AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+            }
+        }
+    }
+
+    private func togglePlayback() {
+        if isPlaying {
+            pausePlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    private func startPlayback() {
+        AudioPlaybackManager.shared.didStartPlaying(
+            storedName: attachment.storedName,
+            onPause: { pausePlayback() }
+        )
+        avPlayer?.play()
+        isPlaying = true
+    }
+
+    private func pausePlayback() {
+        avPlayer?.pause()
+        isPlaying = false
+        persistPosition()
+        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+    }
+
+    private func cleanup() {
+        persistPosition()
+        avPlayer?.pause()
+        if let observer = timeObserver {
+            avPlayer?.removeTimeObserver(observer)
+        }
+        timeObserver = nil
+        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+    }
+
+    private func persistPosition() {
+        attachment.playbackPosition = currentTime
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+/// NSViewRepresentable wrapping AVPlayerView for native macOS video rendering.
+private struct VideoPlayerNSView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .inline
+        view.showsFullScreenToggleButton = true
+        view.videoGravity = .resizeAspect
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player {
+            view.player = player
+        }
+    }
+}
+
+// MARK: - Unsupported Video (WebM, MKV, etc.)
+
+private struct UnsupportedVideoView: View {
+    let attachment: Attachment
+    var isConverting: Bool = false
+    @Environment(\.fontScale) private var fontScale
+
+    private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
+
+    var body: some View {
+        let sf = ScaledFont(scale: fontScale)
+        VStack(spacing: sp(6)) {
+            Image(systemName: "film")
+                .font(.system(size: 28 * CGFloat(fontScale)))
+                .foregroundStyle(.secondary)
+            Text(attachment.originalName)
+                .font(sf.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if isConverting {
+                HStack(spacing: sp(4)) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Converting to MP4 for playback...")
+                        .font(sf.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Playback not supported for this format.")
+                    .font(sf.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(sp(12))
+        .frame(maxWidth: sp(300))
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: sp(6)))
     }
 }
 

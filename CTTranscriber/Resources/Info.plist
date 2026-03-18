@@ -57,6 +57,8 @@
 				<string>public.mpeg-4</string>
 				<string>com.apple.quicktime-movie</string>
 				<string>public.avi</string>
+				<string>org.webmproject.webm</string>
+				<string>org.matroska.mkv</string>
 			</array>
 		</dict>
 	</array>

@@ -444,6 +444,20 @@ final class ChatViewModel {
             let audioURL = FileStorage.url(for: storedName)
             transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation)
         }
+
+        // Convert unsupported video formats (WebM, MKV) to MP4 for playback
+        if kind == .video && VideoConverter.needsConversion(originalName) {
+            Task {
+                let transSettings = settingsManager.settings.transcription
+                if let mp4Name = await VideoConverter.convertToMP4(
+                    storedName: storedName, settings: transSettings) {
+                    await MainActor.run {
+                        attachment.convertedName = mp4Name
+                        saveContext()
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Transcription
@@ -542,7 +556,7 @@ final class ChatViewModel {
                 guard let self else { return }
                 await MainActor.run {
                     self.lastError = error.localizedDescription
-                    transcriptMessage.content = "⚠ Transcription failed: \(error.localizedDescription)"
+                    transcriptMessage.content = "⚠ \(error.localizedDescription)"
                     bgTask?.status = .failed
                     bgTask?.errorMessage = error.localizedDescription
                     self.finishTranscription(taskID: taskID)

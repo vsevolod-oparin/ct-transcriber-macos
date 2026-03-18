@@ -526,8 +526,11 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 - [x] Seek bar and duration display — Slider with draggable position, current/total time display (m:ss / m:ss)
 - [x] Video thumbnail preview — first frame extracted via AVAssetImageGenerator, shown inline above player controls
+- [x] Video playback — native AVPlayerView with custom controls (play/pause, seek bar, time display), separate from audio player
 - [x] Image attachment preview — inline image display with aspect-fit, max 200px height
-- [x] Seek infrastructure for timestamp sync — `seekRequest` binding wired from ViewModel through ChatTableView → MessageBubble → AudioPlayerView
+- [x] Seek infrastructure for timestamp sync — `seekRequest` binding wired from ViewModel through ChatTableView → MessageBubble → AudioPlayerView/VideoPlayerView
+- [x] Single-audio enforcement — `AudioPlaybackManager` pauses previous audio/video when new one starts
+- [x] Persistent playback position — saved in SwiftData, survives app restart
 - [ ] Click transcript timestamp to seek (UI deferred — infrastructure ready via `seekRequest`)
 - [ ] Visibility-based audio playback pause (deferred — needs scroll delegate integration)
 - [ ] `NSCache` for thumbnails (deferred — current in-memory loading is sufficient at scale)

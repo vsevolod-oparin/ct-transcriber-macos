@@ -89,36 +89,62 @@ def main():
     t0 = time.monotonic()
 
     try:
-        segments_iter, info = model.transcribe(
-            args.audio,
-            beam_size=args.beam_size,
-            language=language,
-            temperature=args.temperature,
-            condition_on_previous_text=args.condition_on_previous_text,
-            vad_filter=args.vad_filter,
-            without_timestamps=args.skip_timestamps,
-        )
+        try:
+            segments_iter, info = model.transcribe(
+                args.audio,
+                beam_size=args.beam_size,
+                language=language,
+                temperature=args.temperature,
+                condition_on_previous_text=args.condition_on_previous_text,
+                vad_filter=args.vad_filter,
+                without_timestamps=args.skip_timestamps,
+            )
+        except Exception as e:
+            # Some files (e.g., video without audio track) cause errors during transcribe setup
+            emit({"type": "error", "message": f"Could not process audio: {e}"})
+            sys.exit(1)
 
-        emit({
-            "type": "info",
-            "language": info.language,
-            "language_probability": round(info.language_probability, 3),
-            "duration": round(info.duration, 2),
-        })
+        try:
+            emit({
+                "type": "info",
+                "language": info.language,
+                "language_probability": round(info.language_probability, 3),
+                "duration": round(info.duration, 2),
+            })
+        except (IndexError, AttributeError) as e:
+            # Some files produce malformed info (e.g., "tuple index out of range")
+            emit({
+                "type": "info",
+                "language": "unknown",
+                "language_probability": 0,
+                "duration": 0,
+            })
+            progress(f"Warning: could not read audio info: {e}")
 
         num_segments = 0
         for seg in segments_iter:
+            try:
+                text = seg.text.strip()
+                start = round(seg.start, 2)
+                end = round(seg.end, 2)
+            except (IndexError, AttributeError) as seg_err:
+                progress(f"Skipping malformed segment: {seg_err}")
+                continue
+
+            if not text:
+                continue
+
             num_segments += 1
             emit({
                 "type": "segment",
-                "start": round(seg.start, 2),
-                "end": round(seg.end, 2),
-                "text": seg.text.strip(),
+                "start": start,
+                "end": end,
+                "text": text,
             })
 
             # Report progress based on position in audio
             if info.duration > 0:
-                pct = min(100, int(seg.end / info.duration * 100))
+                pct = min(100, int(end / info.duration * 100))
                 progress(f"Transcribing... {pct}%")
 
         elapsed = time.monotonic() - t0
@@ -131,7 +157,7 @@ def main():
         progress(f"Done — {num_segments} segments in {elapsed:.1f}s")
 
     except Exception as e:
-        emit({"type": "error", "message": f"Transcription failed: {e}"})
+        emit({"type": "error", "message": str(e)})
         sys.exit(1)
     finally:
         del model

@@ -18,6 +18,8 @@ final class Attachment {
     var originalName: String
     /// Persisted playback position (seconds) — resumes from here on next play.
     var playbackPosition: Double = 0
+    /// Filename of a converted-to-MP4 version (for WebM/MKV playback). Nil if not needed or not yet converted.
+    var convertedName: String?
 
     var message: Message?
 
