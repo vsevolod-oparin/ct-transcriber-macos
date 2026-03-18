@@ -20,6 +20,7 @@ struct CTTranscriberApp: App {
                 .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
                 .sheet(isPresented: $showAbout) {
                     AboutView()
+                        .environment(\.fontScale, settingsManager.fontScale)
                 }
         }
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
@@ -59,10 +60,14 @@ struct CTTranscriberApp: App {
                 .keyboardShortcut("0", modifiers: .command)
             }
 
-            // Help menu: About
-            CommandGroup(replacing: .appInfo) {
+            // Help menu
+            CommandGroup(replacing: .help) {
                 Button("About CT Transcriber") {
                     showAbout = true
+                }
+                Divider()
+                Button("GitHub Repository...") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos")!)
                 }
             }
         }
@@ -102,6 +107,7 @@ extension Notification.Name {
 
 private struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.fontScale) private var fontScale
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
@@ -112,42 +118,65 @@ private struct AboutView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        let sf = ScaledFont(scale: fontScale)
+        let s = CGFloat(fontScale)
+        VStack(spacing: 16 * s) {
             Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 64))
+                .font(.system(size: 64 * s))
                 .foregroundStyle(Color.accentColor)
 
             Text("CT Transcriber")
-                .font(.title)
+                .font(sf.title)
                 .fontWeight(.bold)
 
             Text("Version \(version) (\(build))")
-                .font(.caption)
+                .font(sf.caption)
                 .foregroundStyle(.secondary)
 
             Text("Audio & video transcription powered by CTranslate2 Metal backend on Apple Silicon.")
-                .font(.body)
+                .font(sf.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: 300)
+                .frame(maxWidth: 300 * s)
+
+            Text("by Vsevolod Oparin")
+                .font(sf.body)
+                .foregroundStyle(.secondary)
 
             Divider()
 
-            VStack(spacing: 4) {
+            VStack(spacing: 4 * s) {
                 Text("CTranslate2 Metal Backend")
-                    .font(.caption)
+                    .font(sf.caption)
                     .fontWeight(.medium)
                 Text("faster-whisper · Whisper Models")
-                    .font(.caption)
+                    .font(sf.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button {
+                NSWorkspace.shared.open(URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos")!)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "link")
+                    Text("GitHub Repository")
+                }
+                .font(sf.caption)
+            }
+            .buttonStyle(.link)
 
             Button("OK") { dismiss() }
                 .keyboardShortcut(.return)
         }
-        .padding(24)
-        .frame(width: 360)
+        .padding(24 * s)
+        .fixedSize(horizontal: false, vertical: true)
+        .focusable()
+        .focusEffectDisabled()
         .onExitCommand { dismiss() }
+        .onKeyPress(.return) {
+            dismiss()
+            return .handled
+        }
     }
 }
 
