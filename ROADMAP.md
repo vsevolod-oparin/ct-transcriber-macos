@@ -524,22 +524,51 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 ### Tasks
 
-- [x] Seek bar and duration display — Slider with draggable position, current/total time display (m:ss / m:ss)
-- [x] Video thumbnail preview — first frame extracted via AVAssetImageGenerator, shown inline above player controls
-- [x] Video playback — native AVPlayerView with custom controls (play/pause, seek bar, time display), separate from audio player
-- [x] Image attachment preview — inline image display with aspect-fit, max 200px height
-- [x] Seek infrastructure for timestamp sync — `seekRequest` binding wired from ViewModel through ChatTableView → MessageBubble → AudioPlayerView/VideoPlayerView
+**Audio player:**
+- [x] Seek bar and duration display — Slider with draggable position, current/total time display (m:ss)
 - [x] Single-audio enforcement — `AudioPlaybackManager` pauses previous audio/video when new one starts
-- [x] Persistent playback position — saved in SwiftData, survives app restart
-- [ ] Click transcript timestamp to seek (UI deferred — infrastructure ready via `seekRequest`)
-- [ ] Visibility-based audio playback pause (deferred — needs scroll delegate integration)
-- [ ] `NSCache` for thumbnails (deferred — current in-memory loading is sufficient at scale)
+- [x] Persistent playback position — saved in SwiftData `Attachment.playbackPosition`, survives app restart
+
+**Video player:**
+- [x] Native AVPlayerView with inline controls (play/pause, scrub, fullscreen)
+- [x] Aspect-ratio-aware sizing — synchronous detection via `AVAssetTrack.naturalSize`, correct for vertical/wide videos
+- [x] Video placeholder frame — reserves correct height before player loads (fixes row height measurement)
+- [x] WebM/MKV support — auto-converts to MP4 via ffmpeg (from bundled conda env); transcription uses original file
+
+**Image attachments:**
+- [x] Inline image preview with aspect-fit, max 200px height
+
+**Floating mini-player:**
+- [x] Compact player bar above input when playing media is scrolled out of view
+- [x] Play/pause, seek slider, time display, filename
+- [x] Works for both audio and video (audio-only controls for video)
+- [x] `AudioPlaybackManager` retains player object, polls current time via timer
+- [x] Per-conversation — hidden on conversation switch, playback stopped
+
+**Transcript interaction:**
+- [x] Right-click transcript → "Play from [timestamp]" — seeks audio to first timestamp in transcript
+- [x] Seek infrastructure — `seekRequest` binding wired from ViewModel → ChatTableView → MessageBubble → AudioPlayerView/VideoPlayerView
+- [x] Duration format: `ss.s` / `mm:ss.s` / `hh:mm:ss.s` (adaptive, no trailing "s")
+
+**Reliability:**
+- [x] No-audio-track detection — pre-flight check via `AVAsset.tracks(withMediaType: .audio)` before transcription
+- [x] Smart retry — Retry button detects transcription failures vs LLM failures, re-triggers appropriate action
+- [x] Triple error wrapping removed — clean error chain from Python → Swift → UI
+- [x] Graceful handling of malformed audio info ("tuple index out of range") in transcribe.py
+
+**Deferred:**
+- [ ] Click transcript timestamp to seek (line-level UI — infrastructure ready via `seekRequest`)
+- [ ] Visibility-based audio playback pause (needs scroll delegate integration)
+- [ ] `NSCache` for thumbnails (current in-memory loading sufficient at scale)
 
 ### Test Criteria
 - [x] Seek bar shows duration, allows dragging to position
-- [x] Video attachment shows thumbnail + player controls
+- [x] Video attachment shows correct aspect ratio (horizontal and vertical)
+- [x] WebM converts to MP4 and plays
 - [x] Image attachment shows inline preview
-- [ ] Audio stops when scrolled out of view (deferred)
+- [x] Mini-player appears when playing audio/video scrolls out of view
+- [x] Retry on transcription failure re-transcribes (not re-sends to LLM)
+- [x] File with no audio track shows clear error message
 
 ---
 
@@ -551,7 +580,7 @@ Telegram's chat is built on a heavily customized NSTableView with:
 ### Tasks
 - [x] Register app as handler for audio/video file types in `Info.plist`:
   - Audio: `public.audio`, `public.mp3`, `com.apple.m4a-audio`, `com.microsoft.waveform-audio`, `org.xiph.flac`, `public.aiff-audio`, `com.apple.coreaudio-format`
-  - Video: `public.movie`, `public.mpeg-4`, `com.apple.quicktime-movie`, `public.avi`
+  - Video: `public.movie`, `public.mpeg-4`, `com.apple.quicktime-movie`, `public.avi`, `org.webmproject.webm`, `org.matroska.mkv`
   - Role: Viewer, Rank: Alternate (doesn't hijack default handlers)
 - [x] Handle file-open events via `AppDelegate.application(_:open:)` — routes to existing window, no duplicate windows
 - [x] `openFiles(urls:)` in ChatViewModel — creates new conversation titled from first filename, attaches all files, auto-transcribes audio/video
@@ -571,6 +600,63 @@ Telegram's chat is built on a heavily customized NSTableView with:
 - [x] Open multiple files at once → batched into one conversation
 - [x] Transcription result shows collapsed preview (header + 3 lines) immediately after completion
 - [ ] Double-click audio file (if set as default) — requires user to manually set default app
+
+---
+
+## Milestone 9b: Sidebar & UI Polish ✅
+
+**Goal:** Enhanced sidebar navigation, font scaling, appearance improvements.
+**Status:** Complete (2026-03-18) — see `reports/milestone-9b-sidebar-ui-polish.md`
+
+### Sidebar Multi-Select & Navigation
+- [x] Multi-select with Shift+Arrow, Cmd+Click, Shift+Click (range selection)
+- [x] Separate highlight (keyboard) from active (detail view) — click enters, arrows navigate
+- [x] Enter key activates highlighted conversation + focuses input
+- [x] Backspace deletes highlighted conversations with confirmation dialog (Enter confirms, Esc cancels)
+- [x] Tab toggles focus between sidebar and input bar (detects current focus via `NSTextView` responder check)
+- [x] Sidebar retains focus after clicking a conversation (reclaims `NSOutlineView` first responder)
+- [x] Double-click on title text to rename (uses `NSApp.currentEvent?.clickCount`, no delay)
+- [x] Double-click on toolbar title to rename (inline `TitleRenameField` NSViewRepresentable)
+- [x] Keyboard events pass through to rename field (Enter/Esc/Backspace not intercepted during editing)
+- [x] Cmd+Up/Down scroll chat from any focus context (sidebar or input)
+- [x] Click on chat area background focuses input
+
+### Font Scaling
+- [x] Cmd+Plus / Cmd+Minus / Cmd+0 — increase, decrease, reset font size (View menu commands)
+- [x] Settings → General — slider from 70% to 200% with Reset button
+- [x] `ScaledFont` struct with `.body`, `.headline`, `.caption`, `.caption2`, `.title2`, `.title3`
+- [x] `fontScale` environment key propagated to all views including NSHostingView cells
+- [x] All fonts in ChatView, ConversationListView, SettingsView, TaskManagerView use `ScaledFont`
+- [x] NSTextView (LargeTextView, TitleRenameField) font sizes scale
+- [x] Paddings, spacings, intercell spacing scale with `fontScale`
+- [x] Settings window frame scales with font
+- [x] Persisted in `settings.json` as `fontScale`
+
+### Appearance
+- [x] Assistant bubble background changed to `unemphasizedSelectedContentBackgroundColor` (better contrast in light mode)
+- [x] Timestamps, filenames, attachment badges use `.primary` foreground (was `.secondary`/`.tertiary`)
+- [x] Sidebar dates use explicit `NSColor.secondaryLabelColor`
+- [x] Empty states ("No Tasks", "No Conversation Selected") use custom scaled views (not `ContentUnavailableView`)
+
+### Task Manager
+- [x] Enter and Escape close the task manager sheet
+- [x] Task rows show: status prefix (Transcribing/Transcribed/Failed), original filename, conversation title, truncated UUID
+- [x] Blue focus ring removed (`.focusEffectDisabled()`)
+- [x] Fonts scale with fontScale
+
+### NSTableView Performance (from TelegramSwift audit)
+- [x] Height caching — `heightCache: [UUID: CGFloat]` with targeted invalidation
+- [x] Cache invalidated on: content change, expand/collapse, font scale change, window resize, conversation switch
+- [x] Resize handling via `viewDidEndLiveResize` (Telegram pattern) — no mid-resize updates
+- [x] `isLiveResizing` flag suppresses `updateNSView` during drag
+- [x] First render data in `makeNSView` + deferred `reloadData` — fixes empty first conversation
+
+### Test Criteria
+- [x] Multi-select 5+ conversations with Shift+Arrow, delete with Backspace
+- [x] Tab cycles cleanly between sidebar and input (no "nowhere" state)
+- [x] Cmd+Plus scales all text proportionally
+- [x] Window resize recalculates row heights correctly after drag ends
+- [x] Rename via double-click works in both sidebar and toolbar title
 
 ---
 
@@ -638,16 +724,13 @@ M0 (Skeleton)
  │    └── M2 (Persistence)
  │         ├── M4 (LLM Integration) ← M3 (Settings)
  │         └── M7 (Transcription) ← M5 (Python Env) ← M6 (Models)
- │              ├── M7b (Chat UX: collapsible, copy, perf)
- │              └── M8 (Task Manager)
- │                   └── M8b (Performance & Architecture) ✅
- ├── M3 (Settings)
- ├── M5b (Zero-Setup UX) ← M5
- ├── M8c (NSTableView) ← M7b, M8b
- ├── M7b+ (Audio Player) ← M7b, M8c (visibility-based pause needs NSTableView scroll delegate)
- └── M9 (macOS Integration) ← M2, M7
-      └── M10 (Polish & DMG) ← all above including M5b
-           └── M11 (MCP) [future]
+ │              ├── M7b (Chat UX) → M8 (Tasks) → M8b (Perf) → M8c (NSTableView) ✅
+ │              └── M7b+ (Media Player) ✅
+ ├── M3 (Settings) ├── M5b (Zero-Setup) ✅
+ ├── M9 (macOS Integration) ✅
+ ├── M9b (Sidebar & UI Polish) ✅
+ └── M10 (Polish & DMG) ← all above
+      └── M11 (MCP) [future]
 ```
 
 ## Suggested Implementation Order
@@ -660,9 +743,10 @@ M0 (Skeleton)
 | **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
 | **Phase E** | M7b → M8 → M8b → M8c | ✅ Done | Chat UX + task manager + performance + NSTableView migration |
 | **Phase F** | M9 | ✅ Done | macOS integration (Finder, drag-and-drop) |
-| **Phase G** | M7b+ | ✅ Done | Audio player + seek bar + video thumbnails + image preview |
-| **Phase H** | M10 | **Next** | Polish + DMG distribution |
-| **Phase I** | M11 | Future | MCP exploration |
+| **Phase G** | M7b+ | ✅ Done | Audio/video player, seek bar, mini-player, WebM, smart retry |
+| **Phase H** | M9b | ✅ Done | Sidebar multi-select, font scaling, UI polish, NSTableView perf audit |
+| **Phase I** | M10 | **Next** | Polish + DMG distribution |
+| **Phase J** | M11 | Future | MCP exploration |
 
 ---
 

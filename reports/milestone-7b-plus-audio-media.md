@@ -1,7 +1,7 @@
 # Milestone 7b+: Audio Player & Media Improvements
 
 **Date:** 2026-03-18
-**Status:** Complete (core features)
+**Status:** Complete
 
 ---
 
@@ -9,59 +9,89 @@
 
 ### Audio Player with Seek Bar
 
-Replaced the basic play/pause button with a full `AudioPlayerView`:
+Replaced basic play/pause button with full `AudioPlayerView`:
+- Play/pause, seek slider, time display (`current / duration` in m:ss)
+- Timer updates at 100ms for smooth slider movement
+- Duration loaded on appear via AVAudioPlayer without starting playback
+- Persistent playback position via `Attachment.playbackPosition` (SwiftData)
 
-- **Play/pause button** (title2 size)
-- **Seek slider** — draggable, shows current position. While dragging, playback position doesn't jump until drag ends
-- **Time display** — `current / duration` in `m:ss` format, monospaced digits
-- **Auto-stop** — timer detects when playback reaches end, resets to 0:00
-- **Metadata preload** — duration loaded on appear via AVAudioPlayer without starting playback
+### Video Player
 
-Timer updates at 100ms intervals for smooth slider movement.
+Separate `VideoPlayerView` using native `AVPlayerView`:
+- `controlsStyle = .inline` — native macOS controls (play, scrub, fullscreen)
+- `videoGravity = .resizeAspect` — no distortion
+- Aspect ratio detected synchronously via `AVAssetTrack.naturalSize` with `preferredTransform`
+- Cached per-file in `Coordinator.videoAspectRatioCache`
+- Placeholder frame rendered when `AVPlayer` is nil (correct height measurement for NSTableView)
+- Correct sizing for vertical, horizontal, and non-standard aspect ratios
 
-### Video Thumbnail
+### WebM/MKV Support
 
-For video attachments, the first frame is extracted via `AVAssetImageGenerator`:
-- Generated on a background thread (`Task.detached(priority: .utility)`)
-- Max size 320x320 for performance
-- Displayed inline above the player controls, aspect-fit, max 160px height
-- Rounded corners match the attachment badge style
+- `VideoConverter` service converts unsupported formats to MP4 via ffmpeg from bundled conda env
+- ffmpeg installed via `conda install -c conda-forge ffmpeg` in setup_env.sh
+- NO system ffmpeg dependency — only uses `~/.ct-transcriber/miniconda` paths
+- Conversion runs async, "Converting to MP4..." shown with spinner
+- `Attachment.convertedName` persisted in SwiftData — no re-conversion on restart
+- Content-change detection includes `convertedName` in hash for row height invalidation
+- Extension-based fallback in `FileStorage.attachmentKind` (webm, mkv, flv, wmv, ogg, opus)
+- `Info.plist` updated with `org.webmproject.webm`, `org.matroska.mkv`
 
-### Image Attachment Preview
+### Image Preview
 
-Images now render inline:
-- Loaded from `FileStorage` on appear
-- Aspect-fit, max 200px height
-- Rounded corners
-- File name badge below the preview
+- Inline image display with aspect-fit, max 200px height, rounded corners
+- Loaded from FileStorage on appear
 
-### Refactored Attachment Views
+### Floating Mini-Player
 
-Split the monolithic `AttachmentView` into specialized views:
-- `AudioPlayerView` — audio/video with seek bar, timer, video thumbnail
-- `ImageAttachmentView` — inline image preview
-- `FileAttachmentBadge` — generic icon + filename for text files
+`AudioPlaybackManager` expanded to support mini-player:
+- Tracks: `currentlyPlayingID`, `currentlyPlayingName`, `conversationID`, `isPlaying`, `currentTime`, `duration`
+- `activePlayer: AnyObject?` — retains AVAudioPlayer/AVPlayer when cell scrolls out
+- `onPause`, `onSeek`, `onGetCurrentTime` callbacks — survive cell destruction by reading from manager's retained player
+- Timer polls `getCurrentTimeCallback` at 200ms for slider updates
+- Per-conversation: hidden on switch, `stopAll()` kills playback + clears state
+- Mini-player bar shown above input: play/pause, filename, seek slider, time
 
-### Seek Infrastructure (for timestamp sync)
+### Single-Audio Enforcement
 
-Wired `seekRequest: (storedName: String, time: TimeInterval)?` through the full view hierarchy:
-- `ChatViewModel.seekRequest` — set when a timestamp is tapped
-- Passed via `ChatTableView` → `MessageBubble` → `AttachmentView` → `AudioPlayerView`
-- `AudioPlayerView` watches for matching `storedName` and seeks to the requested time, starting playback if paused
+`AudioPlaybackManager.shared` ensures only one audio/video plays at a time:
+- `didStartPlaying` pauses any previous player
+- Both AudioPlayerView and VideoPlayerView register with manager
 
-The click-to-seek UI (tapping timestamp lines in transcripts) is deferred — the infrastructure is ready.
+### Transcript Interaction
+
+- Right-click transcript → "Play from [timestamp]" menu item
+- Parses `[MM:SS →` timestamp from transcript content
+- Finds audio attachment from the message before the transcript
+- Sets `seekRequest` binding → AudioPlayerView/VideoPlayerView seeks and plays
+
+### Smart Retry
+
+`retryMessage` now detects context:
+- Transcription failure → re-triggers `startTranscription` with same audio file
+- LLM failure → re-sends to LLM (previous behavior)
+- Detection via content patterns: "Transcription failed", "⏳", "Transcribing", etc.
+
+### Error Handling
+
+- No-audio-track detection: `AVAsset.tracks(withMediaType: .audio)` pre-check before transcription
+- Triple error wrapping removed: Python → Swift → UI chain is clean
+- Graceful handling of malformed audio info in transcribe.py (catches IndexError, AttributeError)
+- Separate error handling for `model.transcribe()` setup vs segment iteration
+
+### Duration Formatting
+
+Adaptive format: `ss.s` / `mm:ss.s` / `hh:mm:ss.s` — replaces old `"%.1fs"` format in both transcription header and progress messages.
 
 ---
 
-## Files Modified
+## Files Created/Modified
 
-- **`ChatView.swift`** — Replaced `AttachmentView` with `AudioPlayerView`, `ImageAttachmentView`, `FileAttachmentBadge`; added `seekRequest` binding throughout view hierarchy
-- **`ChatViewModel.swift`** — Added `seekRequest` property
-
----
-
-## Deferred
-
-- **Click transcript timestamp to seek** — The `seekRequest` infrastructure is in place. Needs a UI for tapping `[0.00 → 2.50]` lines in the transcript to trigger seek. Requires rendering transcript lines as individual tappable elements.
-- **Visibility-based pause** — Needs NSTableView scroll delegate to detect when rows leave the viewport. Low priority since manual pause works.
-- **NSCache for thumbnails** — Current per-view `@State` loading is sufficient. Cache would help if users scroll rapidly through many image/video attachments.
+- **Created:** `Services/AudioPlaybackManager.swift` — singleton playback manager with mini-player support
+- **Created:** `Services/VideoConverter.swift` — WebM/MKV to MP4 conversion via bundled ffmpeg
+- **Modified:** `Views/ChatView.swift` — AudioPlayerView, VideoPlayerView, VideoPlayerNSView, UnsupportedVideoView, ImageAttachmentView, FileAttachmentBadge, MiniPlayerBar, transcript context menu
+- **Modified:** `Models/Attachment.swift` — `playbackPosition`, `convertedName` properties
+- **Modified:** `ViewModels/ChatViewModel.swift` — `seekRequest`, smart retry, `isTranscriptionMessage`, no-audio-track check, `formatDuration`, display name passthrough
+- **Modified:** `Services/FileStorage.swift` — extension-based video/audio detection fallback
+- **Modified:** `Resources/Info.plist` — WebM/MKV UTTypes
+- **Modified:** `Python/setup_env.sh` — ffmpeg installation step
+- **Modified:** `Python/transcribe.py` — error handling, segment skipping, clean error messages
