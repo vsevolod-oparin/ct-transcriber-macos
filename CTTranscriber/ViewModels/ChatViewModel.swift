@@ -509,7 +509,7 @@ final class ChatViewModel {
                     await MainActor.run {
                         switch progress {
                         case .started(let language, let duration):
-                            transcriptMessage.content = "Transcribing... (detected: \(language), \(String(format: "%.0f", duration))s)"
+                            transcriptMessage.content = "Transcribing... (detected: \(language), \(Self.formatDuration(duration)))"
                             bgTask?.status = .running
                         case .segment(_, let text, let prog):
                             self.transcriptionProgress = prog
