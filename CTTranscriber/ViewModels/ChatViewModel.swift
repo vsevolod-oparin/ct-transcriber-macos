@@ -40,10 +40,16 @@ final class ChatViewModel {
         focusCounter += 1
     }
 
-    /// True while the LLM is streaming a response.
-    private(set) var isStreaming: Bool = false
-    /// Accumulates the streamed response text for the current assistant message.
-    private(set) var streamingText: String = ""
+    /// True while any LLM is streaming a response.
+    var isStreaming: Bool { !streamingConversationIDs.isEmpty }
+    /// Conversations currently receiving streaming LLM responses.
+    private(set) var streamingConversationIDs: Set<UUID> = []
+
+    /// True if the currently selected conversation is streaming.
+    var isStreamingCurrentConversation: Bool {
+        guard let id = selectedConversationID else { return false }
+        return streamingConversationIDs.contains(id)
+    }
     /// Error message from the last LLM request, shown inline in the chat.
     var lastError: String?
     /// True while the LLM is generating a conversation title.
@@ -61,7 +67,8 @@ final class ChatViewModel {
     private(set) var transcriptionProgress: Double = 0
 
     private var modelContext: ModelContext
-    private var streamingTask: Task<Void, Never>?
+    /// Per-conversation streaming tasks, keyed by conversation ID.
+    private var streamingTasks: [UUID: Task<Void, Never>] = [:]
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingTranscriptions: [(audioPath: String, displayName: String, conversation: Conversation, message: Message)] = []
 
@@ -195,7 +202,7 @@ final class ChatViewModel {
     // MARK: - Retry
 
     func retryMessage(_ message: Message, in conversation: Conversation) {
-        guard !isStreaming && !isTranscribing else { return }
+        guard !isStreamingCurrentConversation && !isTranscribing else { return }
 
         let sorted = sortedMessages(for: conversation)
 
@@ -269,7 +276,8 @@ final class ChatViewModel {
     func sendMessage() {
         let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let conversation = selectedConversation else { return }
-        guard !isStreaming else { return }
+        // Only block if THIS conversation is streaming, not others
+        guard !isStreamingCurrentConversation else { return }
 
         let userMessage = Message(role: .user, content: text)
         conversation.messages.append(userMessage)
@@ -284,9 +292,10 @@ final class ChatViewModel {
     }
 
     func stopStreaming() {
-        streamingTask?.cancel()
-        streamingTask = nil
-        finalizeStreaming()
+        guard let convoID = selectedConversationID else { return }
+        streamingTasks[convoID]?.cancel()
+        streamingTasks.removeValue(forKey: convoID)
+        finalizeStreaming(for: convoID)
     }
 
     private func requestLLMResponse(for conversation: Conversation) {
@@ -304,8 +313,8 @@ final class ChatViewModel {
         let service = LLMServiceFactory.service(for: provider)
         let messages = buildMessageDTOs(for: conversation)
 
-        isStreaming = true
-        streamingText = ""
+        streamingConversationIDs.insert(conversation.id)
+        let convoID = conversation.id
 
         // Create a placeholder assistant message
         let assistantMessage = Message(role: .assistant, content: "")
@@ -313,7 +322,9 @@ final class ChatViewModel {
         saveContext()
         refreshConversations()
 
-        streamingTask = Task { [weak self] in
+        // Each conversation gets its own streaming Task — fully isolated
+        streamingTasks[convoID] = Task { [weak self] in
+            var accumulatedText = ""
             let stream = service.streamCompletion(
                 messages: messages,
                 model: provider.defaultModel,
@@ -328,37 +339,42 @@ final class ChatViewModel {
             do {
                 for try await token in stream {
                     guard let self, !Task.isCancelled else { break }
+                    accumulatedText += token
                     await MainActor.run {
-                        self.streamingText += token
-                        assistantMessage.content = self.streamingText
+                        assistantMessage.content = accumulatedText
                     }
                 }
 
                 guard let self else { return }
                 await MainActor.run {
-                    self.finalizeStreaming()
+                    self.streamingTasks.removeValue(forKey: convoID)
+                    self.finalizeStreaming(for: convoID)
                     self.autoNameIfFirstResponse(conversation)
                 }
             } catch let error as LLMError where error.localizedDescription == LLMError.cancelled.localizedDescription {
                 guard let self else { return }
                 await MainActor.run {
-                    self.finalizeStreaming()
+                    self.streamingTasks.removeValue(forKey: convoID)
+                    self.finalizeStreaming(for: convoID)
                 }
             } catch {
                 guard let self else { return }
                 await MainActor.run {
-                    // Keep the message with error content so the user can see it and retry
                     let partial = assistantMessage.content.isEmpty ? "" : assistantMessage.content + "\n\n"
                     assistantMessage.content = "\(partial)\(Self.llmErrorPrefix)\(error.localizedDescription)"
-                    self.finalizeStreaming()
+                    self.streamingTasks.removeValue(forKey: convoID)
+                    self.finalizeStreaming(for: convoID)
                 }
             }
         }
     }
 
-    private func finalizeStreaming() {
-        isStreaming = false
-        streamingText = ""
+    private func finalizeStreaming(for conversationID: UUID? = nil) {
+        if let id = conversationID {
+            streamingConversationIDs.remove(id)
+        } else {
+            streamingConversationIDs.removeAll()
+        }
         saveContext()
         refreshConversations()
     }
@@ -488,6 +504,14 @@ final class ChatViewModel {
         conversation.updatedAt = Date()
         saveContext()
         refreshConversations()
+
+        // Pre-compute video aspect ratio on background thread (avoids blocking scroll)
+        if kind == .video {
+            let videoURL = FileStorage.url(for: storedName)
+            Task.detached(priority: .utility) {
+                ChatTableView.Coordinator.precomputeVideoAspectRatio(url: videoURL)
+            }
+        }
 
         // Auto-transcribe audio and video files
         if kind == .audio || kind == .video {

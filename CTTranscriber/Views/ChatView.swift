@@ -13,7 +13,7 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             ChatTableView(messages: viewModel.sortedMessages(for: conversation),
-                          isStreaming: viewModel.isStreaming,
+                          isStreaming: viewModel.isStreamingCurrentConversation,
                           onRetry: { message in viewModel.retryMessage(message, in: conversation) },
                           onDropFiles: { urls in
                               for url in urls {
@@ -81,7 +81,7 @@ struct ChatView: View {
                         AutoTitleButton(
                             fontScale: fontScale,
                             isGenerating: viewModel.isGeneratingTitle,
-                            disabled: viewModel.isStreaming || viewModel.isGeneratingTitle
+                            disabled: viewModel.isStreamingCurrentConversation || viewModel.isGeneratingTitle
                         ) {
                             viewModel.autoNameConversation(conversation)
                         }
@@ -547,24 +547,27 @@ struct ChatTableView: NSViewRepresentable {
         /// Cache of video aspect ratios keyed by storedName.
         private static var videoAspectRatioCache: [String: CGFloat] = [:]
 
-        /// Returns the aspect ratio (width/height) of a video file. Cached after first read.
+        /// Returns the cached aspect ratio. Returns 16:9 fallback if not yet computed.
+        /// Call `precomputeVideoAspectRatio` on a background thread to populate the cache.
         static func videoAspectRatio(url: URL) -> CGFloat {
             let key = url.lastPathComponent
-            if let cached = videoAspectRatioCache[key] {
-                return cached
-            }
+            return videoAspectRatioCache[key] ?? (16.0 / 9.0)
+        }
+
+        /// Pre-computes and caches the aspect ratio. Safe to call from any thread.
+        /// Call this from a background Task when a video attachment is added.
+        static func precomputeVideoAspectRatio(url: URL) {
+            let key = url.lastPathComponent
+            guard videoAspectRatioCache[key] == nil else { return }
             let asset = AVAsset(url: url)
             if let track = asset.tracks(withMediaType: .video).first {
                 let size = track.naturalSize.applying(track.preferredTransform)
                 let w = abs(size.width)
                 let h = abs(size.height)
                 if w > 0 && h > 0 {
-                    let ratio = w / h
-                    videoAspectRatioCache[key] = ratio
-                    return ratio
+                    videoAspectRatioCache[key] = w / h
                 }
             }
-            return 16.0 / 9.0 // fallback
         }
 
         // MARK: - Text Height Measurement
@@ -1433,22 +1436,32 @@ private struct VideoPlayerView: View {
     private func loadVideo() {
         let url = FileStorage.url(for: playbackStoredName ?? attachment.storedName)
 
-        // Get aspect ratio synchronously so the frame is correct immediately
-        let asset = AVAsset(url: url)
-        if let track = asset.tracks(withMediaType: .video).first {
-            let size = track.naturalSize.applying(track.preferredTransform)
-            let w = abs(size.width)
-            let h = abs(size.height)
-            if w > 0 && h > 0 {
-                videoAspectRatio = w / h
-            }
+        // Use pre-computed aspect ratio from cache (populated on attach, non-blocking)
+        let cachedRatio = ChatTableView.Coordinator.videoAspectRatio(url: url)
+        if cachedRatio != 16.0 / 9.0 {
+            videoAspectRatio = cachedRatio
         }
 
         let player = AVPlayer(url: url)
         self.avPlayer = player
 
-        // Get duration async
+        // Get duration and aspect ratio async (non-blocking)
         Task {
+            // Compute aspect ratio on background if not cached
+            if videoAspectRatio == nil {
+                if let tracks = try? await player.currentItem?.asset.loadTracks(withMediaType: .video),
+                   let track = tracks.first,
+                   let size = try? await track.load(.naturalSize),
+                   let transform = try? await track.load(.preferredTransform) {
+                    let transformed = size.applying(transform)
+                    let w = abs(transformed.width)
+                    let h = abs(transformed.height)
+                    if w > 0 && h > 0 {
+                        await MainActor.run { videoAspectRatio = w / h }
+                    }
+                }
+            }
+
             if let d = try? await player.currentItem?.asset.load(.duration) {
                 let seconds = CMTimeGetSeconds(d)
                 if seconds.isFinite {
@@ -1628,9 +1641,13 @@ private struct ImageAttachmentView: View {
             }
             FileAttachmentBadge(attachment: attachment, iconName: "photo")
         }
-        .onAppear {
+        .task {
+            // Load image on background thread to avoid blocking scroll
             let url = FileStorage.url(for: attachment.storedName)
-            image = NSImage(contentsOf: url)
+            let loaded = await Task.detached(priority: .utility) {
+                NSImage(contentsOf: url)
+            }.value
+            image = loaded
         }
     }
 }
@@ -1842,7 +1859,7 @@ struct ChatInputBar: View {
                     .font(sf.title3)
             }
             .buttonStyle(.borderless)
-            .disabled(viewModel.isStreaming)
+            .disabled(viewModel.isStreamingCurrentConversation)
             .help("Attach file (audio, image, or text)")
             .fileImporter(
                 isPresented: $isShowingFilePicker,
@@ -1864,7 +1881,7 @@ struct ChatInputBar: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .scrollContentBackground(.hidden)
                 .focused(isInputFocused)
-                .disabled(viewModel.isStreaming)
+                .disabled(viewModel.isStreamingCurrentConversation)
                 .overlay(alignment: .topLeading) {
                     if viewModel.messageText.isEmpty {
                         Text("Message...")
@@ -1919,7 +1936,7 @@ struct ChatInputBar: View {
                     return .ignored
                 }
 
-            if viewModel.isStreaming {
+            if viewModel.isStreamingCurrentConversation {
                 Button(action: viewModel.stopStreaming) {
                     Image(systemName: "stop.circle.fill")
                         .font(sf.title2)
