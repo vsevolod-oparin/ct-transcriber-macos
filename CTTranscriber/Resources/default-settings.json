@@ -134,6 +134,20 @@
         "maxTokens": 4096,
         "apiKey": "",
         "extraHeaders": {}
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000007",
+        "name": "Ollama (Local)",
+        "apiType": "OpenAI Compatible",
+        "baseURL": "http://localhost:11434",
+        "completionsPath": "v1/chat/completions",
+        "modelsPath": "v1/models",
+        "defaultModel": "llama3.2",
+        "fallbackModels": ["llama3.2", "llama3.1", "mistral", "gemma2", "qwen2.5"],
+        "temperature": 0.7,
+        "maxTokens": 4096,
+        "apiKey": "ollama",
+        "extraHeaders": {}
       }
     ]
   }

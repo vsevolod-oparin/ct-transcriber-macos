@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 @main
 struct CTTranscriberApp: App {
@@ -7,6 +8,8 @@ struct CTTranscriberApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var settingsManager = SettingsManager()
     @State private var modelManager: ModelManager?
+    @State private var showAbout = false
+    @State private var showOpenPanel = false
 
     var body: some Scene {
         WindowGroup {
@@ -15,13 +18,30 @@ struct CTTranscriberApp: App {
                 .environment(\.fontScale, settingsManager.fontScale)
                 .preferredColorScheme(settingsManager.colorScheme)
                 .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
+                .sheet(isPresented: $showAbout) {
+                    AboutView()
+                }
         }
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
                          inMemory: isUITesting)
         .commands {
-            // Remove "New Window" from File menu — single-window app
-            CommandGroup(replacing: .newItem) { }
+            // Replace default New Window with New Conversation
+            CommandGroup(replacing: .newItem) {
+                Button("New Conversation") {
+                    NotificationCenter.default.post(name: .createNewConversation, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
 
+            // File menu: Open Audio
+            CommandGroup(after: .newItem) {
+                Button("Open Audio/Video...") {
+                    openAudioFiles()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+
+            // View menu: Font scaling
             CommandGroup(after: .textFormatting) {
                 Button("Increase Font Size") {
                     settingsManager.increaseFontScale()
@@ -38,6 +58,13 @@ struct CTTranscriberApp: App {
                 }
                 .keyboardShortcut("0", modifiers: .command)
             }
+
+            // Help menu: About
+            CommandGroup(replacing: .appInfo) {
+                Button("About CT Transcriber") {
+                    showAbout = true
+                }
+            }
         }
 
         Settings {
@@ -46,23 +73,85 @@ struct CTTranscriberApp: App {
                 .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
         }
     }
-}
 
-/// Maps a font scale factor (0.7–2.0) to the nearest DynamicTypeSize.
-private func dynamicTypeForScale(_ scale: Double) -> DynamicTypeSize {
-    switch scale {
-    case ..<0.8:    return .xSmall
-    case ..<0.9:    return .small
-    case ..<1.0:    return .medium
-    case ..<1.1:    return .large       // default
-    case ..<1.2:    return .xLarge
-    case ..<1.3:    return .xxLarge
-    case ..<1.5:    return .xxxLarge
-    case ..<1.7:    return .accessibility1
-    case ..<1.9:    return .accessibility2
-    default:        return .accessibility3
+    private func openAudioFiles() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [
+            .audio, .movie, .video, .mpeg4Movie, .quickTimeMovie,
+            UTType(filenameExtension: "webm") ?? .movie,
+            UTType(filenameExtension: "mkv") ?? .movie,
+        ]
+        panel.message = "Select audio or video files to transcribe"
+
+        if panel.runModal() == .OK {
+            appDelegate.pendingOpenURLs.append(contentsOf: panel.urls)
+        }
     }
 }
+
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let createNewConversation = Notification.Name("createNewConversation")
+}
+
+// MARK: - About View
+
+private struct AboutView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+    }
+
+    private var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "waveform.circle.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(Color.accentColor)
+
+            Text("CT Transcriber")
+                .font(.title)
+                .fontWeight(.bold)
+
+            Text("Version \(version) (\(build))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text("Audio & video transcription powered by CTranslate2 Metal backend on Apple Silicon.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 300)
+
+            Divider()
+
+            VStack(spacing: 4) {
+                Text("CTranslate2 Metal Backend")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                Text("faster-whisper · Whisper Models")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("OK") { dismiss() }
+                .keyboardShortcut(.return)
+        }
+        .padding(24)
+        .frame(width: 360)
+        .onExitCommand { dismiss() }
+    }
+}
+
+// MARK: - App Delegate
 
 /// Handles macOS file-open events (Finder "Open With", Dock drop, `open -a` CLI).
 /// Routes files to the existing window instead of creating new ones.
@@ -71,10 +160,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         AppLogger.info("AppDelegate: open \(urls.count) file(s)", category: "app")
-        // Append to pending — ContentView picks them up via binding
         pendingOpenURLs.append(contentsOf: urls)
 
-        // Bring existing window to front
         application.activate(ignoringOtherApps: true)
         if let window = application.windows.first(where: { $0.isVisible }) {
             window.makeKeyAndOrderFront(nil)
@@ -82,7 +169,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // If user clicks Dock icon and window exists, just bring it forward
         if flag {
             sender.windows.first?.makeKeyAndOrderFront(nil)
             return false

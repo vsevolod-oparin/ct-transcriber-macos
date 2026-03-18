@@ -121,10 +121,12 @@ struct ContentView: View {
             AppLogger.info("Environment check done", category: "app")
         }
         .onChange(of: appDelegate.pendingOpenURLs) { _, urls in
-            // Handle URLs that arrive after startup (e.g., second file open from Finder)
             if !urls.isEmpty {
                 processPendingURLs()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .createNewConversation)) { _ in
+            viewModel?.createConversation()
         }
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {

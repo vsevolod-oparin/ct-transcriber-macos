@@ -236,37 +236,19 @@ private struct EnvironmentSettingsTab: View {
 
 private struct LLMSettingsTab: View {
     @Binding var settings: LLMSettings
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
         VStack(spacing: 0) {
-            // Provider selector + add/remove
-            HStack {
-                Picker("Provider", selection: $settings.activeProviderID) {
-                    ForEach(settings.providers) { provider in
-                        Text(provider.name).tag(provider.id)
-                    }
-                }
-
-                Button(action: addProvider) {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help("Add provider")
-
-                Button(action: removeActiveProvider) {
-                    Image(systemName: "minus")
-                }
-                .buttonStyle(.borderless)
-                .help("Remove provider")
-                .disabled(settings.providers.count <= 1)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            // Active provider config
+            // Active provider config (includes provider selector at the top)
             if let index = activeProviderIndex {
                 ProviderConfigEditor(
-                    config: $settings.providers[index]
+                    config: $settings.providers[index],
+                    allProviders: $settings.providers,
+                    activeProviderID: $settings.activeProviderID,
+                    onAdd: addProvider,
+                    onRemove: removeActiveProvider,
+                    canRemove: settings.providers.count > 1
                 )
             }
         }
@@ -306,6 +288,11 @@ private struct LLMSettingsTab: View {
 
 private struct ProviderConfigEditor: View {
     @Binding var config: ProviderConfig
+    @Binding var allProviders: [ProviderConfig]
+    @Binding var activeProviderID: UUID
+    var onAdd: () -> Void
+    var onRemove: () -> Void
+    var canRemove: Bool
     @State private var availableModels: [String] = []
     @State private var isFetchingModels: Bool = false
     @State private var fallbackModelsText: String = ""
@@ -326,6 +313,29 @@ private struct ProviderConfigEditor: View {
 
     var body: some View {
         Form {
+            Section {
+                HStack {
+                    Picker("Provider", selection: $activeProviderID) {
+                        ForEach(allProviders) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+
+                    Button(action: onAdd) {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Add provider")
+
+                    Button(action: onRemove) {
+                        Image(systemName: "minus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove provider")
+                    .disabled(!canRemove)
+                }
+            }
+
             Section("Provider") {
                 TextField("Name", text: $config.name)
 
