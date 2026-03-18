@@ -70,13 +70,22 @@ struct ChatView: View {
                     )
                     .frame(width: 250)
                 } else {
-                    Text(conversation.title)
-                        .font(ScaledFont(scale: fontScale).headline)
-                        .lineLimit(1)
-                        .onTapGesture(count: 2) {
-                            renameTitleText = conversation.title
-                            isRenamingTitle = true
+                    HStack(spacing: 4) {
+                        Text(conversation.title)
+                            .font(ScaledFont(scale: fontScale).headline)
+                            .lineLimit(1)
+                            .onTapGesture(count: 2) {
+                                renameTitleText = conversation.title
+                                isRenamingTitle = true
+                            }
+                        AutoTitleButton(
+                            fontScale: fontScale,
+                            isGenerating: viewModel.isGeneratingTitle,
+                            disabled: viewModel.isStreaming || viewModel.isGeneratingTitle
+                        ) {
+                            viewModel.autoNameConversation(conversation)
                         }
+                    }
                 }
             }
         }
@@ -1631,6 +1640,36 @@ private struct FileAttachmentBadge: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+// MARK: - Auto Title Button
+
+private struct AutoTitleButton: View {
+    let fontScale: Double
+    let isGenerating: Bool
+    let disabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        if isGenerating {
+            ProgressView()
+                .controlSize(.small)
+                .help("Generating title...")
+        } else {
+            Button(action: action) {
+                Image(systemName: "sparkles")
+                    .font(ScaledFont(scale: fontScale).caption)
+                    .foregroundStyle(isHovering ? Color.accentColor : .secondary)
+                    .scaleEffect(isHovering ? 1.15 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: isHovering)
+            }
+            .buttonStyle(.borderless)
+            .onHover { isHovering = $0 }
+            .help("Generate title from conversation content using LLM")
+            .disabled(disabled)
+        }
     }
 }
 
