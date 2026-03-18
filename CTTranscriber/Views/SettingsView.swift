@@ -3,8 +3,10 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var settingsManager: SettingsManager
     var modelManager: ModelManager
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let s = CGFloat(fontScale)
         TabView {
             GeneralSettingsTab(settings: $settingsManager.settings.general)
                 .tabItem { Label("General", systemImage: "gear") }
@@ -18,7 +20,7 @@ struct SettingsView: View {
             EnvironmentSettingsTab(settings: $settingsManager.settings.transcription, settingsManager: settingsManager)
                 .tabItem { Label("Environment", systemImage: "terminal") }
         }
-        .frame(width: 520, height: 480)
+        .frame(width: 520 * s, height: 480 * s)
     }
 }
 
