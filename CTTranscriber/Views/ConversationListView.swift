@@ -243,7 +243,7 @@ private struct ConversationRow: View {
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
         .padding(.vertical, 2)
         .accessibilityIdentifier("conversationRow_\(conversation.title)")

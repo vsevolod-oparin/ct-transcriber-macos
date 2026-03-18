@@ -783,7 +783,7 @@ private struct MessageBubble: View {
 
                     Text(message.timestamp.formatted(.dateTime.hour().minute()))
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color(nsColor: .secondaryLabelColor))
 
                     if info.isError {
                         Button("Retry") { onRetry() }
@@ -872,7 +872,9 @@ private struct MessageBubble: View {
         if isUser {
             return AnyShapeStyle(Color.accentColor)
         }
-        return AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+        // Light gray bubble that's clearly visible against the window background.
+        // In light mode: ~#E8E8EA; in dark mode: ~#3A3A3C (adapts automatically).
+        return AnyShapeStyle(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
     }
 
     @ViewBuilder
@@ -1049,18 +1051,18 @@ private struct AudioPlayerView: View {
                 Text("\(formatTime(currentTime)) / \(formatTime(duration))")
                     .font(.caption2)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                     .frame(width: 80, alignment: .trailing)
             }
 
             Text(attachment.originalName)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .onAppear { loadMetadata() }
         .onDisappear { cleanup() }
@@ -1223,10 +1225,10 @@ private struct FileAttachmentBadge: View {
                 .lineLimit(1)
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.primary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }

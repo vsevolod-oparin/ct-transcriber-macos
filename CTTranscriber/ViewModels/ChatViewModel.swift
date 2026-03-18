@@ -578,9 +578,29 @@ final class ChatViewModel {
 
     private func formatTranscriptionResult(_ result: TranscriptionService.TranscriptionResult) -> String {
         let skipTimestamps = settingsManager.settings.transcription.skipTimestamps
-        var text = "**Transcription** (\(result.language), \(String(format: "%.1f", result.elapsed))s)\n\n"
+        let duration = Self.formatDuration(result.elapsed)
+        var text = "**Transcription** (\(result.language), \(duration))\n\n"
         text += skipTimestamps ? result.plainText : result.formattedTranscript
         return text
+    }
+
+    /// Formats seconds as `ss.s`, `mm:ss.s`, or `hh:mm:ss.s` depending on magnitude.
+    private static func formatDuration(_ seconds: Double) -> String {
+        let totalSeconds = Int(seconds)
+        let fraction = seconds - Double(totalSeconds)
+        let tenths = Int(fraction * 10)
+
+        let h = totalSeconds / 3600
+        let m = (totalSeconds % 3600) / 60
+        let s = totalSeconds % 60
+
+        if h > 0 {
+            return String(format: "%d:%02d:%02d.%d", h, m, s, tenths)
+        } else if m > 0 {
+            return String(format: "%d:%02d.%d", m, s, tenths)
+        } else {
+            return String(format: "%d.%d", s, tenths)
+        }
     }
 
     // MARK: - Private
