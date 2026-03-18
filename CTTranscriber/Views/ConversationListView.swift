@@ -17,16 +17,25 @@ struct ConversationListView: View {
                         isEditing: editingConversationID == conversation.id,
                         editingTitle: $editingTitle,
                         onCommitRename: { commitRename(conversation) },
-                        onCancelRename: { cancelRename() },
-                        onDoubleClickTitle: { beginRename(conversation) }
+                        onCancelRename: { cancelRename() }
                     )
                     .tag(conversation.id)
                     .id(conversation.id)
                     .listRowBackground(rowBackground(for: conversation))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        // Single click anywhere on row = instant activate
+                    .simultaneousGesture(TapGesture().onEnded {
+                        // Don't process clicks while renaming — would steal focus from text field
+                        guard editingConversationID == nil else { return }
+
+                        let clickCount = NSApp.currentEvent?.clickCount ?? 1
+
+                        // Double-click on an already-selected conversation = rename
+                        if clickCount >= 2 && viewModel.selectedConversationID == conversation.id {
+                            beginRename(conversation)
+                            return
+                        }
+
                         if NSEvent.modifierFlags.contains(.command) {
                             if viewModel.highlightedIDs.contains(conversation.id) {
                                 viewModel.highlightedIDs.remove(conversation.id)
@@ -49,7 +58,7 @@ struct ConversationListView: View {
                                 }
                             }
                         }
-                    }
+                    })
                     .contextMenu {
                         Button {
                             beginRename(conversation)
@@ -67,7 +76,8 @@ struct ConversationListView: View {
             }
             .listStyle(.sidebar)
             .onChange(of: viewModel.highlightedIDs) { _, newIDs in
-                if editingConversationID != nil {
+                // Only cancel rename if highlighting moved AWAY from the editing conversation
+                if let editingID = editingConversationID, !newIDs.contains(editingID) {
                     cancelRename()
                 }
                 // Scroll to the cursor position
@@ -79,19 +89,23 @@ struct ConversationListView: View {
                 }
             }
             .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
+                guard editingConversationID == nil else { return .ignored }
                 viewModel.moveHighlight(direction: -1, extend: keyPress.modifiers.contains(.shift))
                 return .handled
             }
             .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
+                guard editingConversationID == nil else { return .ignored }
                 viewModel.moveHighlight(direction: 1, extend: keyPress.modifiers.contains(.shift))
                 return .handled
             }
             .onKeyPress(.return) {
+                guard editingConversationID == nil else { return .ignored }
                 viewModel.activateHighlighted()
                 return .handled
             }
             // Backspace key = \u{7F} on macOS (physical backspace sends ASCII DEL)
             .onKeyPress(characters: CharacterSet(charactersIn: "\u{7F}\u{08}")) { _ in
+                guard editingConversationID == nil else { return .ignored }
                 if !viewModel.highlightedIDs.isEmpty {
                     showDeleteConfirmation = true
                 }
@@ -176,6 +190,7 @@ struct ConversationListView: View {
 
     private func commitRename(_ conversation: Conversation) {
         let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppLogger.info("commitRename: editingTitle='\(editingTitle)' trimmed='\(trimmed)' convo='\(conversation.title)'", category: "rename")
         if !trimmed.isEmpty {
             viewModel.renameConversation(conversation, to: trimmed)
         }
@@ -197,7 +212,6 @@ private struct ConversationRow: View {
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
-    let onDoubleClickTitle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -210,9 +224,6 @@ private struct ConversationRow: View {
                     Text(conversation.title)
                         .font(.headline)
                         .lineLimit(1)
-                        .onTapGesture(count: 2) {
-                            onDoubleClickTitle()
-                        }
                     if isActive {
                         Image(systemName: "chevron.right")
                             .font(.caption2)
@@ -278,6 +289,7 @@ private struct SelectAllTextField: NSViewRepresentable {
 
         func controlTextDidChange(_ obj: Notification) {
             if let field = obj.object as? NSTextField {
+                AppLogger.debug("controlTextDidChange: '\(field.stringValue)'", category: "rename")
                 parent.text = field.stringValue
             }
         }

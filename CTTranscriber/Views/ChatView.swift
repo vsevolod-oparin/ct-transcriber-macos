@@ -8,6 +8,8 @@ struct ChatView: View {
     @FocusState private var isInputFocused: Bool
     @State private var scrollToTopTrigger = 0
     @State private var scrollToBottomTrigger = 0
+    @State private var isRenamingTitle = false
+    @State private var renameTitleText = ""
     var body: some View {
         VStack(spacing: 0) {
             ChatTableView(messages: viewModel.sortedMessages(for: conversation),
@@ -40,7 +42,35 @@ struct ChatView: View {
 
             ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
         }
-        .navigationTitle(conversation.title)
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if isRenamingTitle {
+                    TitleRenameField(
+                        text: $renameTitleText,
+                        onCommit: {
+                            let trimmed = renameTitleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                viewModel.renameConversation(conversation, to: trimmed)
+                            }
+                            isRenamingTitle = false
+                        },
+                        onCancel: {
+                            isRenamingTitle = false
+                        }
+                    )
+                    .frame(width: 250)
+                } else {
+                    Text(conversation.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .onTapGesture(count: 2) {
+                            renameTitleText = conversation.title
+                            isRenamingTitle = true
+                        }
+                }
+            }
+        }
         .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
         }
@@ -1200,6 +1230,82 @@ private struct FileAttachmentBadge: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+// MARK: - Title Rename Field (NSViewRepresentable — stable focus)
+
+/// NSTextField for renaming the conversation title in the toolbar.
+/// Uses NSViewRepresentable to avoid SwiftUI re-render focus loss.
+private struct TitleRenameField: NSViewRepresentable {
+    @Binding var text: String
+    var onCommit: () -> Void
+    var onCancel: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.isBordered = true
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .exterior
+        field.delegate = context.coordinator
+        field.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        // Only set stringValue on first appear — after that, the coordinator manages it
+        if !context.coordinator.didFocus {
+            field.stringValue = text
+            context.coordinator.didFocus = true
+            DispatchQueue.main.async {
+                field.window?.makeFirstResponder(field)
+                field.selectText(nil)
+                context.coordinator.focusEstablished = true
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, NSTextFieldDelegate {
+        let parent: TitleRenameField
+        var didFocus = false
+        var didFinish = false
+        var focusEstablished = false
+
+        init(_ parent: TitleRenameField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ obj: Notification) {
+            if let field = obj.object as? NSTextField {
+                parent.text = field.stringValue
+            }
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard focusEstablished else { return }
+            if !didFinish {
+                didFinish = true
+                parent.onCancel()
+            }
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                didFinish = true
+                parent.onCommit()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                didFinish = true
+                parent.onCancel()
+                return true
+            }
+            return false
+        }
     }
 }
 
