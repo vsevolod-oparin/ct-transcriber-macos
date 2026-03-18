@@ -258,6 +258,7 @@ private struct SelectAllTextField: NSViewRepresentable {
     @Binding var text: String
     var onCommit: () -> Void
     var onCancel: () -> Void
+    @Environment(\.fontScale) private var fontScale
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField()
@@ -265,12 +266,13 @@ private struct SelectAllTextField: NSViewRepresentable {
         field.bezelStyle = .roundedBezel
         field.focusRingType = .exterior
         field.delegate = context.coordinator
-        field.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        field.font = .systemFont(ofSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), weight: .semibold)
         field.setAccessibilityIdentifier("renameField")
         return field
     }
 
     func updateNSView(_ field: NSTextField, context: Context) {
+        field.font = .systemFont(ofSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), weight: .semibold)
         field.stringValue = text
 
         if !context.coordinator.didFocus {
