@@ -257,10 +257,16 @@ struct ChatTableView: NSViewRepresentable {
         coordinator.fontScale = fontScale
         coordinator.isStreaming = isStreaming
 
-        // Font scale changed — update intercell spacing, clear height cache, reload
-        if abs(fontScale - oldFontScale) > 0.01, let tableView = coordinator.tableView {
-            tableView.intercellSpacing = NSSize(width: 0, height: 12 * fontScale)
+        // Skip all row updates during live resize — heights recalculated in viewDidEndLiveResize
+        if let chatTable = coordinator.tableView as? ChatNSTableView, chatTable.isLiveResizing {
+            coordinator.messages = messages
+            return
+        }
 
+        // Font scale changed — invalidate all heights and reload
+        if abs(fontScale - oldFontScale) > 0.01, let tableView = coordinator.tableView {
+            coordinator.heightCache.removeAll()
+            tableView.intercellSpacing = NSSize(width: 0, height: 12 * fontScale)
             tableView.reloadData()
             return
         }
@@ -271,6 +277,7 @@ struct ChatTableView: NSViewRepresentable {
         if conversationID != oldConversationID {
             coordinator.conversationID = conversationID
             coordinator.messages = messages
+            coordinator.heightCache.removeAll()
 
             coordinator.expandedMessages.removeAll()
             coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) })
@@ -311,6 +318,10 @@ struct ChatTableView: NSViewRepresentable {
             }
 
             if !changedRows.isEmpty {
+                // Invalidate height cache for changed rows
+                for row in changedRows {
+                    coordinator.heightCache.removeValue(forKey: messages[row].id)
+                }
                 tableView.noteHeightOfRows(withIndexesChanged: changedRows)
                 tableView.reloadData(forRowIndexes: changedRows,
                                      columnIndexes: IndexSet(integer: 0))
@@ -332,7 +343,7 @@ struct ChatTableView: NSViewRepresentable {
 
             // Clean up caches for removed messages
             for id in oldSet.subtracting(newSet) {
-                // height handled by usesAutomaticRowHeights
+                coordinator.heightCache.removeValue(forKey: id)
                 coordinator.expandedMessages.remove(id)
             }
 
@@ -384,6 +395,8 @@ struct ChatTableView: NSViewRepresentable {
         /// Needed because SwiftData Message objects are reference types: comparing old vs new
         /// messages gives the same object, so content appears unchanged.
         var contentLengthSnapshot: [UUID: Int] = [:]
+        /// Cached row heights keyed by message ID. Invalidated on content change, expand/collapse, resize.
+        var heightCache: [UUID: CGFloat] = [:]
         /// Messages the user has expanded (for long/collapsible messages).
         var expandedMessages: Set<UUID> = []
 
@@ -394,8 +407,6 @@ struct ChatTableView: NSViewRepresentable {
         private var lastStreamingScrollTime: Date = .distantPast
         private static let streamingScrollInterval: TimeInterval = 0.2
 
-        /// Shared sizing view for height measurement — avoids allocating per row.
-        private var sizingHostingView: NSHostingView<AnyView>?
 
         // MARK: - DataSource
 
@@ -459,6 +470,23 @@ struct ChatTableView: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             guard row < messages.count else { return 44 }
             let message = messages[row]
+            let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
+
+            // Don't cache streaming row — it changes every token
+            if !isStreamingThis, let cached = heightCache[message.id] {
+                return cached
+            }
+
+            let height = measureRowHeight(message: message, row: row, tableView: tableView)
+
+            if !isStreamingThis {
+                heightCache[message.id] = height
+            }
+            return height
+        }
+
+        /// Expensive height calculation — only called on cache miss.
+        private func measureRowHeight(message: Message, row: Int, tableView: NSTableView) -> CGFloat {
             let isExpanded = expandedMessages.contains(message.id)
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
             let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
@@ -477,7 +505,6 @@ struct ChatTableView: NSViewRepresentable {
             .environment(\.fontScale, fontScale)
             .frame(width: targetWidth)
 
-            // NSHostingController.sizeThatFits properly respects proposed width
             let controller = NSHostingController(rootView: bubble)
             let size = controller.sizeThatFits(in: NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude))
             return max(size.height, 30)
@@ -536,6 +563,9 @@ struct ChatTableView: NSViewRepresentable {
             }
 
             guard let tableView else { return }
+
+            // Invalidate cached height for this message
+            heightCache.removeValue(forKey: messageID)
 
             // Update the existing cell's content in place (no reload = no flash).
             // Find the current cell and swap its rootView with updated expand state.
@@ -606,12 +636,35 @@ struct ChatTableView: NSViewRepresentable {
 /// so the parent SwiftUI view handles Cmd+Up/Down.
 private class ChatNSTableView: NSTableView {
     var onClickBackground: (() -> Void)?
+    private var liveResizeStartWidth: CGFloat = 0
+    var isLiveResizing = false
 
     override func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)
     }
 
     override var acceptsFirstResponder: Bool { false }
+
+    // Telegram pattern: recalculate all heights after resize finishes, not during
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        liveResizeStartWidth = frame.width
+        isLiveResizing = true
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        isLiveResizing = false
+        if abs(frame.width - liveResizeStartWidth) > 1 {
+            // Invalidate all heights — width changed, text wrapping different
+            if let coordinator = delegate as? ChatTableView.Coordinator {
+                coordinator.heightCache.removeAll()
+            }
+            let allRows = IndexSet(integersIn: 0..<numberOfRows)
+            noteHeightOfRows(withIndexesChanged: allRows)
+            reloadData()
+        }
+    }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -1036,13 +1089,16 @@ private struct AttachmentView: View {
             AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
         case .video:
             if isUnsupportedVideo && attachment.convertedName == nil {
-                // WebM/MKV — converting or conversion failed
                 UnsupportedVideoView(attachment: attachment, isConverting: true)
-            } else if let convertedName = attachment.convertedName {
-                // Play the converted MP4 version
-                VideoPlayerView(attachment: attachment, playbackStoredName: convertedName, seekRequest: $seekRequest)
             } else {
-                VideoPlayerView(attachment: attachment, seekRequest: $seekRequest)
+                let playName = attachment.convertedName ?? attachment.storedName
+                let url = FileStorage.url(for: playName)
+                let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
+                VideoPlayerView(attachment: attachment,
+                                playbackStoredName: attachment.convertedName,
+                                initialAspectRatio: ratio,
+                                seekRequest: $seekRequest
+                )
             }
         case .image:
             ImageAttachmentView(attachment: attachment)
@@ -1277,8 +1333,8 @@ private struct AudioPlayerView: View {
 
 private struct VideoPlayerView: View {
     let attachment: Attachment
-    /// Override storedName for playback (e.g., converted MP4). Nil = use attachment.storedName.
     var playbackStoredName: String?
+    var initialAspectRatio: CGFloat = 16.0 / 9.0
     @Binding var seekRequest: (storedName: String, time: TimeInterval)?
     @State private var avPlayer: AVPlayer?
     @State private var isPlaying = false
@@ -1286,17 +1342,22 @@ private struct VideoPlayerView: View {
     @State private var duration: TimeInterval = 0
     @State private var isDragging = false
     @State private var timeObserver: Any?
-    @State private var videoAspectRatio: CGFloat = 16.0 / 9.0
+    @State private var videoAspectRatio: CGFloat?
     @Environment(\.fontScale) private var fontScale
 
     private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
+
+    private var effectiveAspectRatio: CGFloat {
+        videoAspectRatio ?? initialAspectRatio
+    }
 
     /// Compute video display dimensions from aspect ratio.
     private var videoSize: (width: CGFloat, height: CGFloat) {
         let maxW = sp(350)
         let maxH = sp(300)
-        let h = min(maxH, maxW / videoAspectRatio)
-        let w = h * videoAspectRatio
+        let ratio = effectiveAspectRatio
+        let h = min(maxH, maxW / ratio)
+        let w = h * ratio
         return (w, h)
     }
 
