@@ -40,6 +40,12 @@ struct ChatView: View {
                 }
             }
 
+            // Floating mini-player — shown when media is playing in this conversation
+            if AudioPlaybackManager.shared.currentlyPlayingID != nil,
+               AudioPlaybackManager.shared.conversationID == conversation.id {
+                MiniPlayerBar()
+            }
+
             Divider()
 
             ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
@@ -254,7 +260,7 @@ struct ChatTableView: NSViewRepresentable {
         // Font scale changed — update intercell spacing, clear height cache, reload
         if abs(fontScale - oldFontScale) > 0.01, let tableView = coordinator.tableView {
             tableView.intercellSpacing = NSSize(width: 0, height: 12 * fontScale)
-            coordinator.heightCache.removeAll()
+
             tableView.reloadData()
             return
         }
@@ -265,7 +271,7 @@ struct ChatTableView: NSViewRepresentable {
         if conversationID != oldConversationID {
             coordinator.conversationID = conversationID
             coordinator.messages = messages
-            coordinator.heightCache.removeAll()
+
             coordinator.expandedMessages.removeAll()
             coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) })
             tableView.reloadData()
@@ -305,9 +311,6 @@ struct ChatTableView: NSViewRepresentable {
             }
 
             if !changedRows.isEmpty {
-                for row in changedRows {
-                    coordinator.heightCache.removeValue(forKey: messages[row].id)
-                }
                 tableView.noteHeightOfRows(withIndexesChanged: changedRows)
                 tableView.reloadData(forRowIndexes: changedRows,
                                      columnIndexes: IndexSet(integer: 0))
@@ -329,7 +332,7 @@ struct ChatTableView: NSViewRepresentable {
 
             // Clean up caches for removed messages
             for id in oldSet.subtracting(newSet) {
-                coordinator.heightCache.removeValue(forKey: id)
+                // height handled by usesAutomaticRowHeights
                 coordinator.expandedMessages.remove(id)
             }
 
@@ -377,8 +380,6 @@ struct ChatTableView: NSViewRepresentable {
         weak var tableView: NSTableView?
         weak var scrollView: NSScrollView?
 
-        /// Cached row heights keyed by message ID. Invalidated on width change or content change.
-        var heightCache: [UUID: CGFloat] = [:]
         /// Snapshot of content lengths per message ID — used to detect in-place content changes.
         /// Needed because SwiftData Message objects are reference types: comparing old vs new
         /// messages gives the same object, so content appears unchanged.
@@ -386,7 +387,6 @@ struct ChatTableView: NSViewRepresentable {
         /// Messages the user has expanded (for long/collapsible messages).
         var expandedMessages: Set<UUID> = []
 
-        var lastTableWidth: CGFloat = 0
         var lastTopTrigger: Int = 0
         var lastBottomTrigger: Int = 0
 
@@ -446,20 +446,12 @@ struct ChatTableView: NSViewRepresentable {
             .padding(.horizontal, 16)
             .environment(\.fontScale, fontScale)
 
-            // Wrap in a container NSView so the hosting view fills the full row.
-            // NSHostingView's intrinsic content size can be smaller than the row height,
-            // causing SwiftUI Text truncation. The container + autoresizing ensures
-            // the hosting view gets the full row dimensions.
+            let cell = NSHostingView(rootView: bubble)
             let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
-            let container = NSView()
-            let hostingView = NSHostingView(rootView: bubble)
-            hostingView.autoresizingMask = [.width, .height]
             if columnWidth > 0 {
-                container.frame.size.width = columnWidth
-                hostingView.frame.size.width = columnWidth
+                cell.frame.size.width = columnWidth
             }
-            container.addSubview(hostingView)
-            return container
+            return cell
         }
 
         // MARK: - Delegate (row heights)
@@ -467,88 +459,28 @@ struct ChatTableView: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             guard row < messages.count else { return 44 }
             let message = messages[row]
-
-            // Use column width (more reliable than bounds during initial layout)
-            let currentWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
-            if currentWidth > 0 && abs(currentWidth - lastTableWidth) > 1 {
-                heightCache.removeAll()
-                lastTableWidth = currentWidth
-            }
-
-            // Don't cache if width hasn't been established yet
-            let widthEstablished = currentWidth > 300
-
-            // Don't cache streaming row — it changes every token
-            let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
-            if !isStreamingThis && widthEstablished, let cached = heightCache[message.id] {
-                return cached
-            }
-
-            // Measure height using direct text measurement (NSTextStorage).
-            // NSHostingView.fittingSize is unreliable for SwiftUI Text wrapping.
             let isExpanded = expandedMessages.contains(message.id)
-            let targetWidth = max(currentWidth, 200)
-            let s = CGFloat(fontScale)
-            let scaledFontSize = CGFloat(NSFont.systemFontSize) * s
+            let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
+            let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
+            let targetWidth = max(columnWidth, 200)
 
-            // Layout constants (must match MessageBubble's padding/spacing)
-            let bubbleHPadding: CGFloat = 12 * 2 * s
-            let bubbleVPadding: CGFloat = 8 * 2 * s
-            let outerHPadding: CGFloat = 16 * 2 * s
-            let spacerWidth: CGFloat = (60 + 4 + 24) * s  // Spacer + spacing + copy button
-            let timestampHeight: CGFloat = 20 * s
-            let collapseButtonHeight: CGFloat = 24 * s
-            let textWidth = targetWidth - outerHPadding - bubbleHPadding - spacerWidth
+            let seekBinding = seekRequest ?? .constant(nil)
+            let bubble = MessageBubble(
+                message: message,
+                isStreamingThis: isStreamingThis,
+                isExpanded: isExpanded,
+                onRetry: {},
+                onCollapseToggle: {},
+                seekRequest: seekBinding
+            )
+            .padding(.horizontal, 16)
+            .environment(\.fontScale, fontScale)
+            .frame(width: targetWidth)
 
-            // Compute attachment heights based on type
-            var attachmentHeight: CGFloat = 0
-            for att in message.attachments {
-                switch att.kind {
-                case .video:
-                    let playName = att.convertedName ?? att.storedName
-                    let url = FileStorage.url(for: playName)
-                    let ratio = Self.videoAspectRatio(url: url)
-                    let maxW: CGFloat = 350 * s
-                    let videoH = min(300 * s, maxW / ratio)
-                    attachmentHeight += videoH + 30 * s
-                case .audio:
-                    // Audio player: play button + seek bar + filename + padding
-                    attachmentHeight += 70 * s
-                case .image:
-                    // Image preview: max 200*s height + filename badge
-                    attachmentHeight += 220 * s
-                case .text:
-                    // Small file badge
-                    attachmentHeight += 30 * s
-                }
-            }
-
-            // Determine which text to measure
-            let analysis = MessageAnalysis(content: message.content)
-            let isCollapsedLong = !isExpanded && analysis.isLong
-            let displayText: String
-            if message.content.isEmpty {
-                displayText = isStreamingThis ? "Thinking..." : ""
-            } else if isCollapsedLong {
-                displayText = analysis.collapsedPreview
-            } else {
-                displayText = message.content
-            }
-
-            let textHeight = displayText.isEmpty ? 0 :
-                Self.measureTextHeight(displayText, width: max(textWidth, 100), fontSize: scaledFontSize)
-
-            var height = textHeight + bubbleVPadding + timestampHeight + attachmentHeight
-            if isCollapsedLong || (analysis.isLong && !isStreamingThis) {
-                height += collapseButtonHeight
-            }
-            height = max(height, 30)
-
-            if !isStreamingThis {
-                heightCache[message.id] = height
-            }
-
-            return height
+            // NSHostingController.sizeThatFits properly respects proposed width
+            let controller = NSHostingController(rootView: bubble)
+            let size = controller.sizeThatFits(in: NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude))
+            return max(size.height, 30)
         }
 
         // MARK: - Video Aspect Ratio (synchronous)
@@ -603,8 +535,6 @@ struct ChatTableView: NSViewRepresentable {
                 expandedMessages.insert(messageID)
             }
 
-            heightCache.removeValue(forKey: messageID)
-
             guard let tableView else { return }
 
             // Update the existing cell's content in place (no reload = no flash).
@@ -628,26 +558,13 @@ struct ChatTableView: NSViewRepresentable {
                 .padding(.horizontal, 16)
                 .environment(\.fontScale, fontScale)
 
-                // Replace the cell's content with a new hosting view
-                // (cheaper than reloadData which destroys + recreates)
-                let newHosting = NSHostingView(rootView: updatedBubble)
-                newHosting.frame = existingCell.bounds
-                existingCell.subviews.forEach { $0.removeFromSuperview() }
-                newHosting.autoresizingMask = [.width, .height]
-                existingCell.addSubview(newHosting)
             }
 
-            // Save the scroll position BEFORE the height change so we can restore it.
-            // This keeps the viewport exactly where it was — the expansion happens
-            // "below" the current view, so the user sees no scroll jump.
             let savedOrigin = scrollView?.contentView.bounds.origin ?? .zero
 
-            // Animate only the height change — the cell content is already updated
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.25
-                ctx.allowsImplicitAnimation = true
-                tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
-            }
+            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
+            tableView.reloadData(forRowIndexes: IndexSet(integer: row),
+                                 columnIndexes: IndexSet(integer: 0))
 
             // Restore exact scroll position — no visible jump
             scrollView?.contentView.setBoundsOrigin(savedOrigin)
@@ -986,12 +903,67 @@ private struct MessageBubble: View {
             }
         }
 
+        if info.hasTimestamps {
+            Divider()
+            // Parse the first timestamp from the content and offer "Play from start"
+            if let firstTimestamp = parseFirstTimestamp(from: message.content) {
+                Button {
+                    // Find the audio storedName from the previous message's attachment
+                    if let audioName = findAudioAttachment() {
+                        seekRequest = (storedName: audioName, time: firstTimestamp)
+                    }
+                } label: {
+                    Label("Play from \(formatSeekTime(firstTimestamp))", systemImage: "play.fill")
+                }
+            }
+        }
+
         if info.isError {
             Divider()
             Button { onRetry() } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }
         }
+    }
+
+    /// Parses the first `[MM:SS` or `[SS.SS` timestamp from transcript text.
+    private func parseFirstTimestamp(from text: String) -> TimeInterval? {
+        // Match [0.00 → or [1:23.45 →
+        guard let bracketRange = text.range(of: "[") else { return nil }
+        let afterBracket = text[bracketRange.upperBound...]
+        guard let arrowRange = afterBracket.range(of: " →") ?? afterBracket.range(of: "→") else { return nil }
+        let timeStr = String(afterBracket[..<arrowRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+        return parseTimestamp(timeStr)
+    }
+
+    /// Parses a timestamp string like "0.00", "1:23", "1:23.45" into seconds.
+    private func parseTimestamp(_ str: String) -> TimeInterval? {
+        let parts = str.split(separator: ":")
+        if parts.count == 2 {
+            // MM:SS or MM:SS.ss
+            guard let min = Double(parts[0]), let sec = Double(parts[1]) else { return nil }
+            return min * 60 + sec
+        } else if parts.count == 1 {
+            // SS.ss
+            return Double(parts[0])
+        }
+        return nil
+    }
+
+    /// Finds the storedName of an audio/video attachment from the message before this one.
+    private func findAudioAttachment() -> String? {
+        guard let conversation = message.conversation else { return nil }
+        let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+        guard let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 else { return nil }
+        // Look at the message before this one for an audio/video attachment
+        let prev = sorted[myIndex - 1]
+        return prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video })?.storedName
+    }
+
+    private func formatSeekTime(_ time: TimeInterval) -> String {
+        let min = Int(time) / 60
+        let sec = Int(time) % 60
+        return String(format: "%d:%02d", min, sec)
     }
 }
 
@@ -1206,10 +1178,25 @@ private struct AudioPlayerView: View {
     private func startPlayback() {
         if player == nil { loadMetadata() }
 
-        // Pause any other playing audio first
         AudioPlaybackManager.shared.didStartPlaying(
             storedName: attachment.storedName,
-            onPause: { [self] in pausePlayback() }
+            displayName: attachment.originalName,
+            conversationID: attachment.message?.conversation?.id,
+            duration: duration,
+            player: player,
+            onPause: { [self] in pausePlayback() },
+            onSeek: { [self] time in
+                player?.currentTime = time
+                currentTime = time
+                if !isPlaying {
+                    player?.play()
+                    isPlaying = true
+                    startTimer()
+                }
+            },
+            onGetCurrentTime: {
+                (AudioPlaybackManager.shared.activePlayer as? AVAudioPlayer)?.currentTime ?? 0
+            }
         )
 
         player?.play()
@@ -1229,11 +1216,12 @@ private struct AudioPlayerView: View {
         timer = Timer.scheduledTimer(withTimeInterval: Self.progressUpdateInterval, repeats: true) { _ in
             guard let player, !isDragging else { return }
             currentTime = player.currentTime
+            AudioPlaybackManager.shared.currentTime = currentTime
             if !player.isPlaying {
                 isPlaying = false
                 persistPosition()
                 stopTimer()
-                AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
             }
         }
     }
@@ -1245,9 +1233,14 @@ private struct AudioPlayerView: View {
 
     private func cleanup() {
         persistPosition()
-        player?.stop()
+        // Don't stop playback when scrolling out — the mini-player takes over.
+        // Only stop the UI timer; the AVAudioPlayer continues in the background.
+        // The AudioPlaybackManager keeps tracking the state.
+        if !isPlaying {
+            player?.stop()
+            AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+        }
         stopTimer()
-        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
     }
 
     /// Saves current playback position to the SwiftData Attachment model.
@@ -1380,13 +1373,14 @@ private struct VideoPlayerView: View {
             let seconds = CMTimeGetSeconds(time)
             if seconds.isFinite {
                 currentTime = seconds
+                AudioPlaybackManager.shared.currentTime = seconds
             }
             // Detect end of playback
             if let item = player.currentItem,
                CMTimeGetSeconds(item.duration).isFinite,
                seconds >= CMTimeGetSeconds(item.duration) - 0.1 {
                 isPlaying = false
-                AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
             }
         }
     }
@@ -1402,7 +1396,26 @@ private struct VideoPlayerView: View {
     private func startPlayback() {
         AudioPlaybackManager.shared.didStartPlaying(
             storedName: attachment.storedName,
-            onPause: { pausePlayback() }
+            displayName: attachment.originalName,
+            conversationID: attachment.message?.conversation?.id,
+            duration: duration,
+            player: avPlayer,
+            onPause: {
+                // Use manager's retained player — survives cell destruction
+                let mgr = AudioPlaybackManager.shared
+                (mgr.activePlayer as? AVPlayer)?.pause()
+                if let id = mgr.currentlyPlayingID { mgr.didStopPlaying(storedName: id) }
+            },
+            onSeek: { time in
+                guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return }
+                p.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+                p.play()
+            },
+            onGetCurrentTime: {
+                guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return 0 }
+                let t = CMTimeGetSeconds(p.currentTime())
+                return t.isFinite ? t : 0
+            }
         )
         avPlayer?.play()
         isPlaying = true
@@ -1417,12 +1430,15 @@ private struct VideoPlayerView: View {
 
     private func cleanup() {
         persistPosition()
-        avPlayer?.pause()
+        // Don't stop playback when scrolling out — the mini-player takes over.
+        if !isPlaying {
+            avPlayer?.pause()
+            AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
+        }
         if let observer = timeObserver {
             avPlayer?.removeTimeObserver(observer)
         }
         timeObserver = nil
-        AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
     }
 
     private func persistPosition() {
@@ -1540,6 +1556,56 @@ private struct FileAttachmentBadge: View {
         .padding(.vertical, 4)
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+// MARK: - Mini Player Bar
+
+/// Compact player bar shown when the playing audio/video is scrolled out of view.
+private struct MiniPlayerBar: View {
+    @Environment(\.fontScale) private var fontScale
+    private var manager: AudioPlaybackManager { .shared }
+
+    private func sp(_ base: CGFloat) -> CGFloat { base * CGFloat(fontScale) }
+
+    var body: some View {
+        let sf = ScaledFont(scale: fontScale)
+        HStack(spacing: sp(8)) {
+            Button(action: { manager.togglePlayPause() }) {
+                Image(systemName: manager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(sf.title3)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.borderless)
+
+            if let name = manager.currentlyPlayingName {
+                Text(name)
+                    .font(sf.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
+
+            Slider(value: Binding(
+                get: { manager.duration > 0 ? manager.currentTime / manager.duration : 0 },
+                set: { manager.seek(to: $0 * manager.duration) }
+            ), in: 0...1)
+            .controlSize(.small)
+
+            Text(formatTime(manager.currentTime))
+                .font(sf.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: sp(40), alignment: .trailing)
+        }
+        .padding(.horizontal, sp(12))
+        .padding(.vertical, sp(4))
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

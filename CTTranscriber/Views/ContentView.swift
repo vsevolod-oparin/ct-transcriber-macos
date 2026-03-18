@@ -85,6 +85,10 @@ struct ContentView: View {
         }
         .onChange(of: viewModel?.selectedConversationID) { oldID, newID in
             viewModel?.conversationDidChange(from: oldID, to: newID)
+            // Stop playback when switching conversations
+            if oldID != newID {
+                AudioPlaybackManager.shared.stopAll()
+            }
         }
         .task {
             AppLogger.info("ContentView.task starting", category: "app")
