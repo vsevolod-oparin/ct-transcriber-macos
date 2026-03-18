@@ -281,11 +281,22 @@ struct ChatTableView: NSViewRepresentable {
             return
         }
 
-        // Font scale changed — invalidate all heights and reload
+        // Font scale changed — invalidate all heights and reload twice.
+        // First reload creates cells with new font; second pass remeasures heights
+        // correctly (sizeThatFits needs the environment to propagate first).
         if abs(fontScale - oldFontScale) > 0.01, let tableView = coordinator.tableView {
             coordinator.heightCache.removeAll()
             tableView.intercellSpacing = NSSize(width: 0, height: 12 * fontScale)
             tableView.reloadData()
+            // Second pass — clear cache again, remeasure, and reload.
+            // The first pass cached heights before the environment fully propagated;
+            // the second pass gets correct measurements.
+            DispatchQueue.main.async {
+                coordinator.heightCache.removeAll()
+                let allRows = IndexSet(integersIn: 0..<coordinator.messages.count)
+                tableView.noteHeightOfRows(withIndexesChanged: allRows)
+                tableView.reloadData()
+            }
             return
         }
 
@@ -475,6 +486,7 @@ struct ChatTableView: NSViewRepresentable {
             )
             .padding(.horizontal, 16)
             .environment(\.fontScale, fontScale)
+            .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale)))
 
             let cell = NSHostingView(rootView: bubble)
             let columnWidth = tableView.tableColumns.first?.width ?? tableView.bounds.width
@@ -522,6 +534,7 @@ struct ChatTableView: NSViewRepresentable {
             )
             .padding(.horizontal, 16)
             .environment(\.fontScale, fontScale)
+            .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale)))
             .frame(width: targetWidth)
 
             let controller = NSHostingController(rootView: bubble)
@@ -606,6 +619,7 @@ struct ChatTableView: NSViewRepresentable {
                 )
                 .padding(.horizontal, 16)
                 .environment(\.fontScale, fontScale)
+                .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale)))
 
             }
 
