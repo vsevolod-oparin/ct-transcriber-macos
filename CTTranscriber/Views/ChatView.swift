@@ -6,8 +6,6 @@ struct ChatView: View {
     let conversation: Conversation
     @Bindable var viewModel: ChatViewModel
     @FocusState private var isInputFocused: Bool
-    @State private var scrollToTopTrigger = 0
-    @State private var scrollToBottomTrigger = 0
     @State private var isRenamingTitle = false
     @State private var renameTitleText = ""
     var body: some View {
@@ -20,10 +18,11 @@ struct ChatView: View {
                                   viewModel.attachFile(from: url, to: conversation)
                               }
                           },
+                          onClickBackground: { viewModel.requestInputFocus() },
                           seekRequest: $viewModel.seekRequest,
                           conversationID: conversation.id,
-                          scrollToTopTrigger: scrollToTopTrigger,
-                          scrollToBottomTrigger: scrollToBottomTrigger)
+                          scrollToTopTrigger: viewModel.scrollToTopTrigger,
+                          scrollToBottomTrigger: viewModel.scrollToBottomTrigger)
 
             if viewModel.isTranscribing {
                 TranscriptionProgressBar(
@@ -73,20 +72,6 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
-        }
-        .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
-            if keyPress.modifiers.contains(.command) {
-                scrollToTopTrigger += 1
-                return .handled
-            }
-            return .ignored
-        }
-        .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
-            if keyPress.modifiers.contains(.command) {
-                scrollToBottomTrigger += 1
-                return .handled
-            }
-            return .ignored
         }
     }
 
@@ -172,6 +157,7 @@ struct ChatTableView: NSViewRepresentable {
     let isStreaming: Bool
     let onRetry: (Message) -> Void
     let onDropFiles: ([URL]) -> Void
+    let onClickBackground: () -> Void
     @Binding var seekRequest: (storedName: String, time: TimeInterval)?
     let conversationID: UUID?
     let scrollToTopTrigger: Int
@@ -217,6 +203,7 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.onDropFiles = onDropFiles
         context.coordinator.seekRequest = $seekRequest
+        tableView.onClickBackground = onClickBackground
 
         return scrollView
     }
@@ -640,12 +627,23 @@ struct ChatTableView: NSViewRepresentable {
 /// Custom NSTableView subclass to disable default selection/keyboard behavior
 /// so the parent SwiftUI view handles Cmd+Up/Down.
 private class ChatNSTableView: NSTableView {
+    var onClickBackground: (() -> Void)?
+
     override func keyDown(with event: NSEvent) {
-        // Don't handle keyboard events — let them propagate to SwiftUI
         nextResponder?.keyDown(with: event)
     }
 
     override var acceptsFirstResponder: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let clickedRow = row(at: point)
+        if clickedRow == -1 {
+            // Clicked on empty area (not on a row) — focus the input
+            onClickBackground?()
+        }
+        super.mouseDown(with: event)
+    }
 }
 
 // MARK: - Message Content Analysis (computed once, cached)
@@ -1388,8 +1386,21 @@ struct ChatInputBar: View {
                     return true
                 }
                 .onKeyPress(.tab) {
-                    // Consume Tab — ContentView's handler switches focus to sidebar
                     return .handled
+                }
+                .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
+                    if keyPress.modifiers.contains(.command) {
+                        viewModel.scrollToTop()
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
+                    if keyPress.modifiers.contains(.command) {
+                        viewModel.scrollToBottom()
+                        return .handled
+                    }
+                    return .ignored
                 }
                 .onKeyPress(.return) {
                     if !NSEvent.modifierFlags.contains(.shift) {

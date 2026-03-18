@@ -90,11 +90,19 @@ struct ConversationListView: View {
             }
             .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
                 guard editingConversationID == nil else { return .ignored }
+                if keyPress.modifiers.contains(.command) {
+                    viewModel.scrollToTop()
+                    return .handled
+                }
                 viewModel.moveHighlight(direction: -1, extend: keyPress.modifiers.contains(.shift))
                 return .handled
             }
             .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
                 guard editingConversationID == nil else { return .ignored }
+                if keyPress.modifiers.contains(.command) {
+                    viewModel.scrollToBottom()
+                    return .handled
+                }
                 viewModel.moveHighlight(direction: 1, extend: keyPress.modifiers.contains(.shift))
                 return .handled
             }

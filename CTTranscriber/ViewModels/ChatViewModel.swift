@@ -24,6 +24,13 @@ final class ChatViewModel {
     }
     /// Incremented whenever the detail view should reclaim input focus.
     private(set) var focusCounter: Int = 0
+    /// Incremented to trigger scroll-to-top in the chat table.
+    private(set) var scrollToTopTrigger: Int = 0
+    /// Incremented to trigger scroll-to-bottom in the chat table.
+    private(set) var scrollToBottomTrigger: Int = 0
+
+    func scrollToTop() { scrollToTopTrigger += 1 }
+    func scrollToBottom() { scrollToBottomTrigger += 1 }
 
     func requestInputFocus() {
         focusCounter += 1
