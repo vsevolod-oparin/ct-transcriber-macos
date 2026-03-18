@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import AVFoundation
 
 @Observable
 final class ChatViewModel {
@@ -191,10 +192,34 @@ final class ChatViewModel {
     func retryMessage(_ message: Message, in conversation: Conversation) {
         guard !isStreaming && !isTranscribing else { return }
 
-        // Find the user message before this failed assistant/system message
         let sorted = sortedMessages(for: conversation)
+
         if message.role == .assistant || message.role == .system {
-            // Remove the failed message, re-trigger LLM response
+            // Check if this was a failed transcription — look for audio/video attachment
+            // in the message directly before this one
+            if let myIdx = sorted.firstIndex(where: { $0.id == message.id }), myIdx > 0 {
+                let prevMessage = sorted[myIdx - 1]
+                let audioAttachment = prevMessage.attachments.first {
+                    $0.kind == .audio || $0.kind == .video
+                }
+
+                if let att = audioAttachment, isTranscriptionMessage(message) {
+                    // Re-trigger transcription: clear the failed message content, re-queue
+                    let audioURL = FileStorage.url(for: att.storedName)
+                    message.content = "⏳ Retrying transcription..."
+                    saveContext()
+                    refreshConversations()
+                    startTranscription(
+                        audioPath: audioURL.path,
+                        displayName: att.originalName,
+                        conversation: conversation,
+                        transcriptMessage: message
+                    )
+                    return
+                }
+            }
+
+            // Not a transcription — re-trigger LLM response
             conversation.messages.removeAll { $0.id == message.id }
             modelContext.delete(message)
             saveContext()
@@ -222,6 +247,18 @@ final class ChatViewModel {
             refreshConversations()
             requestLLMResponse(for: conversation)
         }
+    }
+
+    /// Checks if a message looks like a failed/cancelled transcription result.
+    private func isTranscriptionMessage(_ message: Message) -> Bool {
+        let c = message.content
+        return c.contains("Transcription failed") ||
+               c.contains("Transcription cancelled") ||
+               c.hasPrefix("⏳") ||
+               c.hasPrefix("⚠ Transcription") ||
+               c.hasPrefix("⚠ Python environment") ||
+               c.hasPrefix("⚠ Whisper model") ||
+               c.hasPrefix("Transcribing")
     }
 
     // MARK: - Send Message + LLM Streaming
@@ -486,6 +523,17 @@ final class ChatViewModel {
         let envStatus = PythonEnvironment.check(settings: transSettings)
         guard case .ready = envStatus else {
             transcriptMessage.content = "⚠ Python environment not ready. Set up from Settings → Environment."
+            saveContext()
+            refreshConversations()
+            return
+        }
+
+        // Check that the file has an audio track before attempting transcription
+        let audioURL = URL(fileURLWithPath: audioPath)
+        let asset = AVAsset(url: audioURL)
+        let audioTracks = asset.tracks(withMediaType: .audio)
+        if audioTracks.isEmpty {
+            transcriptMessage.content = "⚠ No audio track found in this file. Cannot transcribe."
             saveContext()
             refreshConversations()
             return
