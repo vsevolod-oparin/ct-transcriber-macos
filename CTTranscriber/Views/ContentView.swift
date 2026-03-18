@@ -56,11 +56,26 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 700, minHeight: 500)
-        .onChange(of: viewModel?.selectedConversationID) { oldID, newID in
-            viewModel?.conversationDidChange(from: oldID, to: newID)
-            if newID != nil {
+        .onKeyPress(.tab) {
+            // Tab toggles between sidebar and user input.
+            // Detect current focus by checking if the first responder is a text input
+            // (TextEditor / NSTextView = user input focused) vs anything else (sidebar).
+            guard let window = NSApp.keyWindow else { return .handled }
+            let isInputFocused = window.firstResponder is NSTextView
+
+            if isInputFocused {
+                // Input → sidebar
+                if let sidebarView = findSidebarListView(in: window.contentView) {
+                    window.makeFirstResponder(sidebarView)
+                }
+            } else {
+                // Sidebar → input
                 viewModel?.requestInputFocus()
             }
+            return .handled
+        }
+        .onChange(of: viewModel?.selectedConversationID) { oldID, newID in
+            viewModel?.conversationDidChange(from: oldID, to: newID)
         }
         .task {
             AppLogger.info("ContentView.task starting", category: "app")
@@ -137,6 +152,21 @@ struct ContentView: View {
         appDelegate.pendingOpenURLs.removeAll()
         viewModel.openFiles(urls: urls)
         AppLogger.info("Processed \(urls.count) file(s) from Finder/Dock", category: "app")
+    }
+
+    /// Finds the sidebar's NSOutlineView (SwiftUI List is backed by NSOutlineView on macOS).
+    private func findSidebarListView(in view: NSView?) -> NSView? {
+        guard let view else { return nil }
+        // SwiftUI List on macOS is backed by NSOutlineView
+        if view is NSOutlineView {
+            return view
+        }
+        for subview in view.subviews {
+            if let found = findSidebarListView(in: subview) {
+                return found
+            }
+        }
+        return nil
     }
 
     private func checkEnvironmentAsync() async {

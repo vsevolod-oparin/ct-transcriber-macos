@@ -4,20 +4,52 @@ struct ConversationListView: View {
     @Bindable var viewModel: ChatViewModel
     @State private var editingConversationID: UUID?
     @State private var editingTitle: String = ""
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         ScrollViewReader { proxy in
-            List(selection: $viewModel.selectedConversationID) {
+            List {
                 ForEach(viewModel.conversations) { conversation in
                     ConversationRow(
                         conversation: conversation,
+                        isHighlighted: viewModel.highlightedIDs.contains(conversation.id),
+                        isActive: viewModel.selectedConversationID == conversation.id,
                         isEditing: editingConversationID == conversation.id,
                         editingTitle: $editingTitle,
                         onCommitRename: { commitRename(conversation) },
-                        onCancelRename: { cancelRename() }
+                        onCancelRename: { cancelRename() },
+                        onDoubleClickTitle: { beginRename(conversation) }
                     )
                     .tag(conversation.id)
                     .id(conversation.id)
+                    .listRowBackground(rowBackground(for: conversation))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // Single click anywhere on row = instant activate
+                        if NSEvent.modifierFlags.contains(.command) {
+                            if viewModel.highlightedIDs.contains(conversation.id) {
+                                viewModel.highlightedIDs.remove(conversation.id)
+                            } else {
+                                viewModel.highlightedIDs.insert(conversation.id)
+                            }
+                            viewModel.setCursor(to: conversation.id)
+                        } else if NSEvent.modifierFlags.contains(.shift) {
+                            extendHighlight(to: conversation)
+                        } else {
+                            viewModel.highlightedIDs = [conversation.id]
+                            viewModel.setCursor(to: conversation.id)
+                            viewModel.selectedConversationID = conversation.id
+                            // Keep sidebar focused after click — the detail view swap
+                            // can steal first responder, so reclaim it.
+                            DispatchQueue.main.async {
+                                if let window = NSApp.keyWindow,
+                                   let sidebarView = Self.findOutlineView(in: window.contentView) {
+                                    window.makeFirstResponder(sidebarView)
+                                }
+                            }
+                        }
+                    }
                     .contextMenu {
                         Button {
                             beginRename(conversation)
@@ -33,15 +65,37 @@ struct ConversationListView: View {
                     }
                 }
             }
-            .onChange(of: viewModel.selectedConversationID) { _, newID in
-                if editingConversationID != nil && editingConversationID != newID {
+            .listStyle(.sidebar)
+            .onChange(of: viewModel.highlightedIDs) { _, newIDs in
+                if editingConversationID != nil {
                     cancelRename()
                 }
-                if let newID {
+                // Scroll to the cursor position
+                if viewModel.highlightCursor < viewModel.conversations.count {
+                    let cursorID = viewModel.conversations[viewModel.highlightCursor].id
                     withAnimation {
-                        proxy.scrollTo(newID, anchor: .top)
+                        proxy.scrollTo(cursorID, anchor: nil)
                     }
                 }
+            }
+            .onKeyPress(keys: [.upArrow], phases: .down) { keyPress in
+                viewModel.moveHighlight(direction: -1, extend: keyPress.modifiers.contains(.shift))
+                return .handled
+            }
+            .onKeyPress(keys: [.downArrow], phases: .down) { keyPress in
+                viewModel.moveHighlight(direction: 1, extend: keyPress.modifiers.contains(.shift))
+                return .handled
+            }
+            .onKeyPress(.return) {
+                viewModel.activateHighlighted()
+                return .handled
+            }
+            // Backspace key = \u{7F} on macOS (physical backspace sends ASCII DEL)
+            .onKeyPress(characters: CharacterSet(charactersIn: "\u{7F}\u{08}")) { _ in
+                if !viewModel.highlightedIDs.isEmpty {
+                    showDeleteConfirmation = true
+                }
+                return .handled
             }
         }
         .accessibilityIdentifier("conversationList")
@@ -55,7 +109,65 @@ struct ConversationListView: View {
                 .keyboardShortcut("n", modifiers: .command)
             }
         }
+        .alert("Delete Conversation\(viewModel.highlightedIDs.count > 1 ? "s" : "")?",
+               isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                viewModel.deleteHighlightedConversations()
+            }
+            .keyboardShortcut(.defaultAction)
+        } message: {
+            let count = viewModel.highlightedIDs.count
+            if count == 1 {
+                Text("This conversation and all its messages will be permanently deleted.")
+            } else {
+                Text("\(count) conversations and all their messages will be permanently deleted.")
+            }
+        }
     }
+
+    // MARK: - Row Background
+
+    private func rowBackground(for conversation: Conversation) -> some View {
+        let isHighlighted = viewModel.highlightedIDs.contains(conversation.id)
+        let isActive = viewModel.selectedConversationID == conversation.id
+
+        return Group {
+            if isHighlighted && isActive {
+                Color.accentColor.opacity(0.3)
+            } else if isHighlighted {
+                Color.accentColor.opacity(0.15)
+            } else if isActive {
+                Color.accentColor.opacity(0.1)
+            } else {
+                Color.clear
+            }
+        }
+    }
+
+    // MARK: - Shift+Click Range Extension
+
+    private func extendHighlight(to conversation: Conversation) {
+        guard let targetIdx = viewModel.conversations.firstIndex(where: { $0.id == conversation.id }) else {
+            return
+        }
+        let anchorIdx = viewModel.highlightCursor
+        let range = min(anchorIdx, targetIdx)...max(anchorIdx, targetIdx)
+        viewModel.highlightedIDs = Set(viewModel.conversations[range].map(\.id))
+    }
+
+    // MARK: - Focus Helper
+
+    static func findOutlineView(in view: NSView?) -> NSView? {
+        guard let view else { return nil }
+        if view is NSOutlineView { return view }
+        for subview in view.subviews {
+            if let found = findOutlineView(in: subview) { return found }
+        }
+        return nil
+    }
+
+    // MARK: - Rename
 
     private func beginRename(_ conversation: Conversation) {
         editingTitle = conversation.title
@@ -79,10 +191,14 @@ struct ConversationListView: View {
 
 private struct ConversationRow: View {
     let conversation: Conversation
+    let isHighlighted: Bool
+    let isActive: Bool
     let isEditing: Bool
     @Binding var editingTitle: String
     let onCommitRename: () -> Void
     let onCancelRename: () -> Void
+    let onDoubleClickTitle: () -> Void
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if isEditing {
@@ -90,10 +206,20 @@ private struct ConversationRow: View {
                     .font(.headline)
                     .accessibilityIdentifier("renameTextField")
             } else {
-                Text(conversation.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("conversationTitle_\(conversation.title)")
+                HStack(spacing: 4) {
+                    Text(conversation.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .onTapGesture(count: 2) {
+                            onDoubleClickTitle()
+                        }
+                    if isActive {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .accessibilityIdentifier("conversationTitle_\(conversation.title)")
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
@@ -126,7 +252,6 @@ private struct SelectAllTextField: NSViewRepresentable {
     func updateNSView(_ field: NSTextField, context: Context) {
         field.stringValue = text
 
-        // Select all on first appear
         if !context.coordinator.didFocus {
             context.coordinator.didFocus = true
             DispatchQueue.main.async {
@@ -145,9 +270,6 @@ private struct SelectAllTextField: NSViewRepresentable {
         let parent: SelectAllTextField
         var didFocus = false
         var didFinish = false
-        /// True once the field has actually received focus. Until then,
-        /// focus-loss events are spurious (caused by the view swap during
-        /// double-click) and should be ignored.
         var focusEstablished = false
 
         init(_ parent: SelectAllTextField) {

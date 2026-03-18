@@ -40,12 +40,6 @@ struct ChatView: View {
             ChatInputBar(viewModel: viewModel, conversation: conversation, isInputFocused: $isInputFocused)
         }
         .navigationTitle(conversation.title)
-        .onAppear {
-            isInputFocused = true
-        }
-        .onChange(of: conversation.id) { _, _ in
-            isInputFocused = true
-        }
         .onChange(of: viewModel.focusCounter) { _, _ in
             isInputFocused = true
         }
@@ -1076,6 +1070,10 @@ struct ChatInputBar: View {
                         }
                     }
                     return true
+                }
+                .onKeyPress(.tab) {
+                    // Consume Tab — ContentView's handler switches focus to sidebar
+                    return .handled
                 }
                 .onKeyPress(.return) {
                     if !NSEvent.modifierFlags.contains(.shift) {

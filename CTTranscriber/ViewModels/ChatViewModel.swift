@@ -4,7 +4,12 @@ import SwiftData
 
 @Observable
 final class ChatViewModel {
+    /// The conversation currently shown in the detail view. Set on click or Enter.
     var selectedConversationID: UUID?
+    /// Conversations highlighted in the sidebar (for multi-select and delete). Arrow keys move this.
+    var highlightedIDs: Set<UUID> = []
+    /// Index of the keyboard cursor in the conversations array — the "anchor" for Shift+Arrow extension.
+    var highlightCursor: Int = 0
     var messageText: String = ""
     private(set) var conversations: [Conversation] = []
     /// Per-conversation message drafts, keyed by conversation ID. In-memory only.
@@ -75,6 +80,50 @@ final class ChatViewModel {
         saveContext()
         refreshConversations()
         selectedConversationID = conversation.id
+    }
+
+    // MARK: - Sidebar Highlight / Activate
+
+    /// Activates the first highlighted conversation (Enter key in sidebar).
+    func activateHighlighted() {
+        guard let firstID = highlightedIDs.first,
+              conversations.contains(where: { $0.id == firstID }) else { return }
+        selectedConversationID = firstID
+        requestInputFocus()
+    }
+
+    /// Deletes all highlighted conversations.
+    func deleteHighlightedConversations() {
+        let toDelete = conversations.filter { highlightedIDs.contains($0.id) }
+        for conversation in toDelete {
+            deleteConversation(conversation)
+        }
+        highlightedIDs.removeAll()
+    }
+
+    /// Moves highlight up or down. If `extend` is true (Shift held), extends the selection.
+    func moveHighlight(direction: Int, extend: Bool) {
+        guard !conversations.isEmpty else { return }
+
+        // Clamp cursor to valid range
+        highlightCursor = min(max(highlightCursor, 0), conversations.count - 1)
+
+        let newIndex = min(max(highlightCursor + direction, 0), conversations.count - 1)
+        highlightCursor = newIndex
+
+        if extend {
+            // Add the new position to the set — builds up a contiguous range
+            highlightedIDs.insert(conversations[newIndex].id)
+        } else {
+            highlightedIDs = [conversations[newIndex].id]
+        }
+    }
+
+    /// Sets the cursor to match a conversation ID (e.g., after a click).
+    func setCursor(to conversationID: UUID) {
+        if let idx = conversations.firstIndex(where: { $0.id == conversationID }) {
+            highlightCursor = idx
+        }
     }
 
     func renameConversation(_ conversation: Conversation, to newTitle: String) {
