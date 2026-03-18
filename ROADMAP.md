@@ -666,8 +666,13 @@ Telegram's chat is built on a heavily customized NSTableView with:
 **Status:** Complete (2026-03-18) — see `reports/milestone-10-polish-distribution.md`
 
 ### Tasks
-- [ ] App icon (SF Symbols-based or custom design) — using system `waveform.circle.fill` as placeholder
-- [x] About window — version, build number, description, credits (CT Transcriber menu → About)
+- [x] App icon — `waveform.circle.fill` on light blue gradient, Apple HIG 10% margin, all macOS sizes
+- [x] About window — version, build, author (Vsevolod Oparin), GitHub link, credits (Help menu)
+- [x] Per-conversation LLM streaming — `streamingTasks: [UUID: Task]`, fully isolated, multiple simultaneous
+- [x] Main-thread blocking audit — AVAsset async, image loading async, video aspect ratio pre-computation
+- [x] Ollama local LLM support — pre-configured provider at localhost:11434
+- [x] README.md — features, installation, architecture, shortcuts
+- [x] LICENSE — MIT, Copyright 2026 Vsevolod Oparin
 - [x] Menu bar:
   - File → New Conversation (Cmd+N), Open Audio/Video (Cmd+O)
   - View → Increase/Decrease/Reset Font Size (Cmd+/Cmd-/Cmd+0)
@@ -711,6 +716,38 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 ---
 
+## Milestone 12 (Future): Content Export & Markdown
+
+**Goal:** Make media downloadable, render markdown in chat, import/export conversations.
+
+### Tasks
+
+**Downloadable media:**
+- [ ] "Save As..." button/context menu on audio, video, and image attachments
+- [ ] Export transcription text as `.txt`, `.srt` (subtitles), or `.md` file
+- [ ] Drag attachment out of the app to Finder (export via drag)
+
+**Markdown preview:**
+- [ ] Render markdown in assistant messages (bold, italic, code blocks, lists, headers)
+- [ ] Option to toggle between raw text and rendered markdown (per bubble or global setting)
+- [ ] Code blocks with syntax highlighting and copy button
+- [ ] Rendered inline in the bubble (not a separate window) for seamless reading
+
+**Conversation import/export:**
+- [ ] Export conversation as JSON (messages + metadata, without binary attachments)
+- [ ] Export conversation as Markdown file (human-readable)
+- [ ] Import conversation from JSON (creates new conversation with history)
+- [ ] Bulk export: export all conversations as a ZIP archive
+- [ ] File menu: Export Conversation (Cmd+E), Import Conversation
+
+### Test Criteria
+- [ ] Right-click audio attachment → Save As → saves to chosen location
+- [ ] Markdown renders correctly (bold, code blocks, lists)
+- [ ] Export → Import round-trip preserves all messages
+- [ ] Bulk export creates valid ZIP with all conversations
+
+---
+
 ## Future Considerations (from TelegramSwift Research)
 
 Items that don't warrant a milestone yet but should be revisited as the app grows:
@@ -735,7 +772,8 @@ M0 (Skeleton)
  ├── M9 (macOS Integration) ✅
  ├── M9b (Sidebar & UI Polish) ✅
  └── M10 (Polish & DMG) ← all above
-      └── M11 (MCP) [future]
+      ├── M11 (MCP) [future]
+      └── M12 (Export & Markdown) [future]
 ```
 
 ## Suggested Implementation Order
@@ -752,6 +790,7 @@ M0 (Skeleton)
 | **Phase H** | M9b | ✅ Done | Sidebar multi-select, font scaling, UI polish, NSTableView perf audit |
 | **Phase I** | M10 | ✅ Done | Polish + DMG distribution |
 | **Phase J** | M11 | Future | MCP exploration |
+| **Phase K** | M12 | Future | Content export, markdown preview, conversation import/export |
 
 ---
 
