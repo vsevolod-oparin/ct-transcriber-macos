@@ -24,11 +24,20 @@ struct ContentView: View {
             if let viewModel, let conversation = viewModel.selectedConversation {
                 ChatView(conversation: conversation, viewModel: viewModel)
             } else {
-                ContentUnavailableView(
-                    "No Conversation Selected",
-                    systemImage: "bubble.left.and.bubble.right",
-                    description: Text("Select a conversation, create a new one, or drop audio files here.")
-                )
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 36 * CGFloat(settingsManager.fontScale)))
+                        .foregroundStyle(.secondary)
+                    Text("No Conversation Selected")
+                        .font(ScaledFont(scale: settingsManager.fontScale).headline)
+                    Text("Select a conversation, create a new one, or drop audio files here.")
+                        .font(ScaledFont(scale: settingsManager.fontScale).caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleEmptyStateDrop(providers: providers)
                     return true

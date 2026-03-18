@@ -42,6 +42,7 @@ struct CTTranscriberApp: App {
 
         Settings {
             SettingsView(settingsManager: settingsManager, modelManager: modelManager ?? ModelManager(settingsManager: settingsManager))
+                .environment(\.fontScale, settingsManager.fontScale)
         }
     }
 }

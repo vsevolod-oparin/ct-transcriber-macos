@@ -3,12 +3,15 @@ import SwiftUI
 struct TaskManagerView: View {
     @Bindable var taskManager: TaskManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         VStack(spacing: 0) {
+            // Header — pinned at top
             HStack {
                 Text("Background Tasks")
-                    .font(.title2)
+                    .font(sf.title2)
                     .fontWeight(.semibold)
                 Spacer()
                 if taskManager.tasks.contains(where: { $0.status == .completed }) {
@@ -18,18 +21,27 @@ struct TaskManagerView: View {
                     .controlSize(.small)
                 }
                 Button("Done") { dismiss() }
-                    .keyboardShortcut(.return)
             }
             .padding()
 
             Divider()
 
+            // Content
             if taskManager.tasks.isEmpty {
-                ContentUnavailableView(
-                    "No Tasks",
-                    systemImage: "checklist",
-                    description: Text("Background tasks like transcriptions and model downloads will appear here.")
-                )
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 36 * CGFloat(fontScale)))
+                        .foregroundStyle(.secondary)
+                    Text("No Tasks")
+                        .font(sf.headline)
+                    Text("Background tasks like transcriptions and model downloads will appear here.")
+                        .font(sf.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                Spacer()
             } else {
                 List {
                     ForEach(taskManager.tasks) { task in
@@ -39,6 +51,13 @@ struct TaskManagerView: View {
             }
         }
         .frame(width: 500, height: 400)
+        .focusable()
+        .focusEffectDisabled()
+        .onExitCommand { dismiss() }
+        .onKeyPress(.return) {
+            dismiss()
+            return .handled
+        }
     }
 }
 
@@ -47,15 +66,44 @@ struct TaskManagerView: View {
 private struct TaskRow: View {
     let task: BackgroundTask
     let taskManager: TaskManager
+    @Environment(\.fontScale) private var fontScale
 
     var body: some View {
+        let sf = ScaledFont(scale: fontScale)
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            // Primary line: icon + status prefix + filename
+            HStack(alignment: .top) {
                 Image(systemName: iconName)
                     .foregroundStyle(iconColor)
-                Text(task.title)
-                    .font(.headline)
-                    .lineLimit(1)
+                    .font(sf.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    // Status prefix + original filename
+                    HStack(spacing: 4) {
+                        Text(statusPrefix)
+                            .font(sf.caption)
+                            .foregroundStyle(statusColor)
+                            .fontWeight(.medium)
+                        Text(task.title)
+                            .font(sf.headline)
+                            .lineLimit(2)
+                    }
+
+                    // Conversation title
+                    if let convoTitle = task.conversationTitle, !convoTitle.isEmpty {
+                        Text("in \(convoTitle)")
+                            .font(sf.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    // Task ID (small, subtle)
+                    Text(task.id.uuidString.prefix(8).lowercased())
+                        .font(sf.caption2)
+                        .foregroundStyle(.tertiary)
+                        .monospaced()
+                }
+
                 Spacer()
                 actionButtons
             }
@@ -64,26 +112,21 @@ private struct TaskRow: View {
                 ProgressView(value: task.progress)
                     .progressViewStyle(.linear)
                 Text("\(Int(task.progress * 100))%")
-                    .font(.caption2)
+                    .font(sf.caption2)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
 
             HStack {
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(statusColor)
-
                 Spacer()
-
-                Text(task.updatedAt.formatted(.relative(presentation: .named)))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                Text(task.createdAt.formatted(.dateTime.month().day().hour().minute()))
+                    .font(sf.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             if let error = task.errorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(sf.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .textSelection(.enabled)
@@ -110,13 +153,13 @@ private struct TaskRow: View {
         }
     }
 
-    private var statusText: String {
+    private var statusPrefix: String {
         switch task.status {
-        case .pending: "Pending"
-        case .running: "Running"
-        case .completed: "Completed"
-        case .failed: "Failed"
-        case .cancelled: "Cancelled"
+        case .pending: "Queued:"
+        case .running: "Transcribing"
+        case .completed: "Transcribed"
+        case .failed: "Failed:"
+        case .cancelled: "Cancelled:"
         }
     }
 
@@ -140,17 +183,7 @@ private struct TaskRow: View {
             .buttonStyle(.borderless)
             .help("Cancel")
 
-        case .failed, .cancelled:
-            HStack(spacing: 8) {
-                Button { taskManager.deleteTask(task) } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Delete")
-            }
-
-        case .completed:
+        case .failed, .cancelled, .completed:
             Button { taskManager.deleteTask(task) } label: {
                 Image(systemName: "trash")
                     .foregroundStyle(.secondary)

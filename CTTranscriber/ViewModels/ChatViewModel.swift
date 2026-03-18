@@ -57,7 +57,7 @@ final class ChatViewModel {
     private var modelContext: ModelContext
     private var streamingTask: Task<Void, Never>?
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
-    private var pendingTranscriptions: [(audioPath: String, conversation: Conversation, message: Message)] = []
+    private var pendingTranscriptions: [(audioPath: String, displayName: String, conversation: Conversation, message: Message)] = []
 
     // Dependencies — constructor-injected for testability
     let settingsManager: SettingsManager
@@ -442,31 +442,31 @@ final class ChatViewModel {
         // Auto-transcribe audio and video files
         if kind == .audio || kind == .video {
             let audioURL = FileStorage.url(for: storedName)
-            transcribeAudio(at: audioURL.path, in: conversation)
+            transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation)
         }
     }
 
     // MARK: - Transcription
 
-    func transcribeAudio(at audioPath: String, in conversation: Conversation) {
+    func transcribeAudio(at audioPath: String, originalName: String? = nil, in conversation: Conversation) {
         // Create placeholder message immediately so it appears right after the audio
-        let fileName = (audioPath as NSString).lastPathComponent
-        let transcriptMessage = Message(role: .assistant, content: "⏳ Queued: \(fileName)")
+        let displayName = originalName ?? (audioPath as NSString).lastPathComponent
+        let transcriptMessage = Message(role: .assistant, content: "⏳ Queued: \(displayName)")
         conversation.messages.append(transcriptMessage)
         saveContext()
         refreshConversations()
 
         // Queue if at capacity
         if activeTranscriptionCount >= settingsManager.settings.transcription.maxParallelTranscriptions {
-            pendingTranscriptions.append((audioPath: audioPath, conversation: conversation, message: transcriptMessage))
+            pendingTranscriptions.append((audioPath: audioPath, displayName: displayName, conversation: conversation, message: transcriptMessage))
             AppLogger.info("Transcription queued (\(pendingTranscriptions.count) pending)", category: "transcription")
             return
         }
 
-        startTranscription(audioPath: audioPath, conversation: conversation, transcriptMessage: transcriptMessage)
+        startTranscription(audioPath: audioPath, displayName: displayName, conversation: conversation, transcriptMessage: transcriptMessage)
     }
 
-    private func startTranscription(audioPath: String, conversation: Conversation, transcriptMessage: Message) {
+    private func startTranscription(audioPath: String, displayName: String, conversation: Conversation, transcriptMessage: Message) {
         let transSettings = settingsManager.settings.transcription
 
         let envStatus = PythonEnvironment.check(settings: transSettings)
@@ -489,8 +489,7 @@ final class ChatViewModel {
         transcriptionProgress = 0
         transcriptMessage.content = "Transcribing..."
 
-        let fileName = (audioPath as NSString).lastPathComponent
-        let bgTask = taskManager?.createTask(kind: .transcription, title: "Transcribing \(fileName)")
+        let bgTask = taskManager?.createTask(kind: .transcription, title: displayName, conversationTitle: conversation.title)
         let taskID = UUID()
 
         transcriptionTasks[taskID] = Task { [weak self] in
@@ -565,7 +564,7 @@ final class ChatViewModel {
         let maxParallel = settingsManager.settings.transcription.maxParallelTranscriptions
         if !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
             let next = pendingTranscriptions.removeFirst()
-            startTranscription(audioPath: next.audioPath, conversation: next.conversation, transcriptMessage: next.message)
+            startTranscription(audioPath: next.audioPath, displayName: next.displayName, conversation: next.conversation, transcriptMessage: next.message)
         }
     }
 

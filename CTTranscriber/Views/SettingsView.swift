@@ -26,6 +26,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     @Binding var settings: GeneralSettings
+    @Environment(\.fontScale) private var fontScale
 
     private static let minFontScale = 0.7
     private static let maxFontScale = 2.0
@@ -43,12 +44,12 @@ private struct GeneralSettingsTab: View {
             Section("Font Size") {
                 HStack {
                     Text("A")
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                     Slider(value: $settings.fontScale,
                            in: Self.minFontScale...Self.maxFontScale,
                            step: Self.fontScaleStep)
                     Text("A")
-                        .font(.title)
+                        .font(ScaledFont(scale: fontScale).title)
                     Text("\(Int(settings.fontScale * 100))%")
                         .monospacedDigit()
                         .frame(width: 45, alignment: .trailing)
@@ -60,7 +61,7 @@ private struct GeneralSettingsTab: View {
                     .disabled(settings.fontScale == 1.0)
                     Spacer()
                     Text("Cmd+\u{2795} / Cmd+\u{2796} to adjust")
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -76,6 +77,7 @@ private struct TranscriptionSettingsTab: View {
     @Binding var settings: TranscriptionSettings
     var modelManager: ModelManager
     @State private var showModelManager = false
+    @Environment(\.fontScale) private var fontScale
 
     private static let minBeamSize = 1
     private static let maxBeamSize = 20
@@ -120,7 +122,7 @@ private struct TranscriptionSettingsTab: View {
                 if settings.beamSize < Self.minBeamSize || settings.beamSize > Self.maxBeamSize {
                     Text("Beam size must be between \(Self.minBeamSize) and \(Self.maxBeamSize)")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                 }
 
                 HStack {
@@ -133,7 +135,7 @@ private struct TranscriptionSettingsTab: View {
                 if settings.temperature < Self.minTemperature || settings.temperature > Self.maxTemperature {
                     Text("Temperature must be between \(Self.minTemperature) and \(Self.maxTemperature)")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                 }
 
                 TextField("Language (empty = auto-detect)", text: $settings.language)
@@ -169,6 +171,7 @@ private struct TranscriptionSettingsTab: View {
 private struct EnvironmentSettingsTab: View {
     @Binding var settings: TranscriptionSettings
     var settingsManager: SettingsManager
+    @Environment(\.fontScale) private var fontScale
     @State private var showSetupSheet = false
 
     var body: some View {
@@ -176,7 +179,7 @@ private struct EnvironmentSettingsTab: View {
             Section("Python Environment") {
                 TextField("Conda Env Name", text: $settings.condaEnvName)
                 TextField("CTranslate2 Package URL (pre-built)", text: $settings.ct2PackageURL)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), design: .monospaced))
                 HStack {
                     TextField("CTranslate2 Source Path (fallback)", text: $settings.ctranslate2SourcePath)
                     Button("Browse...") {
@@ -206,7 +209,7 @@ private struct EnvironmentSettingsTab: View {
                 }
                 if settings.modelsDirectory.isEmpty {
                     Text("Default: ~/Library/Application Support/CTTranscriber/models/")
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -304,6 +307,7 @@ private struct ProviderConfigEditor: View {
     @State private var availableModels: [String] = []
     @State private var isFetchingModels: Bool = false
     @State private var fallbackModelsText: String = ""
+    @Environment(\.fontScale) private var fontScale
     @State private var extraHeadersText: String = ""
     @State private var testResult: TestConnectionResult = .idle
 
@@ -354,11 +358,11 @@ private struct ProviderConfigEditor: View {
                             .controlSize(.small)
                     case .success:
                         Label("Connected", systemImage: "checkmark.circle.fill")
-                            .font(.caption)
+                            .font(ScaledFont(scale: fontScale).caption)
                             .foregroundStyle(.green)
                     case .failure(let msg):
                         Text(msg)
-                            .font(.caption)
+                            .font(ScaledFont(scale: fontScale).caption)
                             .foregroundStyle(.red)
                             .lineLimit(2)
                             .textSelection(.enabled)
@@ -369,7 +373,7 @@ private struct ProviderConfigEditor: View {
             Section("Extra Headers") {
                 TextField("One per line: Header-Name: value", text: $extraHeadersText, axis: .vertical)
                     .lineLimit(2...5)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), design: .monospaced))
                     .onChange(of: extraHeadersText) { _, newValue in
                         config.extraHeaders = parseHeaders(newValue)
                     }
@@ -423,7 +427,7 @@ private struct ProviderConfigEditor: View {
                 if config.temperature < Self.minTemperature || config.temperature > Self.maxTemperature {
                     Text("Temperature must be between \(Self.minTemperature) and \(Self.maxTemperature)")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                 }
 
                 HStack {
@@ -436,7 +440,7 @@ private struct ProviderConfigEditor: View {
                 if config.maxTokens < Self.minMaxTokens {
                     Text("Max tokens must be at least \(Self.minMaxTokens)")
                         .foregroundStyle(.red)
-                        .font(.caption)
+                        .font(ScaledFont(scale: fontScale).caption)
                 }
             }
         }

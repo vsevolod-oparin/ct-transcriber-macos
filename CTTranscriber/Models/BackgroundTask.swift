@@ -25,14 +25,17 @@ final class BackgroundTask {
     var errorMessage: String?
     var createdAt: Date
     var updatedAt: Date
+    /// Title of the conversation this task belongs to (for display in task manager).
+    var conversationTitle: String?
 
     /// Context for retrying: audio file path, model ID, etc.
     var contextJSON: String?
 
-    init(kind: TaskKind, title: String) {
+    init(kind: TaskKind, title: String, conversationTitle: String? = nil) {
         self.id = UUID()
         self.kind = kind
         self.title = title
+        self.conversationTitle = conversationTitle
         self.status = .pending
         self.progress = 0
         self.createdAt = Date()

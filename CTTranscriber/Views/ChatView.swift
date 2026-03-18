@@ -211,7 +211,25 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.onDropFiles = onDropFiles
         context.coordinator.seekRequest = $seekRequest
+        context.coordinator.fontScale = fontScale
         tableView.onClickBackground = onClickBackground
+
+        // Set initial data so the table isn't empty on first render
+        context.coordinator.messages = messages
+        context.coordinator.conversationID = conversationID
+        context.coordinator.isStreaming = isStreaming
+        context.coordinator.contentLengthSnapshot = Dictionary(
+            uniqueKeysWithValues: messages.map { ($0.id, $0.content.count) }
+        )
+
+        // Reload after setting data — the table already queried numberOfRows
+        // during setup (returning 0), so it needs an explicit reload.
+        DispatchQueue.main.async {
+            tableView.reloadData()
+            if !messages.isEmpty {
+                context.coordinator.scrollToBottom(animated: false)
+            }
+        }
 
         return scrollView
     }
@@ -221,6 +239,8 @@ struct ChatTableView: NSViewRepresentable {
         let oldMessages = coordinator.messages
         let oldStreaming = coordinator.isStreaming
         let oldConversationID = coordinator.conversationID
+
+        AppLogger.debug("updateNSView: msgs=\(messages.count) oldMsgs=\(oldMessages.count) convoID=\(conversationID?.uuidString.prefix(8) ?? "nil") oldConvoID=\(oldConversationID?.uuidString.prefix(8) ?? "nil")", category: "table")
 
         coordinator.onRetry = onRetry
         coordinator.onDropFiles = onDropFiles

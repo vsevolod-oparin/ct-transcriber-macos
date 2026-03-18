@@ -6,7 +6,7 @@ import SwiftUI
 protocol TaskManagerProtocol: AnyObject {
     var tasks: [BackgroundTask] { get }
     var activeCount: Int { get }
-    func createTask(kind: TaskKind, title: String, context: String?) -> BackgroundTask
+    func createTask(kind: TaskKind, title: String, conversationTitle: String?, context: String?) -> BackgroundTask
     func deleteTask(_ task: BackgroundTask)
     func cancelTask(_ task: BackgroundTask)
     func clearCompleted()
@@ -36,8 +36,8 @@ final class TaskManager: TaskManagerProtocol {
 
     // MARK: - Task CRUD
 
-    func createTask(kind: TaskKind, title: String, context: String? = nil) -> BackgroundTask {
-        let task = BackgroundTask(kind: kind, title: title)
+    func createTask(kind: TaskKind, title: String, conversationTitle: String? = nil, context: String? = nil) -> BackgroundTask {
+        let task = BackgroundTask(kind: kind, title: title, conversationTitle: conversationTitle)
         task.contextJSON = context
         modelContext.insert(task)
         saveAndRefresh()
