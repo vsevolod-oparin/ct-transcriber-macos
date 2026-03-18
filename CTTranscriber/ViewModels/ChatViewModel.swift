@@ -5,6 +5,9 @@ import AVFoundation
 
 @Observable
 final class ChatViewModel {
+    /// Error prefixes — used to distinguish error source for retry logic.
+    private static let llmErrorPrefix = "⚠ [LLM] "
+    private static let transcriptionErrorPrefix = "⚠ [Transcription] "
     /// The conversation currently shown in the detail view. Set on click or Enter.
     var selectedConversationID: UUID?
     /// Conversations highlighted in the sidebar (for multi-select and delete). Arrow keys move this.
@@ -249,16 +252,14 @@ final class ChatViewModel {
         }
     }
 
-    /// Checks if a message looks like a failed/cancelled transcription result.
+    /// Checks if a message is a transcription result (failed, cancelled, or in progress).
     private func isTranscriptionMessage(_ message: Message) -> Bool {
         let c = message.content
-        return c.contains("Transcription failed") ||
-               c.contains("Transcription cancelled") ||
+        return c.hasPrefix(Self.transcriptionErrorPrefix) ||
                c.hasPrefix("⏳") ||
-               c.hasPrefix("⚠ Transcription") ||
-               c.hasPrefix("⚠ Python environment") ||
-               c.hasPrefix("⚠ Whisper model") ||
-               c.hasPrefix("Transcribing")
+               c.hasPrefix("Transcribing") ||
+               c.hasPrefix("Transcription cancelled") ||
+               c.hasPrefix("**Transcription**")
     }
 
     // MARK: - Send Message + LLM Streaming
@@ -291,7 +292,7 @@ final class ChatViewModel {
 
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
-            let errorMessage = Message(role: .assistant, content: "⚠ \(LLMError.noAPIKey.localizedDescription)")
+            let errorMessage = Message(role: .assistant, content: "\(Self.llmErrorPrefix)\(LLMError.noAPIKey.localizedDescription)")
             conversation.messages.append(errorMessage)
             saveContext()
             refreshConversations()
@@ -346,7 +347,7 @@ final class ChatViewModel {
                 await MainActor.run {
                     // Keep the message with error content so the user can see it and retry
                     let partial = assistantMessage.content.isEmpty ? "" : assistantMessage.content + "\n\n"
-                    assistantMessage.content = "\(partial)⚠ \(error.localizedDescription)"
+                    assistantMessage.content = "\(partial)\(Self.llmErrorPrefix)\(error.localizedDescription)"
                     self.finalizeStreaming()
                 }
             }
@@ -522,26 +523,32 @@ final class ChatViewModel {
 
         let envStatus = PythonEnvironment.check(settings: transSettings)
         guard case .ready = envStatus else {
-            transcriptMessage.content = "⚠ Python environment not ready. Set up from Settings → Environment."
+            transcriptMessage.content = "\(Self.transcriptionErrorPrefix)Python environment not ready. Set up from Settings → Environment."
             saveContext()
             refreshConversations()
             return
         }
 
-        // Check that the file has an audio track before attempting transcription
+        // Check that the file has an audio track before attempting transcription.
+        // Skip check for formats AVAsset can't read (WebM, MKV, etc.) — faster-whisper
+        // uses its own ffmpeg which handles these natively.
         let audioURL = URL(fileURLWithPath: audioPath)
-        let asset = AVAsset(url: audioURL)
-        let audioTracks = asset.tracks(withMediaType: .audio)
-        if audioTracks.isEmpty {
-            transcriptMessage.content = "⚠ No audio track found in this file. Cannot transcribe."
-            saveContext()
-            refreshConversations()
-            return
+        let ext = audioURL.pathExtension.lowercased()
+        let avUnsupportedFormats: Set<String> = ["webm", "mkv", "flv", "wmv", "ogg", "opus"]
+        if !avUnsupportedFormats.contains(ext) {
+            let asset = AVAsset(url: audioURL)
+            let audioTracks = asset.tracks(withMediaType: .audio)
+            if audioTracks.isEmpty {
+                transcriptMessage.content = "\(Self.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
+                saveContext()
+                refreshConversations()
+                return
+            }
         }
 
         let selectedID = transSettings.selectedModelID
         guard let modelPath = modelManager.modelPath(for: selectedID) else {
-            transcriptMessage.content = "⚠ \(TranscriptionError.modelNotDownloaded.localizedDescription)"
+            transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(TranscriptionError.modelNotDownloaded.localizedDescription)"
             saveContext()
             refreshConversations()
             return
@@ -604,7 +611,7 @@ final class ChatViewModel {
                 guard let self else { return }
                 await MainActor.run {
                     self.lastError = error.localizedDescription
-                    transcriptMessage.content = "⚠ \(error.localizedDescription)"
+                    transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(error.localizedDescription)"
                     bgTask?.status = .failed
                     bgTask?.errorMessage = error.localizedDescription
                     self.finishTranscription(taskID: taskID)

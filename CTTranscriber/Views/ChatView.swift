@@ -711,10 +711,9 @@ private struct MessageAnalysis {
     private static let lineCountSampleSize = 4096
 
     init(content: String) {
-        // Only scan the first few characters for error markers
+        // Error markers: ⚠ [LLM] or ⚠ [Transcription] prefixes, or legacy cancelled message
         let prefix100 = content.prefix(100)
         isError = prefix100.contains("⚠") ||
-                  prefix100.hasPrefix("Transcription failed") ||
                   prefix100.hasPrefix("Transcription cancelled")
 
         hasTimestamps = content.utf8.count > 5 && content.contains("[") && content.contains("→")
