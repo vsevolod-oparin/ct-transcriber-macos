@@ -32,8 +32,8 @@
         "quantization": "float16"
       }
     ],
-    "beamSize": 5,
-    "temperature": 0.0,
+    "beamSize": 4,
+    "temperature": 1.0,
     "language": "",
     "vadFilter": true,
     "conditionOnPreviousText": false,

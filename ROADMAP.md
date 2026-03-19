@@ -693,12 +693,60 @@ Telegram's chat is built on a heavily customized NSTableView with:
 - [x] Dark mode looks correct
 - [x] First launch guides user through setup
 - [x] About window shows version info
-- [ ] DMG creation tested end-to-end
-- [ ] App launches from Applications (after Gatekeeper bypass)
+- [x] DMG creation tested end-to-end
+- [x] App launches from Applications (after Gatekeeper bypass) — documented in M11
 
 ---
 
-## Milestone 11 (Future): MCP Support
+## Milestone 11: Distribution Hardening & Installation UX (v0.2.0) ✅
+
+**Goal:** Make the app reliably installable and usable on other Macs, with robust setup and proper uninstall.
+**Status:** Complete (2026-03-19) — see `reports/milestone-11-distribution-hardening.md`
+
+### Tasks
+
+**Distribution & Gatekeeper:**
+- [x] Investigate and document Gatekeeper quarantine issue (Telegram/browser downloads)
+- [x] Custom app icon (robot) with proper 9% padding, all macOS sizes
+- [x] Version bump to 0.2.0
+
+**Uninstaller:**
+- [x] `uninstall.sh` standalone script — removes app, data, conda env, config, preferences, SwiftData store
+- [x] In-app Help → Uninstall CT Transcriber — confirmation alert (Enter/Escape), spinner overlay
+- [x] Non-blocking uninstall — shell process polls for app PID exit, then deletes (no timing hacks)
+
+**Setup script hardening:**
+- [x] Fix `set -euo pipefail` killing script on non-fatal ffmpeg failure (`|| true` + `--override-channels`)
+- [x] Full stderr logging (was `FileHandle.nullDevice`) — all conda/pip/curl errors now in log file
+- [x] Granular progress steps: download/install miniconda split, torch checkpoint, CT2 download/install split
+- [x] Parallel installation: torch + faster-whisper + ffmpeg run concurrently (~2x faster)
+- [x] Auto model download: whisper-large-v3-turbo downloaded during setup with HuggingFace prefetch
+- [x] Immediate "Starting environment setup..." message before shell starts
+
+**Setup UI:**
+- [x] Spinner always visible during setup (was disappearing between steps)
+- [x] Step label persists until next step starts (no blank gaps)
+- [x] No duplicate display (completed steps in list, active step next to spinner only)
+- [x] `ModelManager.refreshStatuses()` on setup dismiss
+
+**Runtime fix:**
+- [x] Remove `DYLD_LIBRARY_PATH` override — was breaking PyAV/libiconv (`_iconv` symbol not found)
+
+**Main-thread blocking:**
+- [x] `AppUninstaller` — non-blocking (background shell process)
+- [x] `ModelManager.deleteModel()` — `Task.detached`
+- [x] `ChatViewModel.attachFile()` — `Task.detached` for file copy
+
+### Test Criteria
+- [x] App installs and runs on another Mac after `xattr -cr`
+- [x] Setup completes with parallel installs, model auto-downloaded
+- [x] Uninstall removes all data including conda env (~500MB)
+- [x] Transcription works (DYLD_LIBRARY_PATH fix)
+- [x] No UI blocking during uninstall, model delete, or file attach
+
+---
+
+## Milestone 12 (Future): MCP Support
 
 **Goal:** Extend LLM capabilities with Model Context Protocol tools.
 
@@ -716,7 +764,7 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 ---
 
-## Milestone 12 (Future): Content Export & Markdown
+## Milestone 13 (Future): Content Export & Markdown
 
 **Goal:** Make media downloadable, render markdown in chat, import/export conversations.
 
@@ -772,8 +820,9 @@ M0 (Skeleton)
  ├── M9 (macOS Integration) ✅
  ├── M9b (Sidebar & UI Polish) ✅
  └── M10 (Polish & DMG) ← all above
-      ├── M11 (MCP) [future]
-      └── M12 (Export & Markdown) [future]
+      └── M11 (Distribution Hardening) ✅
+           ├── M12 (MCP) [future]
+           └── M13 (Export & Markdown) [future]
 ```
 
 ## Suggested Implementation Order
@@ -789,8 +838,9 @@ M0 (Skeleton)
 | **Phase G** | M7b+ | ✅ Done | Audio/video player, seek bar, mini-player, WebM, smart retry |
 | **Phase H** | M9b | ✅ Done | Sidebar multi-select, font scaling, UI polish, NSTableView perf audit |
 | **Phase I** | M10 | ✅ Done | Polish + DMG distribution |
-| **Phase J** | M11 | Future | MCP exploration |
-| **Phase K** | M12 | Future | Content export, markdown preview, conversation import/export |
+| **Phase J** | M11 | ✅ Done | Distribution hardening, setup UX, uninstaller (v0.2.0) |
+| **Phase K** | M12 | Future | MCP exploration |
+| **Phase L** | M13 | Future | Content export, markdown preview, conversation import/export |
 
 ---
 
