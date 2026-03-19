@@ -365,7 +365,7 @@ final class ChatViewModel {
                 await MainActor.run {
                     self.streamingTasks.removeValue(forKey: convoID)
                     self.finalizeStreaming(for: convoID)
-                    self.autoNameIfFirstResponse(conversation)
+                    self.autoNameIfFirstResponse(conversation, provider: provider)
                 }
             } catch let error as LLMError where error.localizedDescription == LLMError.cancelled.localizedDescription {
                 guard let self else { return }
@@ -409,7 +409,7 @@ final class ChatViewModel {
     // MARK: - Auto-naming
 
     private static let autoTitleMaxLength = 50
-    private static let autoNamePrompt = "Give a short title (max 6 words) for this conversation in the same language as the conversation content. Reply with ONLY the title, no quotes or punctuation."
+    private static let autoNamePrompt = "Give a short title (max 6 words) summarizing the ENTIRE conversation above, not just the last message. Consider all messages equally. Use the same language as the conversation content. Reply with ONLY the title, no quotes or punctuation."
 
     private func autoTitleIfNeeded(_ conversation: Conversation, firstMessageText: String) {
         let isFirstMessage = conversation.messages.count == 1
@@ -422,31 +422,41 @@ final class ChatViewModel {
             : truncated
     }
 
-    /// Auto-name only after the first assistant response (internal trigger).
-    private func autoNameIfFirstResponse(_ conversation: Conversation) {
-        let assistantMessages = conversation.messages.filter { $0.role == .assistant }
-        guard assistantMessages.count == 1 else { return }
-        autoNameConversation(conversation)
+    /// Auto-name after first LLM response if title is still default.
+    private func autoNameIfFirstResponse(_ conversation: Conversation, provider: ProviderConfig? = nil) {
+        guard conversation.title == "New Conversation" || conversation.title.hasSuffix("...") else { return }
+        autoNameConversation(conversation, using: provider, silent: true)
     }
 
     /// Ask the LLM to generate a title from the conversation content.
     /// Public: called from the sparkle button. Also called internally after first assistant response.
-    func autoNameConversation(_ conversation: Conversation) {
-        guard let provider = settingsManager.activeProvider else { return }
+    func autoNameConversation(_ conversation: Conversation, using overrideProvider: ProviderConfig? = nil, silent: Bool = false) {
+        guard let provider = overrideProvider ?? settingsManager.activeProvider else {
+            AppLogger.debug("Auto-name skipped: no active provider", category: "auto-title")
+            if !silent { lastError = "Auto-title: no LLM provider configured. Open Settings (⌘,)." }
+            return
+        }
 
         // Need at least one message to generate a title from
         guard !conversation.messages.isEmpty else { return }
 
         let apiKey = provider.apiKey
-        guard !apiKey.isEmpty else { return }
+        guard !apiKey.isEmpty else {
+            AppLogger.debug("Auto-name skipped: no API key for \(provider.name)", category: "auto-title")
+            if !silent { lastError = "Auto-title: no API key for \(provider.name). Open Settings (⌘,)." }
+            return
+        }
 
         let service = LLMServiceFactory.service(for: provider)
 
         var namingMessages = buildMessageDTOs(for: conversation)
         namingMessages.append(ChatMessageDTO(role: "user", content: Self.autoNamePrompt))
 
+        AppLogger.debug("Auto-naming with \(namingMessages.count - 1) messages via \(provider.name)", category: "auto-title")
+
         isGeneratingTitle = true
-        Task {
+        Task.detached { [weak self] in
+            guard let self else { return }
             var title = ""
             let stream = service.streamCompletion(
                 messages: namingMessages,
@@ -464,6 +474,7 @@ final class ChatViewModel {
                     title += token
                 }
             } catch {
+                AppLogger.error("Auto-name failed: \(error.localizedDescription)", category: "auto-title")
                 await MainActor.run { self.isGeneratingTitle = false }
                 return
             }
@@ -471,7 +482,11 @@ final class ChatViewModel {
             let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
             await MainActor.run {
                 self.isGeneratingTitle = false
-                guard !cleaned.isEmpty else { return }
+                guard !cleaned.isEmpty else {
+                    AppLogger.debug("Auto-name returned empty title", category: "auto-title")
+                    return
+                }
+                AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
                 conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
                 conversation.updatedAt = Date()
                 self.saveContext()
