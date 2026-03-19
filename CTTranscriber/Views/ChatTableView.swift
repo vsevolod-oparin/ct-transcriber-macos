@@ -21,11 +21,22 @@ struct ChatTableView: NSViewRepresentable {
     /// model objects may have been deleted from the context between body evaluation and updateNSView.
     static func messageHash(_ msg: Message) -> Int {
         guard !msg.isDeleted, msg.modelContext != nil else { return 0 }
-        // Hash content length only. Do NOT traverse attachment relationships —
-        // cascade-deleted attachments can pass isDeleted/modelContext checks but
-        // crash in SwiftData synthesized getters when hit-test-triggered view
-        // updates race with conversation deletion (NSAlert dismissal path).
         return msg.content.count
+    }
+
+    /// Returns a string encoding the video layout state for a message's attachments.
+    /// Empty string if no video attachments. Changes when aspect ratio loads or conversion completes.
+    static func videoLayoutKey(for msg: Message) -> String {
+        guard !msg.isDeleted, msg.modelContext != nil else { return "" }
+        var parts: [String] = []
+        for att in msg.attachments where att.kind == .video {
+            guard !att.isDeleted, att.modelContext != nil else { continue }
+            let playName = att.convertedName ?? att.storedName
+            let url = FileStorage.url(for: playName)
+            let ratio = Coordinator.videoAspectRatio(url: url)
+            parts.append("\(playName):\(ratio)")
+        }
+        return parts.joined(separator: "|")
     }
 
     let messages: [Message]
@@ -156,6 +167,11 @@ struct ChatTableView: NSViewRepresentable {
 
             coordinator.expandedMessages.removeAll()
             coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: liveMessages.map { ($0.id, Self.messageHash($0)) })
+            coordinator.videoLayoutSnapshot.removeAll()
+            for msg in liveMessages {
+                let key = Self.videoLayoutKey(for: msg)
+                if !key.isEmpty { coordinator.videoLayoutSnapshot[msg.id] = key }
+            }
             tableView.reloadData()
             DispatchQueue.main.async {
                 coordinator.scrollToBottom(animated: false)
@@ -186,6 +202,18 @@ struct ChatTableView: NSViewRepresentable {
 
             if isStreaming, let lastRow = liveMessages.indices.last {
                 changedRows.insert(lastRow)
+            }
+
+            // Detect video layout changes (aspect ratio loaded, conversion completed)
+            for i in liveMessages.indices {
+                let msg = liveMessages[i]
+                let videoKey = Self.videoLayoutKey(for: msg)
+                if let prev = coordinator.videoLayoutSnapshot[msg.id], prev != videoKey {
+                    changedRows.insert(i)
+                }
+                if videoKey != "" {
+                    coordinator.videoLayoutSnapshot[msg.id] = videoKey
+                }
             }
 
             // Update snapshot
@@ -278,6 +306,10 @@ struct ChatTableView: NSViewRepresentable {
 
         var lastTopTrigger: Int = 0
         var lastBottomTrigger: Int = 0
+
+        /// Tracks video layout state per message: aspect ratio + conversion status.
+        /// When this changes for a message, its row height must be invalidated.
+        var videoLayoutSnapshot: [UUID: String] = [:]
 
         /// Throttle for scroll-during-streaming
         private var lastStreamingScrollTime: Date = .distantPast
@@ -385,6 +417,25 @@ struct ChatTableView: NSViewRepresentable {
 
             let controller = NSHostingController(rootView: bubble)
             let size = controller.sizeThatFits(in: NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude))
+
+            // Diagnostic: also measure with NSHostingView for comparison
+            let hostingView = NSHostingView(rootView: bubble)
+            hostingView.frame = NSRect(x: 0, y: 0, width: targetWidth, height: 10000)
+            hostingView.layoutSubtreeIfNeeded()
+            let fittingHeight = hostingView.fittingSize.height
+            let intrinsicHeight = hostingView.intrinsicContentSize.height
+
+            let hasVideo = !message.isDeleted && message.modelContext != nil &&
+                message.attachments.contains { $0.kind == .video }
+            if hasVideo || abs(size.height - fittingHeight) > 5 {
+                let attCount = message.attachments.count
+                let videoAtt = message.attachments.first { $0.kind == .video }
+                let converted = videoAtt?.convertedName ?? "nil"
+                let playName = videoAtt?.convertedName ?? videoAtt?.storedName ?? "?"
+                let ratio = Coordinator.videoAspectRatio(url: FileStorage.url(for: playName))
+                AppLogger.debug("measureRow[\(row)]: sizeThatFits=\(Int(size.height)) fitting=\(Int(fittingHeight)) targetW=\(Int(targetWidth)) atts=\(attCount) converted=\(converted) ratio=\(String(format:"%.2f",ratio)) fontScale=\(fontScale) content='\(message.content.prefix(40))'", category: "table-height")
+            }
+
             return max(size.height, 30)
         }
 
@@ -398,6 +449,14 @@ struct ChatTableView: NSViewRepresentable {
         static func videoAspectRatio(url: URL) -> CGFloat {
             let key = url.lastPathComponent
             return videoAspectRatioCache[key] ?? (16.0 / 9.0)
+        }
+
+        /// Writes a known aspect ratio into the static cache. Called from VideoPlayerView
+        /// when it discovers the real ratio from the converted MP4 (WebM/MKV originals
+        /// can't be read by AVAsset, so precomputeVideoAspectRatio fails for them).
+        static func setVideoAspectRatio(_ ratio: CGFloat, for url: URL) {
+            let key = url.lastPathComponent
+            videoAspectRatioCache[key] = ratio
         }
 
         /// Pre-computes and caches the aspect ratio. Call from a background thread.

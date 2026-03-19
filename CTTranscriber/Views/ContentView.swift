@@ -129,6 +129,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .createNewConversation)) { _ in
             viewModel?.createConversation()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .videoAspectRatioDidChange)) { _ in
+            viewModel?.refreshAfterVideoChange()
+        }
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
                 showSetupSheet = false

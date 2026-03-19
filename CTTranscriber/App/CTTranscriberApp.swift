@@ -163,6 +163,7 @@ struct CTTranscriberApp: App {
 
 extension Notification.Name {
     static let createNewConversation = Notification.Name("createNewConversation")
+    static let videoAspectRatioDidChange = Notification.Name("videoAspectRatioDidChange")
 }
 
 // MARK: - App Delegate

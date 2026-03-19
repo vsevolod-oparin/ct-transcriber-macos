@@ -268,6 +268,7 @@ struct VideoPlayerView: View {
     var body: some View {
         let sf = ScaledFont(scale: fontScale)
         let vs = videoSize
+        let outerWidth = vs.width + sp(4) * 2
         VStack(alignment: .leading, spacing: sp(4)) {
             // Video player — always reserve the frame for correct height measurement
             if let avPlayer {
@@ -287,8 +288,8 @@ struct VideoPlayerView: View {
                 .lineLimit(2)
                 .frame(maxWidth: vs.width, alignment: .leading)
         }
-        .fixedSize(horizontal: true, vertical: false)
         .padding(sp(4))
+        .frame(width: outerWidth, alignment: .leading)
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: sp(6)))
         .onAppear { loadVideo() }
@@ -326,7 +327,16 @@ struct VideoPlayerView: View {
                     let w = abs(transformed.width)
                     let h = abs(transformed.height)
                     if w > 0 && h > 0 {
-                        await MainActor.run { videoAspectRatio = w / h }
+                        let ratio = w / h
+                        await MainActor.run {
+                            videoAspectRatio = ratio
+                            // Write back to static cache so the coordinator's
+                            // videoLayoutKey detects the change and recalculates row height.
+                            // Critical for WebM/MKV where precomputeVideoAspectRatio fails
+                            // because AVAsset can't read those formats.
+                            ChatTableView.Coordinator.setVideoAspectRatio(ratio, for: url)
+                            NotificationCenter.default.post(name: .videoAspectRatioDidChange, object: nil)
+                        }
                     }
                 }
             }
@@ -439,7 +449,7 @@ struct VideoPlayerNSView: NSViewRepresentable {
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.player = player
-        view.controlsStyle = .inline
+        view.controlsStyle = .floating
         view.showsFullScreenToggleButton = true
         view.videoGravity = .resizeAspect
         return view

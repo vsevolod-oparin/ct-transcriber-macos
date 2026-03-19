@@ -649,8 +649,11 @@ final class ChatViewModel {
         // Pre-compute video aspect ratio on background thread (avoids blocking scroll)
         if kind == .video {
             let videoURL = FileStorage.url(for: storedName)
-            Task.detached(priority: .utility) {
+            Task.detached(priority: .utility) { [weak self] in
                 ChatTableView.Coordinator.precomputeVideoAspectRatio(url: videoURL)
+                await MainActor.run {
+                    self?.scheduleCoalescedRefresh()
+                }
             }
         }
 
@@ -666,9 +669,10 @@ final class ChatViewModel {
                 let transSettings = settingsManager.settings.transcription
                 if let mp4Name = await VideoConverter.convertToMP4(
                     storedName: storedName, settings: transSettings) {
-                    await MainActor.run {
+                    await MainActor.run { [self] in
                         attachment.convertedName = mp4Name
                         saveContext()
+                        refreshConversations()
                     }
                 }
             }
@@ -899,8 +903,10 @@ final class ChatViewModel {
         }
     }
 
-    /// Schedules a single deferred `refreshConversations()` call, cancelling any pending one.
-    /// Use this when multiple rapid operations each need a refresh — only one will fire.
+    func refreshAfterVideoChange() {
+        scheduleCoalescedRefresh()
+    }
+
     private func scheduleCoalescedRefresh() {
         pendingRefreshWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
