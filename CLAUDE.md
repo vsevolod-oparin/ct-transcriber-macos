@@ -31,6 +31,45 @@ If a self-review would take more effort than the implementation itself, at minim
 
 Document it honestly. If a test reveals a limitation (e.g., a backend doesn't support a feature), that's a finding — record it in the appropriate place (ROADMAP, report, or both) with the actual behavior and why. Don't paper over failures or quietly downgrade expectations.
 
+### Investigation discipline for crashes and bugs
+
+**Default assumption: every crash is a real bug.** Never dismiss a crash as "intermittent", "one-time", or "migration artifact" without concrete evidence. Speculation is not investigation.
+
+**Four-phase protocol:**
+
+1. **Collect evidence** — Read the full crash log/stack trace. Extract: faulting thread, crashing symbol, source file:line, register state (look for type metadata hints). Every claim must cite a specific file and line.
+
+2. **Root cause analysis (Five Whys):**
+   - WHY did it crash? → assertion failure in property getter
+   - WHY did the getter fail? → accessed a deleted/faulted SwiftData object
+   - WHY was the object deleted? → conversation deleted while view update in flight
+   - WHY wasn't deletion guarded? → no `isDeleted` check before property access
+   - WHY was there no guard? → pattern not applied consistently
+
+   Keep asking until you reach actionable root cause. Stop at the level where a code change prevents the issue.
+
+3. **Pattern extraction** — Once root cause is found, search the entire codebase for the same pattern:
+   - If a SwiftData property access crashes because of missing `isDeleted` guard, check ALL places SwiftData properties are accessed in view update paths
+   - If an async task writes to a deleted object, check ALL async tasks for the same cleanup gap
+   - Use `grep` systematically — don't spot-check
+
+4. **Fix and verify:**
+   - Fix ALL instances of the pattern, not just the one that crashed
+   - Build and run to verify
+   - If the crash involved data corruption or schema issues, inspect the actual database file
+
+**When is "not a bug" acceptable?** Only when ALL of these are true:
+- You have read the crash log and traced every frame
+- The crash is in OS/framework code with no application code in the stack
+- You can prove the application code path is sound (cite the file:line)
+- You have attempted reproduction and documented the attempt
+
+**What to do when you can't reproduce:**
+- Add defensive guards at the crash site (e.g., `isDeleted` checks)
+- Add logging at the crash site so next occurrence provides more data
+- Document the crash and your analysis in the relevant report
+- Do NOT close the issue — leave it as "mitigated, root cause uncertain"
+
 ---
 
 ## Temporary Files

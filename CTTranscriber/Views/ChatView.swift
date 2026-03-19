@@ -177,9 +177,13 @@ private struct ErrorBanner: View {
 /// - Cell reuse for memory efficiency
 struct ChatTableView: NSViewRepresentable {
     /// Hash of message state for change detection. Includes content length + attachment state.
+    /// Guards against accessing properties on deleted SwiftData objects — during view updates,
+    /// model objects may have been deleted from the context between body evaluation and updateNSView.
     static func messageHash(_ msg: Message) -> Int {
+        guard !msg.isDeleted else { return 0 }
         var h = msg.content.count
         for att in msg.attachments {
+            guard !att.isDeleted else { continue }
             h = h &* 31 &+ (att.convertedName?.count ?? 0)
         }
         return h
@@ -261,11 +265,14 @@ struct ChatTableView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let coordinator = context.coordinator
+        // Filter out deleted model objects — SwiftUI may call updateNSView with stale
+        // references after modelContext.delete() + save() runs between body and here.
+        let liveMessages = messages.filter { !$0.isDeleted }
         let oldMessages = coordinator.messages
         let oldStreaming = coordinator.isStreaming
         let oldConversationID = coordinator.conversationID
 
-        AppLogger.debug("updateNSView: msgs=\(messages.count) oldMsgs=\(oldMessages.count) convoID=\(conversationID?.uuidString.prefix(8) ?? "nil") oldConvoID=\(oldConversationID?.uuidString.prefix(8) ?? "nil")", category: "table")
+        AppLogger.debug("updateNSView: msgs=\(liveMessages.count) oldMsgs=\(oldMessages.count) convoID=\(conversationID?.uuidString.prefix(8) ?? "nil") oldConvoID=\(oldConversationID?.uuidString.prefix(8) ?? "nil")", category: "table")
 
         coordinator.onRetry = onRetry
         coordinator.onDropFiles = onDropFiles
@@ -277,7 +284,7 @@ struct ChatTableView: NSViewRepresentable {
 
         // Skip all row updates during live resize — heights recalculated in viewDidEndLiveResize
         if let chatTable = coordinator.tableView as? ChatNSTableView, chatTable.isLiveResizing {
-            coordinator.messages = messages
+            coordinator.messages = liveMessages
             return
         }
 
@@ -305,11 +312,11 @@ struct ChatTableView: NSViewRepresentable {
         // Conversation switch — full reload + scroll to bottom
         if conversationID != oldConversationID {
             coordinator.conversationID = conversationID
-            coordinator.messages = messages
+            coordinator.messages = liveMessages
             coordinator.heightCache.removeAll()
 
             coordinator.expandedMessages.removeAll()
-            coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, Self.messageHash($0)) })
+            coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: liveMessages.map { ($0.id, Self.messageHash($0)) })
             tableView.reloadData()
             DispatchQueue.main.async {
                 coordinator.scrollToBottom(animated: false)
@@ -318,19 +325,19 @@ struct ChatTableView: NSViewRepresentable {
         }
 
         let oldIDs = oldMessages.map(\.id)
-        let newIDs = messages.map(\.id)
+        let newIDs = liveMessages.map(\.id)
 
         if oldIDs == newIDs {
             // Same messages — find which rows have content changes
-            coordinator.messages = messages
+            coordinator.messages = liveMessages
 
             // Detect content changes using a snapshot.
-            // SwiftData models are reference types — oldMessages and messages
+            // SwiftData models are reference types — oldMessages and liveMessages
             // share the same objects, so we can't compare them directly.
             // Also track attachment state (convertedName) for video conversion completion.
             var changedRows = IndexSet()
-            for i in messages.indices {
-                let msg = messages[i]
+            for i in liveMessages.indices {
+                let msg = liveMessages[i]
                 let currentHash = Self.messageHash(msg)
                 let snapshotHash = coordinator.contentLengthSnapshot[msg.id]
                 if snapshotHash == nil || snapshotHash != currentHash {
@@ -338,19 +345,19 @@ struct ChatTableView: NSViewRepresentable {
                 }
             }
 
-            if isStreaming, let lastRow = messages.indices.last {
+            if isStreaming, let lastRow = liveMessages.indices.last {
                 changedRows.insert(lastRow)
             }
 
             // Update snapshot
-            for msg in messages {
+            for msg in liveMessages {
                 coordinator.contentLengthSnapshot[msg.id] = Self.messageHash(msg)
             }
 
             if !changedRows.isEmpty {
                 // Invalidate height cache for changed rows
                 for row in changedRows {
-                    coordinator.heightCache.removeValue(forKey: messages[row].id)
+                    coordinator.heightCache.removeValue(forKey: liveMessages[row].id)
                 }
                 tableView.noteHeightOfRows(withIndexesChanged: changedRows)
                 tableView.reloadData(forRowIndexes: changedRows,
@@ -366,7 +373,7 @@ struct ChatTableView: NSViewRepresentable {
             }
         } else {
             // Messages added or removed
-            coordinator.messages = messages
+            coordinator.messages = liveMessages
 
             let oldSet = Set(oldIDs)
             let newSet = Set(newIDs)
@@ -468,7 +475,7 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Delegate (cell creation)
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard row < messages.count else { return nil }
+            guard row < messages.count, !messages[row].isDeleted else { return nil }
             let message = messages[row]
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
             let isExpanded = expandedMessages.contains(message.id)
@@ -499,7 +506,7 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Delegate (row heights)
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            guard row < messages.count else { return 44 }
+            guard row < messages.count, !messages[row].isDeleted else { return 44 }
             let message = messages[row]
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
 
@@ -736,8 +743,60 @@ struct MessageAnalysis {
     /// Sample size in bytes for estimating line count in large strings.
     private static let lineCountSampleSize = 4096
 
+    init(message: Message) {
+        let content = message.content
+        isError = message.lifecycle == .errorLLM ||
+                  message.lifecycle == .errorTranscription ||
+                  message.lifecycle == .cancelled
+
+        // Timestamps appear near the start of transcription results — check prefix only
+        let timestampSample = content.prefix(500)
+        hasTimestamps = timestampSample.contains("[") && timestampSample.contains("→")
+
+        // Line counting: exact for small, estimated for large
+        let utf8 = content.utf8
+        let totalBytes = utf8.count
+
+        if totalBytes <= Self.lineCountSampleSize {
+            var count = 1
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { count += 1 }
+            }
+            lineCount = count
+            lineCountDisplay = "\(count)"
+        } else {
+            var newlines = 0
+            var scanned = 0
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { newlines += 1 }
+                scanned += 1
+                if scanned >= Self.lineCountSampleSize { break }
+            }
+            let estimated = Int(Double(newlines) / Double(scanned) * Double(totalBytes)) + 1
+            lineCount = estimated
+            lineCountDisplay = "~\(estimated)"
+        }
+        isLong = lineCount > collapseThreshold
+
+        if isLong {
+            var lines: [Substring] = []
+            var remaining = content[...]
+            for _ in 0..<collapsedPreviewLines {
+                if let newline = remaining.firstIndex(of: "\n") {
+                    lines.append(remaining[..<newline])
+                    remaining = remaining[remaining.index(after: newline)...]
+                } else {
+                    lines.append(remaining)
+                    break
+                }
+            }
+            collapsedPreview = lines.joined(separator: "\n") + "\n..."
+        } else {
+            collapsedPreview = ""
+        }
+    }
+
     init(content: String) {
-        // Error markers: ⚠ [LLM] or ⚠ [Transcription] prefixes, or legacy cancelled message
         let prefix100 = content.prefix(100)
         isError = prefix100.contains("⚠") ||
                   prefix100.hasPrefix("Transcription cancelled")
@@ -822,7 +881,7 @@ private struct MessageBubble: View {
     private var isUser: Bool { message.role == .user }
 
     private var currentAnalysis: MessageAnalysis {
-        analysis ?? MessageAnalysis(content: message.content)
+        analysis ?? MessageAnalysis(message: message)
     }
 
     var body: some View {
@@ -876,7 +935,7 @@ private struct MessageBubble: View {
             let currentLength = message.content.count
             let delta = abs(currentLength - lastAnalyzedLength)
             if analysis == nil || !isStreamingThis || delta >= Self.analysisRecomputeThrottle {
-                analysis = MessageAnalysis(content: message.content)
+                analysis = MessageAnalysis(message: message)
                 lastAnalyzedLength = currentLength
             }
         }

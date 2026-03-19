@@ -3,6 +3,11 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 
+enum ConversationActivity {
+    case streaming(task: Task<Void, Never>)
+    case generatingTitle(task: Task<Void, Never>)
+}
+
 @Observable
 @MainActor
 final class ChatViewModel {
@@ -52,20 +57,25 @@ final class ChatViewModel {
         focusCounter += 1
     }
 
+    private var activities: [UUID: ConversationActivity] = [:]
+
     /// True while any LLM is streaming a response.
-    var isStreaming: Bool { !streamingConversationIDs.isEmpty }
-    /// Conversations currently receiving streaming LLM responses.
-    private(set) var streamingConversationIDs: Set<UUID> = []
+    var isStreaming: Bool { activities.values.contains { if case .streaming = $0 { return true }; return false } }
 
     /// True if the currently selected conversation is streaming.
     var isStreamingCurrentConversation: Bool {
         guard let id = selectedConversationID else { return false }
-        return streamingConversationIDs.contains(id)
+        if case .streaming = activities[id] { return true }
+        return false
     }
     /// Error message from the last LLM request, shown inline in the chat.
     var lastError: String?
-    /// True while the LLM is generating a conversation title.
-    private(set) var isGeneratingTitle: Bool = false
+    /// True while the LLM is generating a title for the selected conversation.
+    var isGeneratingTitle: Bool {
+        guard let id = selectedConversationID else { return false }
+        if case .generatingTitle = activities[id] { return true }
+        return false
+    }
 
     /// Seek request: when a user clicks a timestamp in a transcript, this is set to
     /// (storedName, timeInSeconds) so the audio player can seek to that position.
@@ -79,8 +89,6 @@ final class ChatViewModel {
     private(set) var transcriptionProgress: Double = 0
 
     private var modelContext: ModelContext
-    /// Per-conversation streaming tasks, keyed by conversation ID.
-    private var streamingTasks: [UUID: Task<Void, Never>] = [:]
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingTranscriptions: [(audioPath: String, displayName: String, conversation: Conversation, message: Message)] = []
 
@@ -179,6 +187,15 @@ final class ChatViewModel {
         // Remove pending transcriptions for this conversation
         pendingTranscriptions.removeAll { $0.conversation.id == conversation.id }
 
+        // Cancel any streaming or title generation for this conversation
+        if let activity = activities[conversation.id] {
+            switch activity {
+            case .streaming(let task), .generatingTitle(let task):
+                task.cancel()
+            }
+            activities.removeValue(forKey: conversation.id)
+        }
+
         for message in conversation.messages {
             for attachment in message.attachments {
                 FileStorage.delete(storedName: attachment.storedName)
@@ -234,6 +251,7 @@ final class ChatViewModel {
                     // Re-trigger transcription: clear the failed message content, re-queue
                     let audioURL = FileStorage.url(for: att.storedName)
                     message.content = "⏳ Retrying transcription..."
+                    message.lifecycle = .transcriptionQueued
                     saveContext()
                     refreshConversations()
                     startTranscription(
@@ -274,14 +292,15 @@ final class ChatViewModel {
         }
     }
 
-    /// Checks if a message is a transcription result (failed, cancelled, or in progress).
     private func isTranscriptionMessage(_ message: Message) -> Bool {
-        let c = message.content
-        return c.hasPrefix(Self.transcriptionErrorPrefix) ||
-               c.hasPrefix("⏳") ||
-               c.hasPrefix("Transcribing") ||
-               c.hasPrefix("Transcription cancelled") ||
-               c.hasPrefix("**Transcription**")
+        switch message.lifecycle {
+        case .transcribing, .transcriptionQueued, .errorTranscription, .cancelled:
+            return true
+        case .complete, nil:
+            return message.content.hasPrefix("**Transcription**")
+        default:
+            return false
+        }
     }
 
     // MARK: - Send Message + LLM Streaming
@@ -305,10 +324,17 @@ final class ChatViewModel {
     }
 
     func stopStreaming() {
-        guard let convoID = selectedConversationID else { return }
-        streamingTasks[convoID]?.cancel()
-        streamingTasks.removeValue(forKey: convoID)
-        finalizeStreaming(for: convoID)
+        guard let convoID = selectedConversationID,
+              case .streaming(let task) = activities[convoID] else { return }
+        task.cancel()
+        activities.removeValue(forKey: convoID)
+        if let conversation = selectedConversation,
+           let last = sortedMessages(for: conversation).last,
+           last.role == .assistant, last.lifecycle == .streaming {
+            last.lifecycle = .complete
+        }
+        saveContext()
+        refreshConversations()
     }
 
     private func requestLLMResponse(for conversation: Conversation) {
@@ -317,6 +343,7 @@ final class ChatViewModel {
         let apiKey = provider.apiKey
         guard !apiKey.isEmpty else {
             let errorMessage = Message(role: .assistant, content: "\(Self.llmErrorPrefix)\(LLMError.noAPIKey.localizedDescription)")
+            errorMessage.lifecycle = .errorLLM
             conversation.messages.append(errorMessage)
             saveContext()
             refreshConversations()
@@ -326,17 +353,17 @@ final class ChatViewModel {
         let service = LLMServiceFactory.service(for: provider)
         let messages = buildMessageDTOs(for: conversation)
 
-        streamingConversationIDs.insert(conversation.id)
         let convoID = conversation.id
 
         // Create a placeholder assistant message
         let assistantMessage = Message(role: .assistant, content: "")
+        assistantMessage.lifecycle = .streaming
         conversation.messages.append(assistantMessage)
         saveContext()
         refreshConversations()
 
         // Each conversation gets its own streaming Task — fully isolated
-        streamingTasks[convoID] = Task { [weak self] in
+        let task = Task { [weak self] in
             var accumulatedText = ""
             let stream = service.streamCompletion(
                 messages: messages,
@@ -374,20 +401,20 @@ final class ChatViewModel {
 
                 guard let self else { return }
                 await MainActor.run {
-                    self.streamingTasks.removeValue(forKey: convoID)
+                    assistantMessage.lifecycle = .complete
                     self.finalizeStreaming(for: convoID)
                     self.autoNameIfFirstResponse(conversation, provider: provider)
                 }
             } catch is CancellationError {
                 guard let self else { return }
                 await MainActor.run {
-                    self.streamingTasks.removeValue(forKey: convoID)
+                    assistantMessage.lifecycle = .complete
                     self.finalizeStreaming(for: convoID)
                 }
             } catch let error as LLMError where error.isCancelled {
                 guard let self else { return }
                 await MainActor.run {
-                    self.streamingTasks.removeValue(forKey: convoID)
+                    assistantMessage.lifecycle = .complete
                     self.finalizeStreaming(for: convoID)
                 }
             } catch {
@@ -395,18 +422,22 @@ final class ChatViewModel {
                 await MainActor.run {
                     let partial = assistantMessage.content.isEmpty ? "" : assistantMessage.content + "\n\n"
                     assistantMessage.content = "\(partial)\(Self.llmErrorPrefix)\(error.localizedDescription)"
-                    self.streamingTasks.removeValue(forKey: convoID)
+                    assistantMessage.lifecycle = .errorLLM
                     self.finalizeStreaming(for: convoID)
                 }
             }
         }
+        activities[convoID] = .streaming(task: task)
     }
 
     private func finalizeStreaming(for conversationID: UUID? = nil) {
         if let id = conversationID {
-            streamingConversationIDs.remove(id)
+            activities.removeValue(forKey: id)
         } else {
-            streamingConversationIDs.removeAll()
+            activities = activities.filter { _, v in
+                if case .streaming = v { return false }
+                return true
+            }
         }
         saveContext()
         refreshConversations()
@@ -477,8 +508,8 @@ final class ChatViewModel {
 
         AppLogger.debug("Auto-naming with \(namingMessages.count - 1) messages via \(provider.name)", category: "auto-title")
 
-        isGeneratingTitle = true
-        Task.detached { [weak self] in
+        let convoID = conversation.id
+        let titleTask = Task.detached { [weak self] in
             guard let self else { return }
             var title = ""
             let stream = service.streamCompletion(
@@ -498,13 +529,13 @@ final class ChatViewModel {
                 }
             } catch {
                 AppLogger.error("Auto-name failed: \(error.localizedDescription)", category: "auto-title")
-                await MainActor.run { self.isGeneratingTitle = false }
+                await MainActor.run { self.activities.removeValue(forKey: convoID) }
                 return
             }
 
             let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
             await MainActor.run {
-                self.isGeneratingTitle = false
+                self.activities.removeValue(forKey: convoID)
                 guard !cleaned.isEmpty else {
                     AppLogger.debug("Auto-name returned empty title", category: "auto-title")
                     return
@@ -516,6 +547,7 @@ final class ChatViewModel {
                 self.refreshConversations()
             }
         }
+        activities[convoID] = .generatingTitle(task: Task { await titleTask.value })
     }
 
     // MARK: - Open Files (Finder / Dock drop / onOpenURL)
@@ -606,6 +638,7 @@ final class ChatViewModel {
         // Create placeholder message immediately so it appears right after the audio
         let displayName = originalName ?? (audioPath as NSString).lastPathComponent
         let transcriptMessage = Message(role: .assistant, content: "⏳ Queued: \(displayName)")
+        transcriptMessage.lifecycle = .transcriptionQueued
         conversation.messages.append(transcriptMessage)
         saveContext()
         refreshConversations()
@@ -626,6 +659,7 @@ final class ChatViewModel {
         let envStatus = PythonEnvironment.check(settings: transSettings)
         guard case .ready = envStatus else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)Python environment not ready. Set up from Settings → Environment."
+            transcriptMessage.lifecycle = .errorTranscription
             saveContext()
             return
         }
@@ -641,6 +675,7 @@ final class ChatViewModel {
             let audioTracks = asset.tracks(withMediaType: .audio)
             if audioTracks.isEmpty {
                 transcriptMessage.content = "\(Self.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
+                transcriptMessage.lifecycle = .errorTranscription
                 saveContext()
                 return
             }
@@ -649,6 +684,7 @@ final class ChatViewModel {
         let selectedID = transSettings.selectedModelID
         guard let modelPath = modelManager.modelPath(for: selectedID) else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(TranscriptionError.modelNotDownloaded.localizedDescription)"
+            transcriptMessage.lifecycle = .errorTranscription
             saveContext()
             return
         }
@@ -656,6 +692,7 @@ final class ChatViewModel {
         activeTranscriptionCount += 1
         transcriptionProgress = 0
         transcriptMessage.content = "Transcribing..."
+        transcriptMessage.lifecycle = .transcribing
 
         let bgTask = taskManager?.createTask(kind: .transcription, title: displayName, conversationTitle: conversation.title)
         let taskID = UUID()
@@ -694,6 +731,7 @@ final class ChatViewModel {
                 await MainActor.run {
                     if let result {
                         transcriptMessage.content = self.formatTranscriptionResult(result)
+                        transcriptMessage.lifecycle = .complete
                         bgTask?.status = .completed
                         bgTask?.progress = 1.0
                     }
@@ -703,6 +741,7 @@ final class ChatViewModel {
                 guard let self else { return }
                 await MainActor.run {
                     transcriptMessage.content = "Transcription cancelled."
+                    transcriptMessage.lifecycle = .cancelled
                     bgTask?.status = .cancelled
                     self.finishTranscription(taskID: taskID)
                 }
@@ -711,6 +750,7 @@ final class ChatViewModel {
                 await MainActor.run {
                     self.lastError = error.localizedDescription
                     transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(error.localizedDescription)"
+                    transcriptMessage.lifecycle = .errorTranscription
                     bgTask?.status = .failed
                     bgTask?.errorMessage = error.localizedDescription
                     self.finishTranscription(taskID: taskID)

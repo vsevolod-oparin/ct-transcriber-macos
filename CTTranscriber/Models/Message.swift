@@ -7,6 +7,16 @@ enum MessageRole: String, Codable {
     case system
 }
 
+enum MessageLifecycle: String, Codable {
+    case complete
+    case streaming
+    case transcriptionQueued
+    case transcribing
+    case errorLLM
+    case errorTranscription
+    case cancelled
+}
+
 @Model
 final class Message {
     var id: UUID
@@ -16,6 +26,8 @@ final class Message {
 
     @Relationship(deleteRule: .cascade, inverse: \Attachment.message)
     var attachments: [Attachment]
+
+    var lifecycle: MessageLifecycle?
 
     var conversation: Conversation?
 
