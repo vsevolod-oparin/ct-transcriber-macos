@@ -79,7 +79,7 @@ final class ChatViewModel {
 
     /// Seek request: when a user clicks a timestamp in a transcript, this is set to
     /// (storedName, timeInSeconds) so the audio player can seek to that position.
-    var seekRequest: (storedName: String, time: TimeInterval)?
+    var seekRequest: (id: UUID, storedName: String, time: TimeInterval)?
 
     /// Number of active transcriptions.
     private(set) var activeTranscriptionCount: Int = 0
