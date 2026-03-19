@@ -6,7 +6,7 @@ struct EnvironmentSetupView: View {
     @State private var isRunning = false
     @State private var isDone = false
     @State private var currentStep = ""
-    @State private var steps: [(name: String, status: String)] = []
+    @State private var steps: [(name: String, status: String, message: String)] = []
     @State private var errorMessage: String?
     @State private var setupTask: Task<Void, Never>?
 
@@ -40,22 +40,27 @@ struct EnvironmentSetupView: View {
             // Progress
             if isRunning {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                    ForEach(Array(steps.filter { $0.status != "start" }.enumerated()), id: \.offset) { _, step in
                         HStack(spacing: 6) {
                             Image(systemName: stepIcon(step.status))
                                 .foregroundStyle(stepColor(step.status))
                                 .frame(width: 16)
-                            Text(step.name)
+                            Text(step.message)
                                 .font(.caption)
-                                .foregroundStyle(step.status == "start" ? .primary : .secondary)
+                                .foregroundStyle(.secondary)
                         }
                     }
 
-                    if !currentStep.isEmpty {
+                    HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                            .padding(.top, 4)
+                        if !currentStep.isEmpty {
+                            Text(currentStep)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
@@ -104,7 +109,7 @@ struct EnvironmentSetupView: View {
         isDone = false
         errorMessage = nil
         steps = []
-        currentStep = ""
+        currentStep = "Starting environment setup..."
 
         let settings = settingsManager.settings.transcription
         setupTask = Task {
@@ -113,11 +118,13 @@ struct EnvironmentSetupView: View {
                     await MainActor.run {
                         // Update or add step
                         if let idx = steps.firstIndex(where: { $0.name == step.step }) {
-                            steps[idx] = (step.step, step.status)
+                            steps[idx] = (step.step, step.status, step.message)
                         } else {
-                            steps.append((step.step, step.status))
+                            steps.append((step.step, step.status, step.message))
                         }
-                        currentStep = step.status == "start" ? step.message : ""
+                        if step.status == "start" {
+                            currentStep = step.message
+                        }
                     }
                 }
                 await MainActor.run {

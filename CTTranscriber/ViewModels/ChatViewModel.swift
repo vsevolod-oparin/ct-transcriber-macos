@@ -492,19 +492,31 @@ final class ChatViewModel {
     // MARK: - File Attachment
 
     func attachFile(from url: URL, to conversation: Conversation) {
-        guard let storedName = try? FileStorage.copyToStorage(from: url) else { return }
-
         let kind = FileStorage.attachmentKind(for: url)
         let originalName = url.lastPathComponent
-        let attachment = Attachment(kind: kind, storedName: storedName, originalName: originalName)
 
-        let message = Message(role: .user, content: "Attached \(kind.rawValue): \(originalName)")
-        message.attachments.append(attachment)
-        conversation.messages.append(message)
-        conversation.updatedAt = Date()
-        saveContext()
-        refreshConversations()
+        Task.detached {
+            guard let storedName = try? FileStorage.copyToStorage(from: url) else { return }
 
+            await MainActor.run { [self] in
+                let attachment = Attachment(kind: kind, storedName: storedName, originalName: originalName)
+
+                let message = Message(role: .user, content: "Attached \(kind.rawValue): \(originalName)")
+                message.attachments.append(attachment)
+                conversation.messages.append(message)
+                conversation.updatedAt = Date()
+                saveContext()
+                refreshConversations()
+
+                self.postAttachActions(kind: kind, storedName: storedName, originalName: originalName,
+                                       attachment: attachment, conversation: conversation)
+            }
+        }
+
+    }
+
+    private func postAttachActions(kind: AttachmentKind, storedName: String, originalName: String,
+                                    attachment: Attachment, conversation: Conversation) {
         // Pre-compute video aspect ratio on background thread (avoids blocking scroll)
         if kind == .video {
             let videoURL = FileStorage.url(for: storedName)

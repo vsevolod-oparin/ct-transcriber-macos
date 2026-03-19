@@ -10,6 +10,8 @@ struct CTTranscriberApp: App {
     @State private var modelManager: ModelManager?
     @State private var showAbout = false
     @State private var showOpenPanel = false
+    @State private var showUninstallConfirm = false
+    @State private var isUninstalling = false
 
     var body: some Scene {
         WindowGroup {
@@ -21,6 +23,34 @@ struct CTTranscriberApp: App {
                 .sheet(isPresented: $showAbout) {
                     AboutView()
                         .environment(\.fontScale, settingsManager.fontScale)
+                }
+                .alert("Uninstall CT Transcriber", isPresented: $showUninstallConfirm) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Uninstall & Quit", role: .destructive) {
+                        isUninstalling = true
+                        AppUninstaller.run()
+                    }
+                    .keyboardShortcut(.return)
+                } message: {
+                    Text("This will remove the app from /Applications and delete all data (models, files, settings, logs, Python environment). This cannot be undone.")
+                }
+                .overlay {
+                    if isUninstalling {
+                        ZStack {
+                            Color.black.opacity(0.4)
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .controlSize(.large)
+                                Text("Uninstalling...")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                            }
+                            .padding(32)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .ignoresSafeArea()
+                    }
                 }
         }
         .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
@@ -68,6 +98,10 @@ struct CTTranscriberApp: App {
                 Divider()
                 Button("GitHub Repository...") {
                     NSWorkspace.shared.open(URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos")!)
+                }
+                Divider()
+                Button("Uninstall CT Transcriber...") {
+                    showUninstallConfirm = true
                 }
             }
         }

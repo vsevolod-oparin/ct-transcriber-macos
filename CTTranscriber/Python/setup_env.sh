@@ -21,6 +21,9 @@ set -euo pipefail
 CONDA_ENV_NAME=""
 CT2_PACKAGE_URL=""
 CT2_SOURCE=""
+DOWNLOAD_MODEL_HF=""
+DOWNLOAD_MODEL_ID=""
+DOWNLOAD_MODEL_QUANT="float16"
 MINICONDA_DIR="$HOME/.ct-transcriber/miniconda"
 
 # Parse arguments
@@ -28,6 +31,9 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --package-url) CT2_PACKAGE_URL="$2"; shift 2 ;;
         --source) CT2_SOURCE="$2"; shift 2 ;;
+        --download-model) DOWNLOAD_MODEL_HF="$2"; shift 2 ;;
+        --model-id) DOWNLOAD_MODEL_ID="$2"; shift 2 ;;
+        --model-quantization) DOWNLOAD_MODEL_QUANT="$2"; shift 2 ;;
         *)
             if [ -z "$CONDA_ENV_NAME" ]; then
                 CONDA_ENV_NAME="$1"; shift
@@ -39,7 +45,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$CONDA_ENV_NAME" ]; then
-    echo "Usage: setup_env.sh <conda_env_name> [--package-url URL] [--source PATH]" >&2
+    echo "Usage: setup_env.sh <conda_env_name> [--package-url URL] [--source PATH] [--download-model HF_ID --model-id ID]" >&2
     exit 1
 fi
 
@@ -51,27 +57,29 @@ emit() {
 # ==========================================================================
 # Step 1: Ensure conda is available (install Miniconda if needed)
 # ==========================================================================
-emit "check_conda" "start" "Checking for conda"
+emit "prepare" "start" "Preparing environment setup"
+emit "prepare" "done" "Environment setup started"
 
 CONDA_BIN="$MINICONDA_DIR/bin/conda"
 
 if [ -x "$CONDA_BIN" ]; then
-    emit "check_conda" "done" "Found app Miniconda at $CONDA_BIN"
+    emit "check_conda" "done" "Conda found"
 else
     # Install Miniconda automatically
-    emit "install_miniconda" "start" "Downloading and installing Miniconda"
-
     MINICONDA_INSTALLER="/tmp/ct-transcriber-miniconda.sh"
     MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh"
 
-    curl -fsSL "$MINICONDA_URL" -o "$MINICONDA_INSTALLER" 2>&1
+    emit "download_miniconda" "start" "Downloading Miniconda (~60 MB)"
+    curl -fSL "$MINICONDA_URL" -o "$MINICONDA_INSTALLER" >&2 2>&1
 
     if [ ! -f "$MINICONDA_INSTALLER" ]; then
-        emit "install_miniconda" "error" "Failed to download Miniconda installer"
+        emit "download_miniconda" "error" "Failed to download Miniconda installer"
         exit 1
     fi
+    emit "download_miniconda" "done" "Miniconda downloaded"
 
-    bash "$MINICONDA_INSTALLER" -b -p "$MINICONDA_DIR" 2>&1 | tail -3
+    emit "install_miniconda" "start" "Installing Miniconda (unpacking Python runtime)"
+    bash "$MINICONDA_INSTALLER" -b -p "$MINICONDA_DIR" >&2 2>&1
     rm -f "$MINICONDA_INSTALLER"
 
     CONDA_BIN="$MINICONDA_DIR/bin/conda"
@@ -80,7 +88,7 @@ else
         exit 1
     fi
 
-    emit "install_miniconda" "done" "Miniconda installed to $MINICONDA_DIR"
+    emit "install_miniconda" "done" "Miniconda installed"
 fi
 
 # Initialize conda for this shell
@@ -103,33 +111,72 @@ emit "create_env" "start" "Setting up conda environment: $CONDA_ENV_NAME"
 if "$CONDA_BIN" env list 2>/dev/null | grep -q "^${CONDA_ENV_NAME} "; then
     emit "create_env" "done" "Environment $CONDA_ENV_NAME already exists"
 else
-    "$CONDA_BIN" create -n "$CONDA_ENV_NAME" python=3.12 -y 2>&1 | tail -1
+    "$CONDA_BIN" create -n "$CONDA_ENV_NAME" python=3.12 -y >&2 2>&1
     emit "create_env" "done" "Environment $CONDA_ENV_NAME created"
 fi
 
 # ==========================================================================
 # Step 3: Install Python dependencies
 # ==========================================================================
-emit "install_deps" "start" "Installing Python dependencies"
+emit "install_deps" "start" "Installing Python dependencies (~400 MB)"
 
-run_in_env pip install --quiet torch transformers sentencepiece faster-whisper 2>&1 | tail -3
+# Install torch and other deps in parallel
+run_in_env pip install --quiet torch >&2 2>&1 &
+TORCH_PID=$!
 
+run_in_env pip install --quiet transformers sentencepiece faster-whisper >&2 2>&1 &
+FW_PID=$!
+
+# Install ffmpeg in parallel with pip deps
+FFMPEG_PID=""
+ENV_FFMPEG="$MINICONDA_DIR/envs/$CONDA_ENV_NAME/bin/ffmpeg"
+if [ ! -x "$ENV_FFMPEG" ]; then
+    "$CONDA_BIN" install -n "$CONDA_ENV_NAME" -c conda-forge --override-channels ffmpeg -y >&2 2>&1 &
+    FFMPEG_PID=$!
+fi
+
+# Wait for pip installs
+wait "$TORCH_PID" 2>/dev/null
+emit "install_torch" "done" "PyTorch installed"
+wait "$FW_PID" 2>/dev/null
 emit "install_deps" "done" "Python dependencies installed"
 
 # ==========================================================================
-# Step 3b: Install ffmpeg CLI (for video format conversion)
+# Step 3b: Pre-download model files in background (if requested)
 # ==========================================================================
-ENV_FFMPEG="$MINICONDA_DIR/envs/$CONDA_ENV_NAME/bin/ffmpeg"
+HF_PREFETCH_PID=""
+if [ -n "$DOWNLOAD_MODEL_HF" ] && [ -n "$DOWNLOAD_MODEL_ID" ]; then
+    MODELS_DIR="$HOME/Library/Application Support/CTTranscriber/models"
+    MODEL_OUTPUT="$MODELS_DIR/$DOWNLOAD_MODEL_ID"
+
+    if [ -f "$MODEL_OUTPUT/model.bin" ] && [ -f "$MODEL_OUTPUT/tokenizer.json" ]; then
+        # Model already exists, skip prefetch
+        true
+    else
+        emit "prefetch_model" "start" "Pre-downloading model files in background"
+        run_in_env python -c "
+from huggingface_hub import snapshot_download
+snapshot_download('$DOWNLOAD_MODEL_HF', ignore_patterns=['*.safetensors.index.json'])
+" >&2 2>&1 &
+        HF_PREFETCH_PID=$!
+    fi
+fi
+
+# ==========================================================================
+# Step 3c: Wait for ffmpeg (started in parallel with pip deps)
+# ==========================================================================
 if [ -x "$ENV_FFMPEG" ]; then
     emit "install_ffmpeg" "done" "ffmpeg already installed"
-else
-    emit "install_ffmpeg" "start" "Installing ffmpeg for video support"
-    "$CONDA_BIN" install -n "$CONDA_ENV_NAME" -c conda-forge ffmpeg -y 2>&1 | tail -3
+elif [ -n "$FFMPEG_PID" ]; then
+    emit "install_ffmpeg" "start" "Waiting for ffmpeg install"
+    wait "$FFMPEG_PID" 2>/dev/null || true
     if [ -x "$ENV_FFMPEG" ]; then
         emit "install_ffmpeg" "done" "ffmpeg installed"
     else
         emit "install_ffmpeg" "done" "ffmpeg not available (video conversion will be skipped)"
     fi
+else
+    emit "install_ffmpeg" "done" "ffmpeg already installed"
 fi
 
 # ==========================================================================
@@ -138,18 +185,18 @@ fi
 
 if [ -n "$CT2_PACKAGE_URL" ]; then
     # --- Wheel mode: download pre-built package ---
-    emit "install_ct2" "start" "Downloading pre-built CTranslate2 Metal package"
-
     CT2_TMPDIR="/tmp/ct2-metal-package"
     rm -rf "$CT2_TMPDIR"
     mkdir -p "$CT2_TMPDIR"
 
-    curl -fsSL "$CT2_PACKAGE_URL" -o "$CT2_TMPDIR/package.tar.gz" 2>&1
-
-    if [ ! -f "$CT2_TMPDIR/package.tar.gz" ]; then
-        emit "install_ct2" "error" "Failed to download CTranslate2 package from $CT2_PACKAGE_URL"
+    emit "download_ct2" "start" "Downloading CTranslate2 Metal package"
+    if ! curl -fSL "$CT2_PACKAGE_URL" -o "$CT2_TMPDIR/package.tar.gz" 2>&2; then
+        emit "download_ct2" "error" "Failed to download CTranslate2 package from $CT2_PACKAGE_URL"
         exit 1
     fi
+    emit "download_ct2" "done" "CTranslate2 package downloaded"
+
+    emit "install_ct2" "start" "Installing CTranslate2 Metal backend"
 
     cd "$CT2_TMPDIR"
     tar xzf package.tar.gz
@@ -161,24 +208,11 @@ if [ -n "$CT2_PACKAGE_URL" ]; then
         exit 1
     fi
 
-    run_in_env pip install --force-reinstall "$WHL" 2>&1 | tail -3
-
-    # Copy the shared library to the conda env's lib/
-    ENV_LIB="$(run_in_env python -c 'import sys; print(sys.prefix)')/lib"
-    cp -f libctranslate2*.dylib "$ENV_LIB/" 2>/dev/null || true
-
-    # Fix symlinks
-    cd "$ENV_LIB"
-    REAL_DYLIB=$(ls libctranslate2.*.*.dylib 2>/dev/null | head -1)
-    if [ -n "$REAL_DYLIB" ]; then
-        MAJOR_DYLIB=$(echo "$REAL_DYLIB" | sed 's/\.[0-9]*\.[0-9]*\.dylib/.dylib/')
-        ln -sf "$REAL_DYLIB" "$MAJOR_DYLIB" 2>/dev/null || true
-        ln -sf "$MAJOR_DYLIB" libctranslate2.dylib 2>/dev/null || true
-    fi
+    run_in_env pip install --force-reinstall "$WHL" >&2 2>&1
 
     rm -rf "$CT2_TMPDIR"
 
-    emit "install_ct2" "done" "CTranslate2 Metal package installed (pre-built)"
+    emit "install_ct2" "done" "CTranslate2 Metal package installed"
 
 elif [ -n "$CT2_SOURCE" ]; then
     # --- Source mode: build from source ---
@@ -203,7 +237,7 @@ elif [ -n "$CT2_SOURCE" ]; then
     emit "install_ct2" "start" "Building CTranslate2 from source (this may take several minutes)"
 
     cd "$CT2_SOURCE"
-    git submodule update --init --recursive 2>&1 | tail -1
+    git submodule update --init --recursive >&2 2>&1
     run_in_env python3 tools/gen_msl_strings.py
 
     CMAKE_PREFIX=$(run_in_env python -c "import sys; print(sys.prefix)")
@@ -215,14 +249,14 @@ elif [ -n "$CT2_SOURCE" ]; then
         -DWITH_DNNL=OFF \
         -DOPENMP_RUNTIME=NONE \
         -DCMAKE_INSTALL_PREFIX="$CMAKE_PREFIX" \
-        2>&1 | tail -3
+        >&2 2>&1
 
     NCPU=$(sysctl -n hw.logicalcpu)
-    cmake --build build -j"$NCPU" 2>&1 | tail -5
-    cmake --install build 2>&1 | tail -3
+    cmake --build build -j"$NCPU" >&2 2>&1
+    cmake --install build >&2 2>&1
 
     cd python
-    run_in_env pip install . 2>&1 | tail -3
+    run_in_env pip install . >&2 2>&1
     cd ..
 
     emit "install_ct2" "done" "CTranslate2 built and installed from source"
@@ -250,4 +284,45 @@ if [ "$CT2_VERSION" = "not found" ]; then
 fi
 
 emit "validate" "done" "CTranslate2 $CT2_VERSION + faster_whisper ready"
+
+# ==========================================================================
+# Step 6: Download default whisper model (if requested)
+# ==========================================================================
+if [ -n "$DOWNLOAD_MODEL_HF" ] && [ -n "$DOWNLOAD_MODEL_ID" ]; then
+    MODELS_DIR="$HOME/Library/Application Support/CTTranscriber/models"
+    MODEL_OUTPUT="$MODELS_DIR/$DOWNLOAD_MODEL_ID"
+
+    if [ -f "$MODEL_OUTPUT/model.bin" ] && [ -f "$MODEL_OUTPUT/tokenizer.json" ]; then
+        emit "download_model" "done" "Model $DOWNLOAD_MODEL_ID already downloaded"
+    else
+        # Wait for background prefetch to finish (downloads HF files in parallel with CT2/ffmpeg)
+        if [ -n "$HF_PREFETCH_PID" ]; then
+            emit "download_model" "start" "Waiting for model download to complete (~1.6 GB)"
+            wait "$HF_PREFETCH_PID" 2>/dev/null || true
+            emit "prefetch_model" "done" "Model files downloaded"
+        fi
+
+        emit "convert_model" "start" "Converting model to CTranslate2 format"
+
+        SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+        CONVERT_SCRIPT="$SCRIPT_DIR/convert_model.py"
+        if [ ! -f "$CONVERT_SCRIPT" ]; then
+            # When running from app bundle, script is in Resources
+            CONVERT_SCRIPT="$(dirname "$SCRIPT_DIR")/Resources/convert_model.py"
+        fi
+
+        mkdir -p "$MODELS_DIR"
+        run_in_env python "$CONVERT_SCRIPT" \
+            --hf-model "$DOWNLOAD_MODEL_HF" \
+            --output-dir "$MODEL_OUTPUT" \
+            --quantization "$DOWNLOAD_MODEL_QUANT" >&2 2>&1 || true
+
+        if [ -f "$MODEL_OUTPUT/model.bin" ]; then
+            emit "convert_model" "done" "Model $DOWNLOAD_MODEL_ID ready"
+        else
+            emit "convert_model" "done" "Model setup failed (you can download it later from Settings)"
+        fi
+    fi
+fi
+
 echo '{"step":"complete","status":"done","message":"Environment setup complete"}'

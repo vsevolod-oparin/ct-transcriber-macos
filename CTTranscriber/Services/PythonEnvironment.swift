@@ -99,29 +99,53 @@ enum PythonEnvironment {
                     } else if !settings.ctranslate2SourcePath.isEmpty {
                         arguments += ["--source", settings.ctranslate2SourcePath]
                     }
+                    // Download default model during setup
+                    if !settings.selectedModelID.isEmpty {
+                        if let model = settings.models.first(where: { $0.id == settings.selectedModelID }) {
+                            arguments += [
+                                "--download-model", model.huggingFaceID,
+                                "--model-id", model.id,
+                                "--model-quantization", model.quantization,
+                            ]
+                        }
+                    }
+
                     // If neither is set, script installs deps but skips CT2
 
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/bin/bash")
                     process.arguments = arguments
 
-                    let pipe = Pipe()
-                    process.standardOutput = pipe
-                    process.standardError = FileHandle.nullDevice
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
+
+                    // Log stderr in background
+                    let stderrTask = Task {
+                        for try await line in stderrPipe.fileHandleForReading.bytes.lines {
+                            AppLogger.debug("[setup_env] \(line)", category: "python-env")
+                        }
+                    }
 
                     try process.run()
 
                     let decoder = JSONDecoder()
-                    for try await line in pipe.fileHandleForReading.bytes.lines {
+                    for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
                         if let data = line.data(using: .utf8),
                            let step = try? decoder.decode(SetupStep.self, from: data) {
+                            AppLogger.info("[setup_env] \(step.step): \(step.status) — \(step.message)", category: "python-env")
                             continuation.yield(step)
                             if step.status == "error" {
                                 throw PythonEnvError.setupFailed(step.message)
                             }
+                        } else {
+                            // Non-JSON stdout (e.g. conda/pip output passed through)
+                            AppLogger.debug("[setup_env] \(line)", category: "python-env")
                         }
                     }
 
+                    _ = try? await stderrTask.value
                     process.waitUntilExit()
 
                     if process.terminationStatus != 0 {
@@ -178,13 +202,6 @@ enum PythonEnvironment {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = stderrPipe
 
-        var env = ProcessInfo.processInfo.environment
-        let execDir = (pythonPath as NSString).deletingLastPathComponent
-        let libDir = ((execDir as NSString).deletingLastPathComponent as NSString).appendingPathComponent("lib")
-        let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
-        env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? libDir : "\(libDir):\(existingDyld)"
-        process.environment = env
-
         do {
             try process.run()
             process.waitUntilExit()
@@ -207,14 +224,6 @@ enum PythonEnvironment {
         process.arguments = arguments
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-
-        // Ensure the conda env's lib is on the dynamic library path
-        var env = ProcessInfo.processInfo.environment
-        let execDir = (executable as NSString).deletingLastPathComponent
-        let libDir = ((execDir as NSString).deletingLastPathComponent as NSString).appendingPathComponent("lib")
-        let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
-        env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? libDir : "\(libDir):\(existingDyld)"
-        process.environment = env
 
         do {
             try process.run()

@@ -17,7 +17,7 @@ struct SettingsView: View {
             LLMSettingsTab(settings: $settingsManager.settings.llm)
                 .tabItem { Label("LLM", systemImage: "brain") }
 
-            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription, settingsManager: settingsManager)
+            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription, settingsManager: settingsManager, modelManager: modelManager)
                 .tabItem { Label("Environment", systemImage: "terminal") }
         }
         .frame(width: 520 * s, height: 480 * s)
@@ -173,6 +173,7 @@ private struct TranscriptionSettingsTab: View {
 private struct EnvironmentSettingsTab: View {
     @Binding var settings: TranscriptionSettings
     var settingsManager: SettingsManager
+    var modelManager: ModelManager
     @Environment(\.fontScale) private var fontScale
     @State private var showSetupSheet = false
 
@@ -227,6 +228,7 @@ private struct EnvironmentSettingsTab: View {
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: "Manual re-run from Settings.") {
                 showSetupSheet = false
+                modelManager.refreshStatuses()
             }
         }
     }

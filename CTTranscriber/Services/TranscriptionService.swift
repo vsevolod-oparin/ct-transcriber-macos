@@ -116,15 +116,6 @@ enum TranscriptionService {
 
                     AppLogger.info("Transcription command: \(pythonPath) \(args.joined(separator: " "))", category: "transcription")
 
-                    // Set DYLD_LIBRARY_PATH so the subprocess can find libctranslate2.dylib
-                    var env = ProcessInfo.processInfo.environment
-                    let pythonBinDir = (pythonPath as NSString).deletingLastPathComponent
-                    let envLibDir = ((pythonBinDir as NSString).deletingLastPathComponent as NSString)
-                        .appendingPathComponent("lib")
-                    let existingDyld = env["DYLD_LIBRARY_PATH"] ?? ""
-                    env["DYLD_LIBRARY_PATH"] = existingDyld.isEmpty ? envLibDir : "\(envLibDir):\(existingDyld)"
-                    process.environment = env
-
                     let stdoutPipe = Pipe()
                     let stderrPipe = Pipe()
                     process.standardOutput = stdoutPipe

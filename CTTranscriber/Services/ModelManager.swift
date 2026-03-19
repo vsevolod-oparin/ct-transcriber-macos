@@ -174,8 +174,10 @@ final class ModelManager {
         let modelsDir = resolvedModelsDirectory(settings: settings)
         let modelPath = (modelsDir as NSString).appendingPathComponent(model.id)
 
-        try? FileManager.default.removeItem(atPath: modelPath)
         modelStatuses[model.id] = .notDownloaded
+        Task.detached {
+            try? FileManager.default.removeItem(atPath: modelPath)
+        }
     }
 
     /// Returns the full path to a downloaded model, or nil.

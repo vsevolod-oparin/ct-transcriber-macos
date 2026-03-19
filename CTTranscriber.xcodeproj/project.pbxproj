@@ -42,6 +42,7 @@
 		EC20B31187147F173BFA7292 /* transcribe.py in Resources */ = {isa = PBXBuildFile; fileRef = FF7A27F7EC2A302BBF0DB51A /* transcribe.py */; };
 		F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */; };
 		FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */; };
+		8826C94F3A8B /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749D5D785980 /* AppUninstaller.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -94,6 +95,7 @@
 		DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStorage.swift; sourceTree = "<group>"; };
 		FF7A27F7EC2A302BBF0DB51A /* transcribe.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = transcribe.py; sourceTree = "<group>"; };
 		FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackManager.swift; sourceTree = "<group>"; };
+		749D5D785980 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -189,7 +191,8 @@
 				2326917778ED8DB96533DDAC /* TranscriptionService.swift */,
 				7762C803FAF07C9D5686AA62 /* VideoConverter.swift */,
 				10F918C5F3D7076FC33893B1 /* LLM */,
-			);
+			
+				749D5D785980 /* AppUninstaller.swift */,);
 			path = Services;
 			sourceTree = "<group>";
 		};
@@ -356,7 +359,8 @@
 				691D1E5A263BD0AFD24C50D6 /* TaskManagerView.swift in Sources */,
 				C4217819DA986D07E306E2E2 /* TranscriptionService.swift in Sources */,
 				57B70598411440A489335212 /* VideoConverter.swift in Sources */,
-			);
+			
+				8826C94F3A8B /* AppUninstaller.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F769020B3E071F2848036030 /* Sources */ = {
@@ -392,7 +396,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;
@@ -430,7 +434,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;

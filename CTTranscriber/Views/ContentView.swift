@@ -131,6 +131,8 @@ struct ContentView: View {
         .sheet(isPresented: $showSetupSheet) {
             EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
                 showSetupSheet = false
+                // Refresh model statuses — setup may have downloaded a model
+                modelManager?.refreshStatuses()
             }
         }
         .sheet(isPresented: $showTaskManager) {
