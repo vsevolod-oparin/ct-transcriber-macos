@@ -367,7 +367,13 @@ final class ChatViewModel {
                     self.finalizeStreaming(for: convoID)
                     self.autoNameIfFirstResponse(conversation, provider: provider)
                 }
-            } catch let error as LLMError where error.localizedDescription == LLMError.cancelled.localizedDescription {
+            } catch is CancellationError {
+                guard let self else { return }
+                await MainActor.run {
+                    self.streamingTasks.removeValue(forKey: convoID)
+                    self.finalizeStreaming(for: convoID)
+                }
+            } catch let error as LLMError where error.isCancelled {
                 guard let self else { return }
                 await MainActor.run {
                     self.streamingTasks.removeValue(forKey: convoID)
@@ -676,7 +682,7 @@ final class ChatViewModel {
                     }
                     self.finishTranscription(taskID: taskID)
                 }
-            } catch let error as TranscriptionError where error.localizedDescription == TranscriptionError.cancelled.localizedDescription {
+            } catch let error as TranscriptionError where error.isCancelled {
                 guard let self else { return }
                 await MainActor.run {
                     transcriptMessage.content = "Transcription cancelled."

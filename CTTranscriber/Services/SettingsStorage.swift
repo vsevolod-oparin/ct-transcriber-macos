@@ -67,13 +67,20 @@ enum SettingsStorage {
 
     private static func loadBundledDefaults() -> AppSettings {
         guard let url = Bundle.main.url(forResource: bundledDefaultsFileName, withExtension: "json") else {
-            fatalError("Missing bundled \(bundledDefaultsFileName).json in app resources")
+            AppLogger.error("Bundled \(bundledDefaultsFileName).json missing from app resources", category: "settings")
+            // Last resort: decode from inline minimal JSON
+            return try! JSONDecoder().decode(AppSettings.self, from: Data(minimalDefaultsJSON.utf8))
         }
         guard let settings = decode(from: url) else {
-            fatalError("Failed to decode bundled \(bundledDefaultsFileName).json")
+            AppLogger.error("Failed to decode bundled \(bundledDefaultsFileName).json", category: "settings")
+            return try! JSONDecoder().decode(AppSettings.self, from: Data(minimalDefaultsJSON.utf8))
         }
         return settings
     }
+
+    private static let minimalDefaultsJSON = """
+    {"general":{"theme":"system","fontScale":1.0},"transcription":{"condaEnvName":"ct-transcriber-metal-env","ctranslate2SourcePath":"","ct2PackageURL":"","modelsDirectory":"","selectedModelID":"","models":[],"beamSize":4,"temperature":1.0,"language":"","vadFilter":true,"conditionOnPreviousText":false,"flashAttention":false,"skipTimestamps":false,"maxParallelTranscriptions":1,"device":"mps"},"llm":{"activeProviderID":"00000000-0000-0000-0000-000000000000","providers":[]}}
+    """
 
     private static func decode(from url: URL) -> AppSettings? {
         do {

@@ -143,6 +143,10 @@ extension Notification.Name {
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var pendingOpenURLs: [URL] = []
 
+    func applicationWillTerminate(_ notification: Notification) {
+        AudioPlaybackManager.shared.stopAll()
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         AppLogger.info("AppDelegate: open \(urls.count) file(s)", category: "app")
         pendingOpenURLs.append(contentsOf: urls)

@@ -216,6 +216,11 @@ enum TranscriptionError: LocalizedError {
     case transcriptionFailed(String)
     case cancelled
 
+    var isCancelled: Bool {
+        if case .cancelled = self { return true }
+        return false
+    }
+
     var errorDescription: String? {
         switch self {
         case .environmentNotReady:
