@@ -55,6 +55,7 @@
 		AA0001030000000000000003 /* MediaPlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* MediaPlayerViews.swift */; };
 		AA0001040000000000000004 /* AttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* AttachmentView.swift */; };
 		AA0001050000000000000005 /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* ChatInputBar.swift */; };
+		BB0001010000000000000001 /* SchemaVersioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002010000000000000001 /* SchemaVersioningTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -128,6 +129,7 @@
 		AA0002030000000000000003 /* MediaPlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPlayerViews.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* AttachmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentView.swift; sourceTree = "<group>"; };
 		AA0002050000000000000005 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
+		BB0002010000000000000001 /* SchemaVersioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioningTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -252,6 +254,7 @@
 				D119DFE232B9232CBA667516 /* FileStorageTests.swift */,
 				6749D28C6C39FDF71A8D3636 /* LLMErrorTests.swift */,
 				36D567A342F176B28E1D9528 /* MessageAnalysisTests.swift */,
+				BB0002010000000000000001 /* SchemaVersioningTests.swift */,
 			);
 			path = CTTranscriberTests;
 			sourceTree = "<group>";
@@ -411,6 +414,7 @@
 				08B56A0B91365A582AD52D1C /* FileStorageTests.swift in Sources */,
 				8F9FFBA959A0B4C7CBEA667B /* LLMErrorTests.swift in Sources */,
 				93B0025F8085DD7AFDE5CAF9 /* MessageAnalysisTests.swift in Sources */,
+				BB0001010000000000000001 /* SchemaVersioningTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

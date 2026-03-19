@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 @main
 struct CTTranscriberApp: App {
     private let isUITesting = CommandLine.arguments.contains("--uitesting")
+    private let modelContainer: ModelContainer
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var settingsManager = SettingsManager()
     @State private var modelManager: ModelManager?
@@ -12,6 +13,11 @@ struct CTTranscriberApp: App {
     @State private var showOpenPanel = false
     @State private var showUninstallConfirm = false
     @State private var isUninstalling = false
+
+    init() {
+        let inMemory = CommandLine.arguments.contains("--uitesting")
+        self.modelContainer = Self.makeModelContainer(inMemory: inMemory)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -52,8 +58,7 @@ struct CTTranscriberApp: App {
                     }
                 }
         }
-        .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self],
-                         inMemory: isUITesting)
+        .modelContainer(modelContainer)
         .commands {
             // Replace default New Window with New Conversation
             CommandGroup(replacing: .newItem) {
@@ -109,6 +114,30 @@ struct CTTranscriberApp: App {
             SettingsView(settingsManager: settingsManager, modelManager: modelManager ?? ModelManager(settingsManager: settingsManager))
                 .environment(\.fontScale, settingsManager.fontScale)
                 .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
+        }
+    }
+
+    /// Creates a ``ModelContainer`` wired to the versioned schema and migration plan.
+    /// Falls back to a plain container if the migration-plan initializer fails.
+    static func makeModelContainer(inMemory: Bool) -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: inMemory)
+        do {
+            return try ModelContainer(
+                for: Conversation.self, Message.self, Attachment.self, BackgroundTask.self,
+                migrationPlan: CTTranscriberMigrationPlan.self,
+                configurations: config
+            )
+        } catch {
+            // Fallback: create without explicit migration plan so the app can still launch.
+            AppLogger.error("ModelContainer with migration plan failed: \(error). Falling back to plain container.", category: "app")
+            do {
+                return try ModelContainer(
+                    for: Conversation.self, Message.self, Attachment.self, BackgroundTask.self,
+                    configurations: config
+                )
+            } catch {
+                fatalError("Failed to create ModelContainer: \(error)")
+            }
         }
     }
 

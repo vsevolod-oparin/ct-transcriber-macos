@@ -209,6 +209,6 @@ struct ContentView: View {
     @Previewable @State var mm: ModelManager? = nil
     let sm = SettingsManager()
     ContentView(modelManager: $mm, appDelegate: AppDelegate())
-        .modelContainer(for: [Conversation.self, Message.self, Attachment.self, BackgroundTask.self], inMemory: true)
+        .modelContainer(CTTranscriberApp.makeModelContainer(inMemory: true))
         .environment(sm)
 }
