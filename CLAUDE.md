@@ -72,6 +72,51 @@ Document it honestly. If a test reveals a limitation (e.g., a backend doesn't su
 
 ---
 
+## Anti-Patterns to Avoid
+
+This project uses Swift, SwiftUI, SwiftData, and Swift Concurrency. Every code change must avoid these patterns. When reviewing code — your own or an agent's — check against this list.
+
+### Concurrency & Actor Isolation
+
+- **`Task.detached` capturing SwiftData objects.** SwiftData `@Model` objects are not `Sendable`. Never pass them into `Task.detached` — pass value types (IDs, strings) and re-fetch on the target actor. Use regular `Task` (inherits actor) when possible.
+- **`@Observable` class without `@MainActor`.** Any `@Observable` class whose properties are read by SwiftUI views MUST be `@MainActor`. Without it, background writes cause data races that the compiler cannot catch. Applies to ViewModels, managers, and singletons.
+- **Static mutable state without synchronization.** `static var` dictionaries/arrays accessed from multiple threads are data races. Use an actor, `DispatchQueue`, or `@MainActor` annotation.
+- **`[weak self]` resolved on wrong actor.** In `Task.detached { [weak self] in guard let self ... }`, the `self` resolution happens off-actor for `@MainActor`-isolated classes. Access `self` only inside `await MainActor.run { }`.
+- **Missing Task cancellation handling.** Every `Task` that performs async work must check `Task.isCancelled` and handle `CancellationError`. Unhandled cancellation leads to orphaned work and stale state.
+
+### SwiftData
+
+- **Non-optional new properties on existing models.** SwiftData initializer defaults do NOT retroactively populate existing rows — they get NULL. New properties on `@Model` classes with existing data MUST be optional (`Type?`). Non-optional enum/struct properties crash on first access.
+- **Accessing properties on deleted/faulted objects.** SwiftUI view update paths (`updateNSView`, delegate callbacks) can receive stale SwiftData references. Always check `obj.isDeleted` before accessing properties in NSViewRepresentable coordinators and delegate methods.
+- **Holding strong references to `@Model` objects in async contexts.** Store IDs (`UUID`) in queues, pending arrays, and task closures — not model objects. Re-fetch from `ModelContext` when needed. Direct references can become faulted if the object is deleted.
+- **Missing `saveContext()` after mutations.** SwiftData auto-save is not guaranteed before app termination. Explicit save after important mutations (message creation, status changes). Playback position saves are acceptable to lose.
+- **`SchemaVersioning.swift` is dead code.** The migration plan is defined but not wired to the `ModelContainer`. Don't add explicit `SchemaMigrationPlan` unless needed — automatic lightweight migration is safer for simple additions.
+
+### SwiftUI & NSViewRepresentable
+
+- **Coordinator holding stale SwiftData arrays.** The `Coordinator.messages` array can contain deleted objects between SwiftUI update cycles. Filter with `!isDeleted` at the entry of `updateNSView` and guard in every delegate method (`viewFor`, `heightOfRow`, `toggleExpanded`).
+- **Trigger counter pattern.** Incrementing an `Int` to trigger `onChange` can lose events if two increments happen in the same run loop cycle. Document this limitation or use `PassthroughSubject`.
+- **Timer in SwiftUI views.** `Timer.scheduledTimer` callbacks access `@State` from outside the view body. Prefer `.onReceive(Timer.publish(...))` or `TimelineView`. If using Timer, ensure it's invalidated in `onDisappear` and `cleanup()`.
+- **Dead code in cell update paths.** Building a view but never assigning it to the cell is wasted work. If `if let existingCell` is checked, the new view must be applied.
+
+### State Management
+
+- **Boolean flags for mutually exclusive states.** Use enums with associated values instead of `isLoading + hasError + hasData` flags. This project uses `MessageLifecycle` and `ConversationActivity` enums — extend this pattern, don't regress to booleans.
+- **String-prefix state detection.** Never infer message state from content prefixes (`hasPrefix("⚠")`, `hasPrefix("⏳")`). Use the `lifecycle` property. Content is display data, not state.
+- **Computed properties with O(n) work called repeatedly.** `filteredConversations` scans all messages on every access. `sortedMessages(for:)` sorts on every call. These run during every render. Cache or debounce if they become bottlenecks.
+
+### Error Handling
+
+- **`try?` silently swallowing errors.** File writes, network calls, and data operations should surface errors to the user. Use `do/catch` and present meaningful feedback.
+- **Error logged but not surfaced.** `AppLogger.error(...)` alone is insufficient for user-facing failures (audio load, file export). Show an error state in the UI.
+
+### File Size
+
+- **No file over 1500 lines.** If a file grows past this, split by responsibility. `ChatView.swift` (~2000 lines) should be split: table view, message bubble, audio/video players, input bar.
+- **No class over ~800 lines.** Extract concerns into dedicated types (transcription orchestration, file attachment handling, etc.).
+
+---
+
 ## Temporary Files
 
 You can use the `tmp/` subfolder in the current project folder to save any temporary files if needed.

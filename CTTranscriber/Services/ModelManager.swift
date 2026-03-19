@@ -2,6 +2,7 @@ import Foundation
 
 /// Manages Whisper model downloads, conversions, and local storage.
 @Observable
+@MainActor
 final class ModelManager {
     /// Status of each model keyed by model ID.
     private(set) var modelStatuses: [String: ModelStatus] = [:]
@@ -28,7 +29,7 @@ final class ModelManager {
         refreshStatuses()
     }
 
-    deinit {
+    nonisolated deinit {
         AppLogger.debug("ModelManager deinit", category: "lifecycle")
     }
 
@@ -208,7 +209,7 @@ final class ModelManager {
         return requiredFiles.allSatisfy { fm.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }
     }
 
-    private static func directorySize(path: String) -> Int {
+    private nonisolated static func directorySize(path: String) -> Int {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: path) else { return 0 }
         var totalBytes: Int64 = 0

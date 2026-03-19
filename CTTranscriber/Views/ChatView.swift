@@ -561,18 +561,20 @@ struct ChatTableView: NSViewRepresentable {
             return videoAspectRatioCache[key] ?? (16.0 / 9.0)
         }
 
-        /// Pre-computes and caches the aspect ratio. Safe to call from any thread.
-        /// Call this from a background Task when a video attachment is added.
+        /// Pre-computes and caches the aspect ratio. Call from a background thread.
+        /// The cache write is dispatched to MainActor to avoid data races.
         static func precomputeVideoAspectRatio(url: URL) {
             let key = url.lastPathComponent
-            guard videoAspectRatioCache[key] == nil else { return }
             let asset = AVAsset(url: url)
             if let track = asset.tracks(withMediaType: .video).first {
                 let size = track.naturalSize.applying(track.preferredTransform)
                 let w = abs(size.width)
                 let h = abs(size.height)
                 if w > 0 && h > 0 {
-                    videoAspectRatioCache[key] = w / h
+                    let ratio = w / h
+                    DispatchQueue.main.async {
+                        videoAspectRatioCache[key] = ratio
+                    }
                 }
             }
         }
@@ -598,6 +600,8 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Expand / Collapse
 
         func toggleExpanded(for messageID: UUID, row: Int) {
+            guard row < messages.count, !messages[row].isDeleted else { return }
+
             if expandedMessages.contains(messageID) {
                 expandedMessages.remove(messageID)
             } else {
@@ -606,32 +610,7 @@ struct ChatTableView: NSViewRepresentable {
 
             guard let tableView else { return }
 
-            // Invalidate cached height for this message
             heightCache.removeValue(forKey: messageID)
-
-            // Update the existing cell's content in place (no reload = no flash).
-            // Find the current cell and swap its rootView with updated expand state.
-            if let existingCell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) {
-                let message = messages[row]
-                let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
-                let isExpanded = expandedMessages.contains(message.id)
-
-                let seekBinding = self.seekRequest ?? .constant(nil)
-                let updatedBubble = MessageBubble(
-                    message: message,
-                    isStreamingThis: isStreamingThis,
-                    isExpanded: isExpanded,
-                    onRetry: { [weak self] in self?.onRetry(message) },
-                    onCollapseToggle: { [weak self] in
-                        self?.toggleExpanded(for: message.id, row: row)
-                    },
-                    seekRequest: seekBinding
-                )
-                .padding(.horizontal, 16)
-                .environment(\.fontScale, fontScale)
-                .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale)))
-
-            }
 
             let savedOrigin = scrollView?.contentView.bounds.origin ?? .zero
 
@@ -743,112 +722,82 @@ struct MessageAnalysis {
     /// Sample size in bytes for estimating line count in large strings.
     private static let lineCountSampleSize = 4096
 
+    private static func analyze(content: String, isError: Bool) -> (lineCount: Int, lineCountDisplay: String, isLong: Bool, hasTimestamps: Bool, collapsedPreview: String) {
+        let timestampSample = content.prefix(500)
+        let hasTimestamps = timestampSample.contains("[") && timestampSample.contains("→")
+
+        let utf8 = content.utf8
+        let totalBytes = utf8.count
+
+        let lineCount: Int
+        let lineCountDisplay: String
+        if totalBytes <= lineCountSampleSize {
+            var count = 1
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { count += 1 }
+            }
+            lineCount = count
+            lineCountDisplay = "\(count)"
+        } else {
+            var newlines = 0
+            var scanned = 0
+            for byte in utf8 {
+                if byte == UInt8(ascii: "\n") { newlines += 1 }
+                scanned += 1
+                if scanned >= lineCountSampleSize { break }
+            }
+            let estimated = Int(Double(newlines) / Double(scanned) * Double(totalBytes)) + 1
+            lineCount = estimated
+            lineCountDisplay = "~\(estimated)"
+        }
+        let isLong = lineCount > collapseThreshold
+
+        let collapsedPreview: String
+        if isLong {
+            var lines: [Substring] = []
+            var remaining = content[...]
+            for _ in 0..<collapsedPreviewLines {
+                if let newline = remaining.firstIndex(of: "\n") {
+                    lines.append(remaining[..<newline])
+                    remaining = remaining[remaining.index(after: newline)...]
+                } else {
+                    lines.append(remaining)
+                    break
+                }
+            }
+            collapsedPreview = lines.joined(separator: "\n") + "\n..."
+        } else {
+            collapsedPreview = ""
+        }
+
+        return (lineCount, lineCountDisplay, isLong, hasTimestamps, collapsedPreview)
+    }
+
     init(message: Message) {
         let content = message.content
         isError = message.lifecycle == .errorLLM ||
                   message.lifecycle == .errorTranscription ||
                   message.lifecycle == .cancelled
 
-        // Timestamps appear near the start of transcription results — check prefix only
-        let timestampSample = content.prefix(500)
-        hasTimestamps = timestampSample.contains("[") && timestampSample.contains("→")
-
-        // Line counting: exact for small, estimated for large
-        let utf8 = content.utf8
-        let totalBytes = utf8.count
-
-        if totalBytes <= Self.lineCountSampleSize {
-            var count = 1
-            for byte in utf8 {
-                if byte == UInt8(ascii: "\n") { count += 1 }
-            }
-            lineCount = count
-            lineCountDisplay = "\(count)"
-        } else {
-            var newlines = 0
-            var scanned = 0
-            for byte in utf8 {
-                if byte == UInt8(ascii: "\n") { newlines += 1 }
-                scanned += 1
-                if scanned >= Self.lineCountSampleSize { break }
-            }
-            let estimated = Int(Double(newlines) / Double(scanned) * Double(totalBytes)) + 1
-            lineCount = estimated
-            lineCountDisplay = "~\(estimated)"
-        }
-        isLong = lineCount > collapseThreshold
-
-        if isLong {
-            var lines: [Substring] = []
-            var remaining = content[...]
-            for _ in 0..<collapsedPreviewLines {
-                if let newline = remaining.firstIndex(of: "\n") {
-                    lines.append(remaining[..<newline])
-                    remaining = remaining[remaining.index(after: newline)...]
-                } else {
-                    lines.append(remaining)
-                    break
-                }
-            }
-            collapsedPreview = lines.joined(separator: "\n") + "\n..."
-        } else {
-            collapsedPreview = ""
-        }
+        let result = Self.analyze(content: content, isError: isError)
+        lineCount = result.lineCount
+        lineCountDisplay = result.lineCountDisplay
+        isLong = result.isLong
+        hasTimestamps = result.hasTimestamps
+        collapsedPreview = result.collapsedPreview
     }
 
     init(content: String) {
         let prefix100 = content.prefix(100)
-        isError = prefix100.contains("⚠") ||
+        isError = prefix100.contains("\u{26A0}") ||
                   prefix100.hasPrefix("Transcription cancelled")
 
-        // Timestamps appear near the start of transcription results — check prefix only
-        let timestampSample = content.prefix(500)
-        hasTimestamps = timestampSample.contains("[") && timestampSample.contains("→")
-
-        // Line counting: exact for small, estimated for large
-        let utf8 = content.utf8
-        let totalBytes = utf8.count
-
-        if totalBytes <= Self.lineCountSampleSize {
-            // Small string: exact count
-            var count = 1
-            for byte in utf8 {
-                if byte == UInt8(ascii: "\n") { count += 1 }
-            }
-            lineCount = count
-            lineCountDisplay = "\(count)"
-        } else {
-            // Large string: sample first N bytes and extrapolate
-            var newlines = 0
-            var scanned = 0
-            for byte in utf8 {
-                if byte == UInt8(ascii: "\n") { newlines += 1 }
-                scanned += 1
-                if scanned >= Self.lineCountSampleSize { break }
-            }
-            let estimated = Int(Double(newlines) / Double(scanned) * Double(totalBytes)) + 1
-            lineCount = estimated
-            lineCountDisplay = "~\(estimated)"
-        }
-        isLong = lineCount > collapseThreshold
-
-        // Only compute preview if long
-        if isLong {
-            var lines: [Substring] = []
-            var remaining = content[...]
-            for _ in 0..<collapsedPreviewLines {
-                if let newline = remaining.firstIndex(of: "\n") {
-                    lines.append(remaining[..<newline])
-                    remaining = remaining[remaining.index(after: newline)...]
-                } else {
-                    lines.append(remaining)
-                    break
-                }
-            }
-            collapsedPreview = lines.joined(separator: "\n") + "\n..."
-        } else {
-            collapsedPreview = ""
-        }
+        let result = Self.analyze(content: content, isError: isError)
+        lineCount = result.lineCount
+        lineCountDisplay = result.lineCountDisplay
+        isLong = result.isLong
+        hasTimestamps = result.hasTimestamps
+        collapsedPreview = result.collapsedPreview
     }
 }
 

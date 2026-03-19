@@ -4,6 +4,7 @@ import AVFoundation
 /// Manages the globally active audio/video playback.
 /// Ensures only one plays at a time and provides state for the floating mini-player.
 @Observable
+@MainActor
 final class AudioPlaybackManager {
     static let shared = AudioPlaybackManager()
 

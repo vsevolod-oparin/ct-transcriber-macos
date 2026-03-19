@@ -90,7 +90,7 @@ final class ChatViewModel {
 
     private var modelContext: ModelContext
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
-    private var pendingTranscriptions: [(audioPath: String, displayName: String, conversation: Conversation, message: Message)] = []
+    private var pendingTranscriptions: [(audioPath: String, displayName: String, conversationID: UUID, messageID: UUID)] = []
 
     // Dependencies — constructor-injected for testability
     let settingsManager: SettingsManager
@@ -185,7 +185,7 @@ final class ChatViewModel {
         cancelTranscriptionTasks(for: messageIDs)
 
         // Remove pending transcriptions for this conversation
-        pendingTranscriptions.removeAll { $0.conversation.id == conversation.id }
+        pendingTranscriptions.removeAll { $0.conversationID == conversation.id }
 
         // Cancel any streaming or title generation for this conversation
         if let activity = activities[conversation.id] {
@@ -234,6 +234,7 @@ final class ChatViewModel {
     // MARK: - Retry
 
     func retryMessage(_ message: Message, in conversation: Conversation) {
+        guard !message.isDeleted, !conversation.isDeleted else { return }
         guard !isStreamingCurrentConversation && !isTranscribing else { return }
 
         let sorted = sortedMessages(for: conversation)
@@ -509,7 +510,7 @@ final class ChatViewModel {
         AppLogger.debug("Auto-naming with \(namingMessages.count - 1) messages via \(provider.name)", category: "auto-title")
 
         let convoID = conversation.id
-        let titleTask = Task.detached { [weak self] in
+        let titleTask = Task { [weak self] in
             guard let self else { return }
             var title = ""
             let stream = service.streamCompletion(
@@ -529,25 +530,23 @@ final class ChatViewModel {
                 }
             } catch {
                 AppLogger.error("Auto-name failed: \(error.localizedDescription)", category: "auto-title")
-                await MainActor.run { self.activities.removeValue(forKey: convoID) }
+                self.activities.removeValue(forKey: convoID)
                 return
             }
 
             let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
-            await MainActor.run {
-                self.activities.removeValue(forKey: convoID)
-                guard !cleaned.isEmpty else {
-                    AppLogger.debug("Auto-name returned empty title", category: "auto-title")
-                    return
-                }
-                AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
-                conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
-                conversation.updatedAt = Date()
-                self.saveContext()
-                self.refreshConversations()
+            self.activities.removeValue(forKey: convoID)
+            guard !cleaned.isEmpty else {
+                AppLogger.debug("Auto-name returned empty title", category: "auto-title")
+                return
             }
+            AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
+            conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
+            conversation.updatedAt = Date()
+            self.saveContext()
+            self.refreshConversations()
         }
-        activities[convoID] = .generatingTitle(task: Task { await titleTask.value })
+        activities[convoID] = .generatingTitle(task: titleTask)
     }
 
     // MARK: - Open Files (Finder / Dock drop / onOpenURL)
@@ -580,11 +579,13 @@ final class ChatViewModel {
     func attachFile(from url: URL, to conversation: Conversation) {
         let kind = FileStorage.attachmentKind(for: url)
         let originalName = url.lastPathComponent
+        let conversationID = conversation.id
 
         Task.detached {
             guard let storedName = try? FileStorage.copyToStorage(from: url) else { return }
 
             await MainActor.run { [self] in
+                guard let conversation = self.conversations.first(where: { $0.id == conversationID }) else { return }
                 let attachment = Attachment(kind: kind, storedName: storedName, originalName: originalName)
 
                 let message = Message(role: .user, content: "Attached \(kind.rawValue): \(originalName)")
@@ -598,7 +599,6 @@ final class ChatViewModel {
                                        attachment: attachment, conversation: conversation)
             }
         }
-
     }
 
     private func postAttachActions(kind: AttachmentKind, storedName: String, originalName: String,
@@ -645,7 +645,7 @@ final class ChatViewModel {
 
         // Queue if at capacity
         if activeTranscriptionCount >= settingsManager.settings.transcription.maxParallelTranscriptions {
-            pendingTranscriptions.append((audioPath: audioPath, displayName: displayName, conversation: conversation, message: transcriptMessage))
+            pendingTranscriptions.append((audioPath: audioPath, displayName: displayName, conversationID: conversation.id, messageID: transcriptMessage.id))
             AppLogger.info("Transcription queued (\(pendingTranscriptions.count) pending)", category: "transcription")
             return
         }
@@ -770,9 +770,14 @@ final class ChatViewModel {
 
         // Start next queued transcription if any
         let maxParallel = settingsManager.settings.transcription.maxParallelTranscriptions
-        if !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
+        while !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
             let next = pendingTranscriptions.removeFirst()
-            startTranscription(audioPath: next.audioPath, displayName: next.displayName, conversation: next.conversation, transcriptMessage: next.message)
+            guard let conversation = conversations.first(where: { $0.id == next.conversationID }),
+                  let message = conversation.messages.first(where: { $0.id == next.messageID }) else {
+                continue
+            }
+            startTranscription(audioPath: next.audioPath, displayName: next.displayName, conversation: conversation, transcriptMessage: message)
+            break
         }
     }
 
