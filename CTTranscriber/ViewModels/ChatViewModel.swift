@@ -16,7 +16,18 @@ final class ChatViewModel {
     /// Index of the keyboard cursor in the conversations array — the "anchor" for Shift+Arrow extension.
     var highlightCursor: Int = 0
     var messageText: String = ""
+    var searchText: String = ""
     private(set) var conversations: [Conversation] = []
+
+    /// Conversations filtered by search text.
+    var filteredConversations: [Conversation] {
+        guard !searchText.isEmpty else { return conversations }
+        let query = searchText.lowercased()
+        return conversations.filter { conversation in
+            conversation.title.lowercased().contains(query) ||
+            conversation.messages.contains { $0.content.lowercased().contains(query) }
+        }
+    }
     /// Per-conversation message drafts, keyed by conversation ID. In-memory only.
     private var drafts: [UUID: String] = [:]
 
@@ -402,14 +413,20 @@ final class ChatViewModel {
     }
 
     private func buildMessageDTOs(for conversation: Conversation) -> [ChatMessageDTO] {
-        sortedMessages(for: conversation)
-            .filter { $0.role != .system || !$0.content.isEmpty }
+        var dtos: [ChatMessageDTO] = []
+
+        // Prepend system prompt from active provider if set
+        if let prompt = settingsManager.activeProvider?.systemPrompt, !prompt.isEmpty {
+            dtos.append(ChatMessageDTO(role: "system", content: prompt))
+        }
+
+        dtos += sortedMessages(for: conversation)
             .compactMap { message in
                 guard !message.content.isEmpty else { return nil }
-                // Don't include the empty placeholder assistant message
-                if message.role == .assistant && message.content.isEmpty { return nil }
                 return ChatMessageDTO(role: message.role.rawValue, content: message.content)
             }
+
+        return dtos
     }
 
     // MARK: - Auto-naming

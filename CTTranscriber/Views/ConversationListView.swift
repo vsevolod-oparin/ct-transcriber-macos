@@ -9,7 +9,7 @@ struct ConversationListView: View {
     var body: some View {
         ScrollViewReader { proxy in
             List {
-                ForEach(viewModel.conversations) { conversation in
+                ForEach(viewModel.filteredConversations) { conversation in
                     ConversationRow(
                         conversation: conversation,
                         isHighlighted: viewModel.highlightedIDs.contains(conversation.id),
@@ -75,17 +75,24 @@ struct ConversationListView: View {
                 }
             }
             .overlay {
-                if viewModel.conversations.isEmpty {
+                if viewModel.filteredConversations.isEmpty {
                     VStack(spacing: 8) {
-                        Text("No conversations")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                        Text("Press ⌘N to start")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                        if viewModel.searchText.isEmpty {
+                            Text("No conversations")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                            Text("Press ⌘N to start")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Text("No results")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
+            .searchable(text: $viewModel.searchText, prompt: "Search conversations")
             .listStyle(.sidebar)
             .onChange(of: viewModel.highlightedIDs) { _, newIDs in
                 // Only cancel rename if highlighting moved AWAY from the editing conversation
@@ -350,3 +357,4 @@ private struct SelectAllTextField: NSViewRepresentable {
         }
     }
 }
+

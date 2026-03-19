@@ -463,6 +463,19 @@ private struct ProviderConfigEditor: View {
                         .font(ScaledFont(scale: fontScale).caption)
                 }
             }
+
+            Section("System Prompt") {
+                let binding = Binding<String>(
+                    get: { config.systemPrompt ?? "" },
+                    set: { config.systemPrompt = $0.isEmpty ? nil : $0 }
+                )
+                TextEditor(text: binding)
+                    .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), design: .monospaced))
+                    .frame(minHeight: 60, maxHeight: 120)
+                Text("Sent as the first message in every conversation with this provider.")
+                    .font(ScaledFont(scale: fontScale).caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .formStyle(.grouped)
         .onAppear { loadProviderState() }

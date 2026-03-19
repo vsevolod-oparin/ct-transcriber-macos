@@ -831,7 +831,7 @@ private struct MessageBubble: View {
         HStack(alignment: .top, spacing: sp(4)) {
             if isUser {
                 Spacer(minLength: sp(60))
-                copyButton
+                actionButtons(info: info)
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: sp(4)) {
@@ -841,7 +841,6 @@ private struct MessageBubble: View {
 
                 if !message.content.isEmpty {
                     bubbleContent(info: info)
-                        .contextMenu { bubbleContextMenu(info: info) }
                 } else if isStreamingThis {
                     thinkingBubble
                 }
@@ -867,7 +866,7 @@ private struct MessageBubble: View {
             }
 
             if !isUser {
-                copyButton
+                actionButtons(info: info)
                 Spacer(minLength: sp(60))
             }
         }
@@ -881,6 +880,30 @@ private struct MessageBubble: View {
                 lastAnalyzedLength = currentLength
             }
         }
+    }
+
+    @ViewBuilder
+    private func actionButtons(info: MessageAnalysis) -> some View {
+        VStack(spacing: 2) {
+            copyButton
+            if info.hasTimestamps {
+                srtExportButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var srtExportButton: some View {
+        Button {
+            exportAsSRT(content: message.content)
+        } label: {
+            Image(systemName: "square.and.arrow.down")
+                .font(sf.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help("Export as SRT")
+        .opacity(isHovering && !message.content.isEmpty && !isStreamingThis ? 1 : 0)
     }
 
     @ViewBuilder
@@ -1008,12 +1031,80 @@ private struct MessageBubble: View {
             }
         }
 
+        if info.hasTimestamps {
+            Button {
+                exportAsSRT(content: message.content)
+            } label: {
+                Label("Export as SRT...", systemImage: "doc.text")
+            }
+        }
+
         if info.isError {
             Divider()
             Button { onRetry() } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
             }
         }
+    }
+
+    private func exportAsSRT(content: String) {
+        let lines = content.split(separator: "\n")
+        var srt = ""
+        var index = 1
+
+        for line in lines {
+            let str = String(line)
+            // Parse lines like "[0:00 → 0:05] Hello there"
+            guard str.hasPrefix("["),
+                  let bracketEnd = str.firstIndex(of: "]"),
+                  let arrow = str.range(of: " → ") else { continue }
+
+            let startStr = String(str[str.index(after: str.startIndex)..<arrow.lowerBound])
+            let endStr = String(str[arrow.upperBound..<bracketEnd])
+            let text = String(str[str.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
+
+            let startSRT = toSRTTimestamp(startStr)
+            let endSRT = toSRTTimestamp(endStr)
+
+            srt += "\(index)\n\(startSRT) --> \(endSRT)\n\(text)\n\n"
+            index += 1
+        }
+
+        guard !srt.isEmpty else { return }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "srt")!]
+        // Derive SRT filename from the audio attachment's original name
+        var srtName = "transcript.srt"
+        if let audioAttachment = findAudioAttachment() {
+            // findAudioAttachment returns storedName; get originalName from prev message
+            if let conversation = message.conversation {
+                let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+                if let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 {
+                    let prev = sorted[myIndex - 1]
+                    if let att = prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video }) {
+                        let baseName = (att.originalName as NSString).deletingPathExtension
+                        srtName = "\(baseName).srt"
+                    }
+                }
+            }
+        }
+        panel.nameFieldStringValue = srtName
+        if panel.runModal() == .OK, let url = panel.url {
+            try? srt.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// Converts "m:ss" or "h:mm:ss" to SRT format "HH:MM:SS,000"
+    private func toSRTTimestamp(_ ts: String) -> String {
+        let parts = ts.split(separator: ":").compactMap { Int($0) }
+        let h: Int, m: Int, s: Int
+        switch parts.count {
+        case 2: h = 0; m = parts[0]; s = parts[1]
+        case 3: h = parts[0]; m = parts[1]; s = parts[2]
+        default: h = 0; m = 0; s = 0
+        }
+        return String(format: "%02d:%02d:%02d,000", h, m, s)
     }
 
     /// Parses the first `[MM:SS` or `[SS.SS` timestamp from transcript text.

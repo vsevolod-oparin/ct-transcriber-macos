@@ -90,6 +90,8 @@ struct ProviderConfig: Codable, Equatable, Identifiable {
     var apiKey: String
     /// Additional HTTP headers sent with every request (e.g., {"anthropic-version": "2023-06-01"}).
     var extraHeaders: [String: String]
+    /// System prompt prepended to every conversation with this provider.
+    var systemPrompt: String?
 
     var isValid: Bool {
         !name.isEmpty && !baseURL.isEmpty && !completionsPath.isEmpty && !defaultModel.isEmpty
