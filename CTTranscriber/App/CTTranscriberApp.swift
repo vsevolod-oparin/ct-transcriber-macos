@@ -30,9 +30,8 @@ struct CTTranscriberApp: App {
                         isUninstalling = true
                         AppUninstaller.run()
                     }
-                    .keyboardShortcut(.return)
                 } message: {
-                    Text("This will remove the app from /Applications and delete all data (models, files, settings, logs, Python environment). This cannot be undone.")
+                    Text("This will remove the app and delete all data (models, files, settings, logs, Python environment). This cannot be undone.")
                 }
                 .overlay {
                     if isUninstalling {
