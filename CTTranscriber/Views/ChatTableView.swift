@@ -20,13 +20,12 @@ struct ChatTableView: NSViewRepresentable {
     /// Guards against accessing properties on deleted SwiftData objects — during view updates,
     /// model objects may have been deleted from the context between body evaluation and updateNSView.
     static func messageHash(_ msg: Message) -> Int {
-        guard !msg.isDeleted else { return 0 }
-        var h = msg.content.count
-        for att in msg.attachments {
-            guard !att.isDeleted else { continue }
-            h = h &* 31 &+ (att.convertedName?.count ?? 0)
-        }
-        return h
+        guard !msg.isDeleted, msg.modelContext != nil else { return 0 }
+        // Hash content length only. Do NOT traverse attachment relationships —
+        // cascade-deleted attachments can pass isDeleted/modelContext checks but
+        // crash in SwiftData synthesized getters when hit-test-triggered view
+        // updates race with conversation deletion (NSAlert dismissal path).
+        return msg.content.count
     }
 
     let messages: [Message]
@@ -107,7 +106,7 @@ struct ChatTableView: NSViewRepresentable {
         let coordinator = context.coordinator
         // Filter out deleted model objects — SwiftUI may call updateNSView with stale
         // references after modelContext.delete() + save() runs between body and here.
-        let liveMessages = messages.filter { !$0.isDeleted }
+        let liveMessages = messages.filter { !$0.isDeleted && $0.modelContext != nil }
         let oldMessages = coordinator.messages
         let oldStreaming = coordinator.isStreaming
         let oldConversationID = coordinator.conversationID
@@ -315,7 +314,7 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Delegate (cell creation)
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard row < messages.count, !messages[row].isDeleted else { return nil }
+            guard row < messages.count, !messages[row].isDeleted, messages[row].modelContext != nil else { return nil }
             let message = messages[row]
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
             let isExpanded = expandedMessages.contains(message.id)
@@ -346,7 +345,7 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Delegate (row heights)
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            guard row < messages.count, !messages[row].isDeleted else { return 44 }
+            guard row < messages.count, !messages[row].isDeleted, messages[row].modelContext != nil else { return 44 }
             let message = messages[row]
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
 
@@ -440,7 +439,7 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Expand / Collapse
 
         func toggleExpanded(for messageID: UUID, row: Int) {
-            guard row < messages.count, !messages[row].isDeleted else { return }
+            guard row < messages.count, !messages[row].isDeleted, messages[row].modelContext != nil else { return }
 
             if expandedMessages.contains(messageID) {
                 expandedMessages.remove(messageID)

@@ -83,14 +83,23 @@ final class ChatViewModel {
 
     /// Number of active transcriptions.
     private(set) var activeTranscriptionCount: Int = 0
+    /// Conversation IDs with active transcriptions.
+    private(set) var transcribingConversationIDs: Set<UUID> = []
     /// True while any transcription is in progress.
     var isTranscribing: Bool { activeTranscriptionCount > 0 }
+    /// True if the currently selected conversation has an active transcription.
+    var isTranscribingCurrentConversation: Bool {
+        guard let id = selectedConversationID else { return false }
+        return transcribingConversationIDs.contains(id)
+    }
     /// Progress of the most recent transcription (0.0–1.0).
     private(set) var transcriptionProgress: Double = 0
 
     private var modelContext: ModelContext
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingTranscriptions: [(audioPath: String, displayName: String, conversationID: UUID, messageID: UUID)] = []
+    /// Coalesces multiple rapid `refreshConversations()` calls into a single deferred refresh.
+    private var pendingRefreshWorkItem: DispatchWorkItem?
 
     // Dependencies — constructor-injected for testability
     let settingsManager: SettingsManager
@@ -113,7 +122,10 @@ final class ChatViewModel {
     }
 
     func sortedMessages(for conversation: Conversation) -> [Message] {
-        conversation.messages.sorted { $0.timestamp < $1.timestamp }
+        guard !conversation.isDeleted, conversation.modelContext != nil else { return [] }
+        return conversation.messages
+            .filter { !$0.isDeleted && $0.modelContext != nil }
+            .sorted { $0.timestamp < $1.timestamp }
     }
 
     // MARK: - Conversation CRUD
@@ -180,8 +192,25 @@ final class ChatViewModel {
     func deleteConversation(_ conversation: Conversation) {
         drafts.removeValue(forKey: conversation.id)
 
+        // Collect file paths to delete BEFORE mutating SwiftData
+        // (avoids relationship traversal after delete, which blocks MainActor)
+        var filesToDelete: [String] = []
+        let messageIDs: Set<UUID>
+        do {
+            var ids = Set<UUID>()
+            for message in conversation.messages {
+                ids.insert(message.id)
+                for attachment in message.attachments {
+                    filesToDelete.append(attachment.storedName)
+                    if let convertedName = attachment.convertedName {
+                        filesToDelete.append(convertedName)
+                    }
+                }
+            }
+            messageIDs = ids
+        }
+
         // Cancel and clean up any active transcription tasks for this conversation's messages
-        let messageIDs = Set(conversation.messages.map(\.id))
         cancelTranscriptionTasks(for: messageIDs)
 
         // Remove pending transcriptions for this conversation
@@ -196,15 +225,7 @@ final class ChatViewModel {
             activities.removeValue(forKey: conversation.id)
         }
 
-        for message in conversation.messages {
-            for attachment in message.attachments {
-                FileStorage.delete(storedName: attachment.storedName)
-                if let convertedName = attachment.convertedName {
-                    FileStorage.delete(storedName: convertedName)
-                }
-            }
-        }
-
+        // Delete the conversation from SwiftData
         let wasSelected = selectedConversationID == conversation.id
         modelContext.delete(conversation)
         saveContext()
@@ -212,6 +233,13 @@ final class ChatViewModel {
 
         if wasSelected {
             selectedConversationID = conversations.first?.id
+        }
+
+        // Delete files AFTER SwiftData deletion, off MainActor (file I/O)
+        Task.detached {
+            for storedName in filesToDelete {
+                FileStorage.delete(storedName: storedName)
+            }
         }
     }
 
@@ -227,14 +255,25 @@ final class ChatViewModel {
                 transcriptionTasks.removeValue(forKey: taskID)
             }
             activeTranscriptionCount = 0
+            transcribingConversationIDs.removeAll()
             transcriptionProgress = 0
+
+            // Mark running transcription BackgroundTask objects as cancelled so they
+            // don't linger in the task manager UI.  This is broad (all transcription
+            // tasks) but consistent with the Swift Task cancellation above.
+            if let taskManager {
+                for bgTask in taskManager.tasks where bgTask.kind == .transcription && bgTask.status == .running {
+                    taskManager.cancelTask(bgTask)
+                }
+            }
         }
     }
 
     // MARK: - Retry
 
     func retryMessage(_ message: Message, in conversation: Conversation) {
-        guard !message.isDeleted, !conversation.isDeleted else { return }
+        guard !message.isDeleted, message.modelContext != nil,
+              !conversation.isDeleted, conversation.modelContext != nil else { return }
         guard !isStreamingCurrentConversation && !isTranscribing else { return }
 
         let sorted = sortedMessages(for: conversation)
@@ -593,16 +632,20 @@ final class ChatViewModel {
                 conversation.messages.append(message)
                 conversation.updatedAt = Date()
                 saveContext()
-                refreshConversations()
+                // Use coalesced refresh: when multiple files are attached rapidly,
+                // only one refresh fires after the last attachment completes.
+                scheduleCoalescedRefresh()
 
                 self.postAttachActions(kind: kind, storedName: storedName, originalName: originalName,
-                                       attachment: attachment, conversation: conversation)
+                                       attachment: attachment, conversation: conversation,
+                                       skipSaveRefresh: true)
             }
         }
     }
 
     private func postAttachActions(kind: AttachmentKind, storedName: String, originalName: String,
-                                    attachment: Attachment, conversation: Conversation) {
+                                    attachment: Attachment, conversation: Conversation,
+                                    skipSaveRefresh: Bool = false) {
         // Pre-compute video aspect ratio on background thread (avoids blocking scroll)
         if kind == .video {
             let videoURL = FileStorage.url(for: storedName)
@@ -614,7 +657,7 @@ final class ChatViewModel {
         // Auto-transcribe audio and video files
         if kind == .audio || kind == .video {
             let audioURL = FileStorage.url(for: storedName)
-            transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation)
+            transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation, skipSaveRefresh: skipSaveRefresh)
         }
 
         // Convert unsupported video formats (WebM, MKV) to MP4 for playback
@@ -634,14 +677,16 @@ final class ChatViewModel {
 
     // MARK: - Transcription
 
-    func transcribeAudio(at audioPath: String, originalName: String? = nil, in conversation: Conversation) {
+    func transcribeAudio(at audioPath: String, originalName: String? = nil, in conversation: Conversation, skipSaveRefresh: Bool = false) {
         // Create placeholder message immediately so it appears right after the audio
         let displayName = originalName ?? (audioPath as NSString).lastPathComponent
         let transcriptMessage = Message(role: .assistant, content: "⏳ Queued: \(displayName)")
         transcriptMessage.lifecycle = .transcriptionQueued
         conversation.messages.append(transcriptMessage)
-        saveContext()
-        refreshConversations()
+        if !skipSaveRefresh {
+            saveContext()
+            refreshConversations()
+        }
 
         // Queue if at capacity
         if activeTranscriptionCount >= settingsManager.settings.transcription.maxParallelTranscriptions {
@@ -664,23 +709,6 @@ final class ChatViewModel {
             return
         }
 
-        // Check that the file has an audio track before attempting transcription.
-        // Skip check for formats AVAsset can't read (WebM, MKV, etc.) — faster-whisper
-        // uses its own ffmpeg which handles these natively.
-        let audioURL = URL(fileURLWithPath: audioPath)
-        let ext = audioURL.pathExtension.lowercased()
-        let avUnsupportedFormats: Set<String> = ["webm", "mkv", "flv", "wmv", "ogg", "opus"]
-        if !avUnsupportedFormats.contains(ext) {
-            let asset = AVAsset(url: audioURL)
-            let audioTracks = asset.tracks(withMediaType: .audio)
-            if audioTracks.isEmpty {
-                transcriptMessage.content = "\(Self.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
-                transcriptMessage.lifecycle = .errorTranscription
-                saveContext()
-                return
-            }
-        }
-
         let selectedID = transSettings.selectedModelID
         guard let modelPath = modelManager.modelPath(for: selectedID) else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(TranscriptionError.modelNotDownloaded.localizedDescription)"
@@ -690,14 +718,33 @@ final class ChatViewModel {
         }
 
         activeTranscriptionCount += 1
+        transcribingConversationIDs.insert(conversation.id)
         transcriptionProgress = 0
         transcriptMessage.content = "Transcribing..."
         transcriptMessage.lifecycle = .transcribing
 
         let bgTask = taskManager?.createTask(kind: .transcription, title: displayName, conversationTitle: conversation.title)
         let taskID = UUID()
+        let convoID = conversation.id
 
-        transcriptionTasks[taskID] = Task { [weak self] in
+        let task = Task.detached { [weak self] in
+            // Check audio track off MainActor — AVAsset.tracks is synchronous I/O
+            let audioURL = URL(fileURLWithPath: audioPath)
+            let ext = audioURL.pathExtension.lowercased()
+            let avUnsupportedFormats: Set<String> = ["webm", "mkv", "flv", "wmv", "ogg", "opus"]
+            if !avUnsupportedFormats.contains(ext) {
+                let asset = AVAsset(url: audioURL)
+                let audioTracks = asset.tracks(withMediaType: .audio)
+                if audioTracks.isEmpty {
+                    await MainActor.run { [weak self] in
+                        transcriptMessage.content = "\(ChatViewModel.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
+                        transcriptMessage.lifecycle = .errorTranscription
+                        self?.finishTranscription(taskID: taskID, conversationID: convoID)
+                    }
+                    return
+                }
+            }
+
             let stream = TranscriptionService.transcribe(
                 audioPath: audioPath,
                 modelPath: modelPath,
@@ -706,78 +753,93 @@ final class ChatViewModel {
 
             do {
                 var result: TranscriptionService.TranscriptionResult?
+                var lastUIUpdate = Date.distantPast
+                let uiUpdateInterval: TimeInterval = 0.3
 
                 for try await progress in stream {
-                    guard let self, !Task.isCancelled else { break }
+                    guard !Task.isCancelled else { break }
 
-                    await MainActor.run {
-                        switch progress {
-                        case .started(let language, let duration):
-                            transcriptMessage.content = "Transcribing... (detected: \(language), \(Self.formatDuration(duration)))"
+                    switch progress {
+                    case .started(let language, let duration):
+                        await MainActor.run { [weak self] in
+                            transcriptMessage.content = "Transcribing... (detected: \(language), \(ChatViewModel.formatDuration(duration)))"
                             bgTask?.status = .running
-                        case .segment(_, let text, let prog):
-                            self.transcriptionProgress = prog
-                            transcriptMessage.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                            _ = self  // silence unused warning
+                        }
+                    case .segment(_, let text, let prog):
+                        let now = Date()
+                        guard now.timeIntervalSince(lastUIUpdate) >= uiUpdateInterval else { continue }
+                        lastUIUpdate = now
+                        await MainActor.run { [weak self] in
+                            self?.transcriptionProgress = prog
                             bgTask?.progress = prog
-                        case .completed(let res):
-                            result = res
-                        case .error(let msg):
-                            self.lastError = msg
+                            transcriptMessage.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                        }
+                    case .completed(let res):
+                        result = res
+                    case .error(let msg):
+                        await MainActor.run { [weak self] in
+                            self?.lastError = msg
                         }
                     }
                 }
 
-                guard let self else { return }
-                await MainActor.run {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
                     if let result {
                         transcriptMessage.content = self.formatTranscriptionResult(result)
                         transcriptMessage.lifecycle = .complete
                         bgTask?.status = .completed
                         bgTask?.progress = 1.0
                     }
-                    self.finishTranscription(taskID: taskID)
+                    self.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch let error as TranscriptionError where error.isCancelled {
-                guard let self else { return }
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     transcriptMessage.content = "Transcription cancelled."
                     transcriptMessage.lifecycle = .cancelled
                     bgTask?.status = .cancelled
-                    self.finishTranscription(taskID: taskID)
+                    self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch {
-                guard let self else { return }
-                await MainActor.run {
-                    self.lastError = error.localizedDescription
-                    transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(error.localizedDescription)"
+                let errorDesc = error.localizedDescription
+                await MainActor.run { [weak self] in
+                    self?.lastError = errorDesc
+                    transcriptMessage.content = "\(ChatViewModel.transcriptionErrorPrefix)\(errorDesc)"
                     transcriptMessage.lifecycle = .errorTranscription
                     bgTask?.status = .failed
-                    bgTask?.errorMessage = error.localizedDescription
-                    self.finishTranscription(taskID: taskID)
+                    bgTask?.errorMessage = errorDesc
+                    self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             }
         }
+        transcriptionTasks[taskID] = task
     }
 
-    private func finishTranscription(taskID: UUID) {
+    private func finishTranscription(taskID: UUID, conversationID: UUID) {
         activeTranscriptionCount = max(0, activeTranscriptionCount - 1)
         transcriptionTasks.removeValue(forKey: taskID)
+        transcribingConversationIDs.remove(conversationID)
         if activeTranscriptionCount == 0 {
             transcriptionProgress = 0
         }
         saveContext()
         refreshConversations()
 
-        // Start next queued transcription if any
+        // Yield the run loop before starting next transcription — lets input events process
         let maxParallel = settingsManager.settings.transcription.maxParallelTranscriptions
-        while !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
-            let next = pendingTranscriptions.removeFirst()
-            guard let conversation = conversations.first(where: { $0.id == next.conversationID }),
-                  let message = conversation.messages.first(where: { $0.id == next.messageID }) else {
-                continue
+        if !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
+            DispatchQueue.main.async { [self] in
+                while !pendingTranscriptions.isEmpty && activeTranscriptionCount < maxParallel {
+                    let next = pendingTranscriptions.removeFirst()
+                    guard let conversation = conversations.first(where: { $0.id == next.conversationID }),
+                          let message = conversation.messages.first(where: { $0.id == next.messageID }) else {
+                        continue
+                    }
+                    startTranscription(audioPath: next.audioPath, displayName: next.displayName, conversation: conversation, transcriptMessage: message)
+                    break
+                }
             }
-            startTranscription(audioPath: next.audioPath, displayName: next.displayName, conversation: conversation, transcriptMessage: message)
-            break
         }
     }
 
@@ -835,5 +897,16 @@ final class ChatViewModel {
         } catch {
             AppLogger.error("SwiftData save failed: \(error)", category: "data")
         }
+    }
+
+    /// Schedules a single deferred `refreshConversations()` call, cancelling any pending one.
+    /// Use this when multiple rapid operations each need a refresh — only one will fire.
+    private func scheduleCoalescedRefresh() {
+        pendingRefreshWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.refreshConversations()
+        }
+        pendingRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 }

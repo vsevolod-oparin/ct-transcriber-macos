@@ -195,10 +195,51 @@ Slightly over the 800-line target. Transcription and file attachment logic could
 
 Build: **SUCCEEDED** | Unit tests: **ALL PASSED**
 
+### Phase 3 (crash investigation + performance)
+
+15. **Crash: `Attachment.convertedName.getter` in `messageHash`** — caused by NSAlert dismissal triggering hit-test → SwiftUI view graph update while conversation cascade-deleted. `isDeleted`/`modelContext` guards insufficient — SwiftData synthesized getters crash even when guards pass for cascade-deleted relationship targets. **Fix:** removed all attachment property access from `messageHash()` — hash uses only `msg.content.count`.
+16. **Crash: `Attachment.id.getter` in `ForEach`** — same alert-dismissal trigger, different path: SwiftUI `ForEach(message.attachments)` accesses `.id` on faulted attachments. **Fix:** filter with `!isDeleted && modelContext != nil` before ForEach.
+17. **`sortedMessages(for:)`** — added `isDeleted`/`modelContext` guard for conversation + filters deleted messages. Prevents relationship traversal on deleted objects.
+18. **`deleteConversation`** — restructured: collects file paths as value types before deletion, moves file I/O to `Task.detached`, eliminates post-delete relationship traversal.
+19. **BackgroundTask cleanup** — `cancelTranscriptionTasks` now also calls `taskManager.cancelTask()` on running transcription BackgroundTask objects.
+20. **Transcription stream off MainActor** — changed from `Task` (inherited MainActor) to `Task.detached` with throttled `MainActor.run` hops (300ms interval). Eliminates MainActor saturation during transcription.
+21. **Audio track check off MainActor** — `AVAsset.tracks(withMediaType:)` moved into the detached task.
+22. **Coalesced refresh** — `scheduleCoalescedRefresh()` debounces `refreshConversations()` for attachment flow. N rapid attachments → 1 refresh.
+23. **`finishTranscription` yields run loop** — `DispatchQueue.main.async` before starting next transcription.
+24. **`transcribeAudio` skips redundant save** — `skipSaveRefresh` flag when called from `attachFile`.
+
+## Known Bugs (not fully resolved)
+
+### Bug (b): Typing throttle during transcription transitions
+
+**Symptom:** When one transcription finishes and another starts, there is a brief period where user input freezes. Typing appears to stop, then all characters appear at once.
+
+**Root cause:** The transition between transcriptions involves `finishTranscription` → `saveContext()` + `refreshConversations()` → `startTranscription()` (via `DispatchQueue.main.async`). Each step runs on MainActor. `refreshConversations()` re-fetches all conversations from SwiftData and triggers `@Observable` notifications, which causes full SwiftUI view tree re-evaluation. The `DispatchQueue.main.async` yield helps but doesn't eliminate the freeze if the refresh + view update takes longer than a frame.
+
+**Mitigations applied:**
+- Transcription stream loop runs off MainActor (`Task.detached`)
+- UI updates throttled to 300ms intervals (zero MainActor hops between intervals)
+- `finishTranscription` yields run loop before starting next transcription
+- `skipSaveRefresh` eliminates redundant saves during attachment flow
+
+**What would fully fix it:** Replace `refreshConversations()` (full re-fetch) with targeted SwiftData observation — only update the specific conversation that changed, not the entire list. Or use `@Query` which handles incremental updates. This is a significant architectural change.
+
+### Bug (c): Brief input block when attaching multiple audio files
+
+**Symptom:** When attaching multiple audio files at once, the first appears immediately, then there is a short gap where typing is blocked before the remaining files appear.
+
+**Root cause:** Each `attachFile` completion runs a `MainActor.run` block that creates a Message + Attachment, calls `saveContext()`, and triggers `postAttachActions` (which calls `transcribeAudio` → `startTranscription`). With N files, N completion blocks queue on MainActor. Each block does SQLite writes and triggers SwiftUI observation. The coalesced refresh helps (1 refresh instead of N), but the per-file `saveContext()` + `startTranscription()` setup work still runs synchronously.
+
+**Mitigations applied:**
+- File I/O (`FileStorage.copyToStorage`) runs in `Task.detached`
+- Audio track check (`AVAsset.tracks`) moved off MainActor into detached task
+- Coalesced refresh: N attachments → 1 `refreshConversations()` call
+- `skipSaveRefresh` in `transcribeAudio` when called from attachment flow
+
+**What would fully fix it:** Batch all N attachment creations into a single `saveContext()` call. This requires restructuring `attachFile` to collect results from all detached copy tasks before doing a single MainActor block for all N messages. Or: use a serial background queue for attachment processing and only notify MainActor once at the end.
+
 ## Remaining (not fixed — future work)
 
 - **MEDIUM #7:** Timer closure in `AudioPlayerView` — replace with `.onReceive(Timer.publish(...))` (functional, low risk)
 - **MEDIUM #9:** `persistPosition()` missing save — documented as acceptable trade-off
 - **MEDIUM #10:** Trigger counter fragility — documented in CLAUDE.md
-- **MEDIUM #12:** `ChatView.swift` file size — split into separate files (code quality refactor)
-- **LOW #13-15, #17-18, #20:** Performance and error handling improvements

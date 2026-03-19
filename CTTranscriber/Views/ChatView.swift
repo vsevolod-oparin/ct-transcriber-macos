@@ -27,7 +27,7 @@ struct ChatView: View {
                           scrollToTopTrigger: viewModel.scrollToTopTrigger,
                           scrollToBottomTrigger: viewModel.scrollToBottomTrigger)
 
-            if viewModel.isTranscribing {
+            if viewModel.isTranscribingCurrentConversation {
                 TranscriptionProgressBar(
                     progress: viewModel.transcriptionProgress,
                     onStop: { viewModel.stopTranscription() }

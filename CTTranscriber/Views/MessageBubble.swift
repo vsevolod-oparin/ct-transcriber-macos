@@ -137,7 +137,7 @@ struct MessageBubble: View {
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: sp(4)) {
-                ForEach(message.attachments) { attachment in
+                ForEach(message.attachments.filter { !$0.isDeleted && $0.modelContext != nil }) { attachment in
                     AttachmentView(attachment: attachment, seekRequest: $seekRequest)
                 }
 

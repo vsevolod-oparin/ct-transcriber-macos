@@ -87,7 +87,7 @@ This project uses Swift, SwiftUI, SwiftData, and Swift Concurrency. Every code c
 ### SwiftData
 
 - **Non-optional new properties on existing models.** SwiftData initializer defaults do NOT retroactively populate existing rows — they get NULL. New properties on `@Model` classes with existing data MUST be optional (`Type?`). Non-optional enum/struct properties crash on first access.
-- **Accessing properties on deleted/faulted objects.** SwiftUI view update paths (`updateNSView`, delegate callbacks) can receive stale SwiftData references. Always check `obj.isDeleted` before accessing properties in NSViewRepresentable coordinators and delegate methods.
+- **Accessing properties on deleted/faulted objects.** SwiftUI view update paths (`updateNSView`, delegate callbacks) can receive stale SwiftData references. Always check BOTH `obj.isDeleted` AND `obj.modelContext != nil` before accessing properties — `isDeleted` alone is unreliable (can return `false` on cascade-deleted objects whose backing store is already gone).
 - **Holding strong references to `@Model` objects in async contexts.** Store IDs (`UUID`) in queues, pending arrays, and task closures — not model objects. Re-fetch from `ModelContext` when needed. Direct references can become faulted if the object is deleted.
 - **Missing `saveContext()` after mutations.** SwiftData auto-save is not guaranteed before app termination. Explicit save after important mutations (message creation, status changes). Playback position saves are acceptable to lose.
 - **`SchemaVersioning.swift` is dead code.** The migration plan is defined but not wired to the `ModelContainer`. Don't add explicit `SchemaMigrationPlan` unless needed — automatic lightweight migration is safer for simple additions.
