@@ -14,6 +14,7 @@ protocol TaskManagerProtocol: AnyObject {
 
 /// Manages all long-running background tasks (transcriptions, downloads, env setup).
 @Observable
+@MainActor
 final class TaskManager: TaskManagerProtocol {
     private(set) var tasks: [BackgroundTask] = []
     private var activeTasks: [UUID: Task<Void, Never>] = [:]
@@ -30,7 +31,7 @@ final class TaskManager: TaskManagerProtocol {
         recoverFromCrash()
     }
 
-    deinit {
+    nonisolated deinit {
         AppLogger.debug("TaskManager deinit", category: "lifecycle")
     }
 
@@ -128,11 +129,20 @@ final class TaskManager: TaskManagerProtocol {
         let descriptor = FetchDescriptor<BackgroundTask>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
-        tasks = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            tasks = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.error("Failed to fetch tasks: \(error)", category: "tasks")
+            tasks = []
+        }
     }
 
     private func saveAndRefresh() {
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            AppLogger.error("Failed to save task context: \(error)", category: "tasks")
+        }
         refreshTasks()
     }
 

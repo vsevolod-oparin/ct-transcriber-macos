@@ -54,7 +54,7 @@ private struct GeneralSettingsTab: View {
                         .font(ScaledFont(scale: fontScale).title)
                     Text("\(Int(settings.fontScale * 100))%")
                         .monospacedDigit()
-                        .frame(width: 45, alignment: .trailing)
+                        .frame(width: 45 * CGFloat(fontScale), alignment: .trailing)
                 }
                 HStack {
                     Button("Reset") {
@@ -80,6 +80,9 @@ private struct TranscriptionSettingsTab: View {
     var modelManager: ModelManager
     @State private var showModelManager = false
     @Environment(\.fontScale) private var fontScale
+
+    private var fieldWidth: CGFloat { 60 * CGFloat(fontScale) }
+    private var narrowFieldWidth: CGFloat { 40 * CGFloat(fontScale) }
 
     private static let minBeamSize = 1
     private static let maxBeamSize = 20
@@ -115,7 +118,7 @@ private struct TranscriptionSettingsTab: View {
                     Text("Beam Size")
                     Spacer()
                     TextField("", value: $settings.beamSize, format: .number)
-                        .frame(width: 60)
+                        .frame(width: fieldWidth)
                         .multilineTextAlignment(.trailing)
                     Stepper("", value: $settings.beamSize,
                             in: Self.minBeamSize...Self.maxBeamSize)
@@ -131,7 +134,7 @@ private struct TranscriptionSettingsTab: View {
                     Text("Temperature")
                     Spacer()
                     TextField("", value: $settings.temperature, format: .number.precision(.fractionLength(1)))
-                        .frame(width: 60)
+                        .frame(width: fieldWidth)
                         .multilineTextAlignment(.trailing)
                 }
                 if settings.temperature < Self.minTemperature || settings.temperature > Self.maxTemperature {
@@ -154,7 +157,7 @@ private struct TranscriptionSettingsTab: View {
                     Text("Max Parallel Transcriptions")
                     Spacer()
                     TextField("", value: $settings.maxParallelTranscriptions, format: .number)
-                        .frame(width: 40)
+                        .frame(width: narrowFieldWidth)
                         .multilineTextAlignment(.trailing)
                     Stepper("", value: $settings.maxParallelTranscriptions, in: 1...4)
                         .labelsHidden()
@@ -299,6 +302,9 @@ private struct ProviderConfigEditor: View {
     @State private var isFetchingModels: Bool = false
     @State private var fallbackModelsText: String = ""
     @Environment(\.fontScale) private var fontScale
+
+    private var fieldWidth: CGFloat { 60 * CGFloat(fontScale) }
+    private var wideFieldWidth: CGFloat { 80 * CGFloat(fontScale) }
     @State private var extraHeadersText: String = ""
     @State private var testResult: TestConnectionResult = .idle
 
@@ -435,7 +441,7 @@ private struct ProviderConfigEditor: View {
                     Text("Temperature")
                     Spacer()
                     TextField("", value: $config.temperature, format: .number.precision(.fractionLength(1)))
-                        .frame(width: 60)
+                        .frame(width: fieldWidth)
                         .multilineTextAlignment(.trailing)
                 }
                 if config.temperature < Self.minTemperature || config.temperature > Self.maxTemperature {
@@ -448,7 +454,7 @@ private struct ProviderConfigEditor: View {
                     Text("Max Tokens")
                     Spacer()
                     TextField("", value: $config.maxTokens, format: .number)
-                        .frame(width: 80)
+                        .frame(width: wideFieldWidth)
                         .multilineTextAlignment(.trailing)
                 }
                 if config.maxTokens < Self.minMaxTokens {

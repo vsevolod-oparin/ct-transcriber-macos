@@ -74,6 +74,18 @@ struct ConversationListView: View {
                     }
                 }
             }
+            .overlay {
+                if viewModel.conversations.isEmpty {
+                    VStack(spacing: 8) {
+                        Text("No conversations")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Text("Press ⌘N to start")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
             .listStyle(.sidebar)
             .onChange(of: viewModel.highlightedIDs) { _, newIDs in
                 // Only cancel rename if highlighting moved AWAY from the editing conversation

@@ -39,7 +39,7 @@ struct OpenAICompatibleService: LLMService {
                     ]
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await llmURLSession.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw LLMError.networkError(URLError(.badServerResponse))

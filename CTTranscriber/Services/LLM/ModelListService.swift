@@ -23,7 +23,7 @@ enum ModelListService {
         request.setValue("en-US,en", forHTTPHeaderField: "Accept-Language")
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await llmURLSession.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

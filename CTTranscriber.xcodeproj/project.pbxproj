@@ -43,6 +43,8 @@
 		F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */; };
 		FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */; };
 		8826C94F3A8B /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749D5D785980 /* AppUninstaller.swift */; };
+		BB046380EF64 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95758C78599 /* AboutView.swift */; };
+		933DB708429E /* SchemaVersioning.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0E08F7FB8 /* SchemaVersioning.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +98,8 @@
 		FF7A27F7EC2A302BBF0DB51A /* transcribe.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = transcribe.py; sourceTree = "<group>"; };
 		FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackManager.swift; sourceTree = "<group>"; };
 		749D5D785980 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
+		F95758C78599 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		B1C0E08F7FB8 /* SchemaVersioning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioning.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -129,7 +133,8 @@
 				0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */,
 				0154EA1107EBB16AE37ADD82 /* SettingsView.swift */,
 				68E0F677BDB9DCE279A10C7F /* TaskManagerView.swift */,
-			);
+			
+				F95758C78599 /* AboutView.swift */,);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -159,7 +164,8 @@
 				85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */,
 				9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */,
 				A07E16694A09D0B59035EA77 /* Message.swift */,
-			);
+			
+				B1C0E08F7FB8 /* SchemaVersioning.swift */,);
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -360,7 +366,9 @@
 				C4217819DA986D07E306E2E2 /* TranscriptionService.swift in Sources */,
 				57B70598411440A489335212 /* VideoConverter.swift in Sources */,
 			
-				8826C94F3A8B /* AppUninstaller.swift in Sources */,);
+				8826C94F3A8B /* AppUninstaller.swift in Sources */,
+				BB046380EF64 /* AboutView.swift in Sources */,
+				933DB708429E /* SchemaVersioning.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F769020B3E071F2848036030 /* Sources */ = {

@@ -746,6 +746,50 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 ---
 
+## Milestone 11b: Audit Fixes & Code Quality ✅
+
+**Goal:** Fix all issues found in the comprehensive 6-agent audit.
+**Status:** Complete (2026-03-19) — see `reports/milestone-11b-audit-fixes.md`, `reports/audit-v0.2.0-comprehensive.md`
+
+### Audit Scope
+6 parallel agents audited: UI/UX, async/concurrency, data model/logic, performance, architecture, TelegramSwift comparison. 44 issues found.
+
+### Fixes Applied (22/44)
+
+**CRITICAL (4/4):**
+- [x] Command injection in AppUninstaller — paths passed as positional args, not interpolated
+- [x] Data races on `streamingConversationIDs` and `transcriptionTasks` — `@MainActor` on ChatViewModel
+- [x] Orphaned converted MP4 files on conversation delete — `convertedName` now cleaned up
+
+**HIGH (8/10):**
+- [x] Orphaned Python subprocess — `process.terminate()` on cancellation
+- [x] Silent `saveContext()` failures — error logging added
+- [x] Silent `try?` in FileStorage, TaskManager — error logging added
+- [x] String concatenation in streaming hot path — 50-char token batching
+- [x] Excessive `refreshConversations()` — 6 redundant calls removed
+- [x] No network timeouts — `llmURLSession` with 30s request / 10min resource timeout
+- [x] TaskManager data race — `@MainActor` added
+- [ ] Subprocess timeout (mitigated by process.terminate())
+
+**MEDIUM (8/18):**
+- [x] SwiftData schema versioning — `SchemaV1` + `CTTranscriberMigrationPlan`
+- [x] AppLogger thread safety — serial `DispatchQueue` for file I/O
+- [x] Empty conversation state — sidebar overlay with "No conversations"
+- [x] Font scaling in Settings — hardcoded widths replaced with `fontScale`-computed values
+- [x] LLM test connection timeout — shared `llmURLSession`
+- [x] `activeTranscriptionCount` race — fixed by `@MainActor`
+- [ ] Extract TranscriptionOrchestrator from ChatViewModel (deferred — tightly coupled)
+- [ ] Services without protocols (deferred — needed when adding unit tests)
+
+**LOW (2/12):**
+- [x] Task Manager keyboard shortcut — Cmd+Shift+B
+- [x] AboutView extracted to own file
+
+### Deferred Items (22)
+Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance optimizations (M4-M6), TelegramSwift patterns (M16-M18 audio visibility, priority queue, responsive scrolling), polish (L1-L11 VoiceOver, button styles, naming).
+
+---
+
 ## Milestone 12 (Future): MCP Support
 
 **Goal:** Extend LLM capabilities with Model Context Protocol tools.
@@ -821,8 +865,9 @@ M0 (Skeleton)
  ├── M9b (Sidebar & UI Polish) ✅
  └── M10 (Polish & DMG) ← all above
       └── M11 (Distribution Hardening) ✅
-           ├── M12 (MCP) [future]
-           └── M13 (Export & Markdown) [future]
+           └── M11b (Audit Fixes) ✅
+                ├── M12 (MCP) [future]
+                └── M13 (Export & Markdown) [future]
 ```
 
 ## Suggested Implementation Order
@@ -839,6 +884,7 @@ M0 (Skeleton)
 | **Phase H** | M9b | ✅ Done | Sidebar multi-select, font scaling, UI polish, NSTableView perf audit |
 | **Phase I** | M10 | ✅ Done | Polish + DMG distribution |
 | **Phase J** | M11 | ✅ Done | Distribution hardening, setup UX, uninstaller (v0.2.0) |
+| **Phase J+** | M11b | ✅ Done | 6-agent audit: 22 fixes (security, data races, threading, performance) |
 | **Phase K** | M12 | Future | MCP exploration |
 | **Phase L** | M13 | Future | Content export, markdown preview, conversation import/export |
 

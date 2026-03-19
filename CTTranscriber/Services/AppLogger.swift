@@ -16,6 +16,9 @@ enum AppLogger {
     /// Number of rotated log files to keep (e.g., .1, .2, .3).
     private static let maxLogFiles = 3
 
+    /// Serial queue for file I/O — prevents data races on log file.
+    private static let fileQueue = DispatchQueue(label: "com.branch.ct-transcriber.logger")
+
     private static let logFileURL: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("CTTranscriber", isDirectory: true)
@@ -52,18 +55,20 @@ enum AppLogger {
         default: osLog.info("\(message)")
         }
 
-        // File log (append) with rotation
+        // File log (append) with rotation — dispatched to serial queue for thread safety
         if let data = line.data(using: .utf8) {
-            rotateIfNeeded()
+            fileQueue.async {
+                rotateIfNeeded()
 
-            if FileManager.default.fileExists(atPath: logFileURL.path) {
-                if let handle = try? FileHandle(forWritingTo: logFileURL) {
-                    handle.seekToEndOfFile()
-                    handle.write(data)
-                    handle.closeFile()
+                if FileManager.default.fileExists(atPath: logFileURL.path) {
+                    if let handle = try? FileHandle(forWritingTo: logFileURL) {
+                        handle.seekToEndOfFile()
+                        handle.write(data)
+                        handle.closeFile()
+                    }
+                } else {
+                    try? data.write(to: logFileURL)
                 }
-            } else {
-                try? data.write(to: logFileURL)
             }
         }
     }

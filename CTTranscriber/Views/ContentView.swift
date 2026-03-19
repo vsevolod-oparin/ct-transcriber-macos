@@ -62,6 +62,7 @@ struct ContentView: View {
                     }
                 }
                 .help("Background Tasks")
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
         }
         .frame(minWidth: 700, minHeight: 500)

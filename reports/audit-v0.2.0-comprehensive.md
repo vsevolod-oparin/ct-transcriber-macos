@@ -199,3 +199,36 @@ Object pooling, NSCache for thumbnails, responsive scrolling flag, state machine
 | 8 | Add subprocess timeout (30 min) | 15 min | Prevents hung transcriptions |
 | 9 | Cancel active tasks in deinit | 10 min | Prevents task leaks |
 | 10 | Extract TranscriptionOrchestrator from ChatViewModel | 1 hour | Architecture health |
+
+---
+
+## Resolution Status (2026-03-19)
+
+Fixes applied in `reports/milestone-11b-audit-fixes.md`.
+
+| Issue | Status |
+|-------|--------|
+| **C1** Command injection | FIXED — positional args |
+| **C2** streamingConversationIDs race | FIXED — @MainActor |
+| **C3** transcriptionTasks race | FIXED — @MainActor |
+| **C4** Orphaned MP4 files | FIXED — delete convertedName |
+| **H1** Orphaned Python process | FIXED — process.terminate() |
+| **H2** deinit task cleanup | FIXED — @MainActor isolation |
+| **H3** Silent saveContext | FIXED — error logging |
+| **H4** Silent try? | FIXED — FileStorage, TaskManager |
+| **H5** String concatenation | FIXED — 50-char batching |
+| **H6** Excessive refreshConversations | FIXED — 6 calls removed |
+| **H7** No network timeouts | FIXED — llmURLSession 30s/10min |
+| **H8** TaskManager race | FIXED — @MainActor |
+| **H9** Zombie stderrTask | MITIGATED — by H1 |
+| **H10** Subprocess timeout | MITIGATED — by H1 |
+| **M7** Schema versioning | FIXED — SchemaV1 + MigrationPlan |
+| **M9** activeTranscriptionCount | FIXED — by C2 |
+| **M10** AppLogger thread safety | FIXED — serial queue |
+| **M12** Empty conversation state | FIXED — overlay |
+| **M13** Font scaling Settings | FIXED — scaled widths |
+| **M14** Test connection timeout | FIXED — by H7 |
+| **L4** AboutView extraction | FIXED — own file |
+| **L12** Task Manager shortcut | FIXED — Cmd+Shift+B |
+| M1, M2, M4-M6, M8, M11, M15-M18 | DEFERRED |
+| L1-L3, L5-L11 | DEFERRED |

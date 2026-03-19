@@ -4,6 +4,7 @@ import SwiftData
 import AVFoundation
 
 @Observable
+@MainActor
 final class ChatViewModel {
     /// Error prefixes — used to distinguish error source for retry logic.
     private static let llmErrorPrefix = "⚠ [LLM] "
@@ -84,7 +85,7 @@ final class ChatViewModel {
         refreshConversations()
     }
 
-    deinit {
+    nonisolated deinit {
         AppLogger.debug("ChatViewModel deinit", category: "lifecycle")
     }
 
@@ -170,6 +171,9 @@ final class ChatViewModel {
         for message in conversation.messages {
             for attachment in message.attachments {
                 FileStorage.delete(storedName: attachment.storedName)
+                if let convertedName = attachment.convertedName {
+                    FileStorage.delete(storedName: convertedName)
+                }
             }
         }
 
@@ -248,8 +252,6 @@ final class ChatViewModel {
             }
             conversation.messages.removeAll { $0.id == message.id }
             modelContext.delete(message)
-            saveContext()
-            refreshConversations()
 
             // Re-create the user message and trigger LLM
             let newMessage = Message(role: .user, content: message.content)
@@ -337,9 +339,23 @@ final class ChatViewModel {
             )
 
             do {
+                var pendingTokens = ""
+                let updateThreshold = 50 // characters before flushing to UI
+
                 for try await token in stream {
                     guard let self, !Task.isCancelled else { break }
-                    accumulatedText += token
+                    pendingTokens += token
+                    if pendingTokens.count >= updateThreshold {
+                        accumulatedText += pendingTokens
+                        pendingTokens = ""
+                        await MainActor.run {
+                            assistantMessage.content = accumulatedText
+                        }
+                    }
+                }
+                // Flush remaining tokens
+                if !pendingTokens.isEmpty {
+                    accumulatedText += pendingTokens
                     await MainActor.run {
                         assistantMessage.content = accumulatedText
                     }
@@ -573,7 +589,6 @@ final class ChatViewModel {
         guard case .ready = envStatus else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)Python environment not ready. Set up from Settings → Environment."
             saveContext()
-            refreshConversations()
             return
         }
 
@@ -589,7 +604,6 @@ final class ChatViewModel {
             if audioTracks.isEmpty {
                 transcriptMessage.content = "\(Self.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
                 saveContext()
-                refreshConversations()
                 return
             }
         }
@@ -598,7 +612,6 @@ final class ChatViewModel {
         guard let modelPath = modelManager.modelPath(for: selectedID) else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(TranscriptionError.modelNotDownloaded.localizedDescription)"
             saveContext()
-            refreshConversations()
             return
         }
 
@@ -725,10 +738,19 @@ final class ChatViewModel {
         let descriptor = FetchDescriptor<Conversation>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        conversations = (try? modelContext.fetch(descriptor)) ?? []
+        do {
+            conversations = try modelContext.fetch(descriptor)
+        } catch {
+            AppLogger.error("Failed to fetch conversations: \(error)", category: "data")
+            conversations = []
+        }
     }
 
     private func saveContext() {
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            AppLogger.error("SwiftData save failed: \(error)", category: "data")
+        }
     }
 }

@@ -49,7 +49,11 @@ enum FileStorage {
 
     /// Deletes a stored file.
     static func delete(storedName: String) {
-        try? FileManager.default.removeItem(at: url(for: storedName))
+        do {
+            try FileManager.default.removeItem(at: url(for: storedName))
+        } catch {
+            AppLogger.error("Failed to delete file \(storedName): \(error)", category: "storage")
+        }
     }
 
     /// Video file extensions not always recognized by UTType on macOS.

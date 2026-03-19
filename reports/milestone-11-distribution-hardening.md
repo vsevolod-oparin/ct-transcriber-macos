@@ -113,3 +113,9 @@ Investigated moving SwiftData store to `~/Library/Application Support/CTTranscri
 - **Modified:** `CTTranscriber/ViewModels/ChatViewModel.swift` — async attachFile
 - **Modified:** `Assets.xcassets/AppIcon.appiconset/` — custom robot icon
 - **Modified:** `project.yml`, `project.pbxproj` — version 0.2.0
+
+---
+
+## Follow-up
+
+A comprehensive 6-agent audit was conducted after this milestone. 44 issues were identified and 22 fixed. See `reports/milestone-11b-audit-fixes.md` and `reports/audit-v0.2.0-comprehensive.md`.

@@ -66,6 +66,10 @@ enum TranscriptionService {
         settings: TranscriptionSettings
     ) -> AsyncThrowingStream<Progress, Error> {
         AsyncThrowingStream { continuation in
+            // Shared reference so onTermination can kill the subprocess
+            class ProcessBox: @unchecked Sendable { var process: Process? }
+            let box = ProcessBox()
+
             let task = Task {
                 do {
                     guard let pythonPath = PythonEnvironment.pythonPath(settings: settings) else {
@@ -77,6 +81,7 @@ enum TranscriptionService {
                     }
 
                     let process = Process()
+                    box.process = process
                     process.executableURL = URL(fileURLWithPath: pythonPath)
 
                     var args = [
@@ -194,6 +199,9 @@ enum TranscriptionService {
 
             continuation.onTermination = { _ in
                 task.cancel()
+                if let p = box.process, p.isRunning {
+                    p.terminate()
+                }
             }
         }
     }

@@ -35,6 +35,16 @@ enum LLMError: LocalizedError {
     }
 }
 
+// MARK: - Shared URLSession
+
+/// URLSession with timeouts configured for LLM streaming.
+let llmURLSession: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 30
+    config.timeoutIntervalForResource = 600 // 10 min max for long responses
+    return URLSession(configuration: config)
+}()
+
 // MARK: - LLM Service Protocol
 
 protocol LLMService: Sendable {
