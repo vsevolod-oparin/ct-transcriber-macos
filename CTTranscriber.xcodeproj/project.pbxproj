@@ -7,16 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		08B56A0B91365A582AD52D1C /* FileStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D119DFE232B9232CBA667516 /* FileStorageTests.swift */; };
 		0B4C75EEB3AEEE8104FF1B3B /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A07E16694A09D0B59035EA77 /* Message.swift */; };
 		0C6DAE0E0E3BB1B8D180662E /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87F5B26DF43880E6D3E6C280 /* ChatViewModel.swift */; };
 		17D2DE8BA27288D04F267D64 /* Attachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B954F8D7A92ED4B2DE65DE01 /* Attachment.swift */; };
 		233BD93D35A2878C5347F3C5 /* PythonEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */; };
+		24030E39554301922AB7CF08 /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F65432DCDD2B9CC9C65C558 /* AppUninstaller.swift */; };
 		2A92842A542865F2F4B3C2C2 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C8EE9995C8D45EE953E7A4 /* LLMService.swift */; };
 		2B9C64A14D83B42FFB4265F6 /* ModelListService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA0890CDD643758097A54AF /* ModelListService.swift */; };
 		33C143E5D5FC26D377B0EF8E /* CTTranscriberApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */; };
 		34F36C5862E02B79DE6D5657 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0154EA1107EBB16AE37ADD82 /* SettingsView.swift */; };
 		359C21BC78DCBD9EF78384F2 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */; };
 		3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */; };
+		41D07F4E95400E950A46108D /* AppUninstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC3D113BC132595C3037512 /* AppUninstallerTests.swift */; };
 		452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB94D1FAAA6ED9F2B6BBE /* AppSettings.swift */; };
 		501EB8429B9A650E2AB402EA /* default-settings.json in Resources */ = {isa = PBXBuildFile; fileRef = 5C90903B672DF2C7EAA2A33E /* default-settings.json */; };
 		51FAC89F42DB2D7594C988E9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0A60525B5D36D873BC9B3A3C /* Assets.xcassets */; };
@@ -26,11 +29,15 @@
 		6E87E47B0A4CD1BDB3EEBBE4 /* convert_model.py in Resources */ = {isa = PBXBuildFile; fileRef = 147A7E41F2723AA3463AF58E /* convert_model.py */; };
 		70EF0A3E614395B956C9EC6A /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */; };
 		7D233FC3F692C3701B4494A6 /* ModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AF36BE09F983DF2B4D426D /* ModelManager.swift */; };
+		8F9FFBA959A0B4C7CBEA667B /* LLMErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6749D28C6C39FDF71A8D3636 /* LLMErrorTests.swift */; };
+		93B0025F8085DD7AFDE5CAF9 /* MessageAnalysisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D567A342F176B28E1D9528 /* MessageAnalysisTests.swift */; };
+		95077C42152E3C617D052D85 /* AppSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA572A35AFF6E28E3AE33DEA /* AppSettingsTests.swift */; };
 		988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */; };
 		992803DC943ED97DF62E8A4E /* AudioPlaybackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */; };
 		9F23569AA86BCB32B960D72C /* LLMServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383E65F1A53A9EEBC09491B3 /* LLMServiceFactory.swift */; };
 		A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */; };
 		B49014C1B036F3886E105AA6 /* TaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39A15CB2114DD69C3DDE6BBF /* TaskManager.swift */; };
+		B5CE20B664B152F6BCC2C340 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D58D5273AC60B12DA14C6C /* AboutView.swift */; };
 		B74AB71BE888405154B99885 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6DCE79BC5B3122843750F3D /* ChatView.swift */; };
 		B8F1E1CE6A8614F8D6D4DD9E /* SettingsStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */; };
 		BAA9B052D765EE9781B469D8 /* EnvironmentSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */; };
@@ -41,13 +48,18 @@
 		E816061D4DC7642B48E733DC /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94890C099DFFDB85FAE02626 /* ConversationListView.swift */; };
 		EC20B31187147F173BFA7292 /* transcribe.py in Resources */ = {isa = PBXBuildFile; fileRef = FF7A27F7EC2A302BBF0DB51A /* transcribe.py */; };
 		F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */; };
+		FAA9D555A4F88EA8389597B6 /* SchemaVersioning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C43381790B4D7F432649B1E /* SchemaVersioning.swift */; };
 		FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */; };
-		8826C94F3A8B /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 749D5D785980 /* AppUninstaller.swift */; };
-		BB046380EF64 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95758C78599 /* AboutView.swift */; };
-		933DB708429E /* SchemaVersioning.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0E08F7FB8 /* SchemaVersioning.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		3DAAA7E1074CBDB9CFBD3ED8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6AECBB57F972D2385B1C13F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E77C51A4B81A3A3AD110FE7;
+			remoteInfo = CTTranscriber;
+		};
 		D69350779C6F4C5919C1DFDA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 6AECBB57F972D2385B1C13F9 /* Project object */;
@@ -65,11 +77,13 @@
 		128C815950849E516D0EC30F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		147A7E41F2723AA3463AF58E /* convert_model.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = convert_model.py; sourceTree = "<group>"; };
 		14DA39CAEFF1636EE17D7B4A /* setup_env.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = setup_env.sh; sourceTree = "<group>"; };
+		1703CCB7714FBED5DEC72C62 /* CTTranscriberTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CTTranscriberTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
 		2326917778ED8DB96533DDAC /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		27ABE31824F927E9C4AAC145 /* CTTranscriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CTTranscriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		29AF36BE09F983DF2B4D426D /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
 		2B513F093FC1DF990E2729F3 /* OpenAICompatibleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleService.swift; sourceTree = "<group>"; };
+		36D567A342F176B28E1D9528 /* MessageAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAnalysisTests.swift; sourceTree = "<group>"; };
 		37E38815C304D1AEC81942A0 /* CTTranscriberUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CTTranscriberUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		383E65F1A53A9EEBC09491B3 /* LLMServiceFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMServiceFactory.swift; sourceTree = "<group>"; };
 		3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonEnvironment.swift; sourceTree = "<group>"; };
@@ -77,9 +91,13 @@
 		3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		400DB94D1FAAA6ED9F2B6BBE /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentSetupView.swift; sourceTree = "<group>"; };
+		4F65432DCDD2B9CC9C65C558 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
 		5C90903B672DF2C7EAA2A33E /* default-settings.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "default-settings.json"; sourceTree = "<group>"; };
+		5DC3D113BC132595C3037512 /* AppUninstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerTests.swift; sourceTree = "<group>"; };
 		64537F181692C5D3F3657E3D /* AnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicService.swift; sourceTree = "<group>"; };
+		6749D28C6C39FDF71A8D3636 /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
 		68E0F677BDB9DCE279A10C7F /* TaskManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskManagerView.swift; sourceTree = "<group>"; };
+		6C43381790B4D7F432649B1E /* SchemaVersioning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioning.swift; sourceTree = "<group>"; };
 		733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStorage.swift; sourceTree = "<group>"; };
 		7762C803FAF07C9D5686AA62 /* VideoConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoConverter.swift; sourceTree = "<group>"; };
 		85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTask.swift; sourceTree = "<group>"; };
@@ -93,13 +111,13 @@
 		B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		B954F8D7A92ED4B2DE65DE01 /* Attachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachment.swift; sourceTree = "<group>"; };
 		C74CF08BC26CA94F94FF63CA /* CTTranscriberApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTTranscriberApp.swift; sourceTree = "<group>"; };
+		CA572A35AFF6E28E3AE33DEA /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
+		D119DFE232B9232CBA667516 /* FileStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStorageTests.swift; sourceTree = "<group>"; };
 		D6DCE79BC5B3122843750F3D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStorage.swift; sourceTree = "<group>"; };
+		E1D58D5273AC60B12DA14C6C /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		FF7A27F7EC2A302BBF0DB51A /* transcribe.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = transcribe.py; sourceTree = "<group>"; };
 		FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackManager.swift; sourceTree = "<group>"; };
-		749D5D785980 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
-		F95758C78599 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
-		B1C0E08F7FB8 /* SchemaVersioning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioning.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -126,6 +144,7 @@
 		1A0E1471BFFC4CE8A0485C3E /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				E1D58D5273AC60B12DA14C6C /* AboutView.swift */,
 				D6DCE79BC5B3122843750F3D /* ChatView.swift */,
 				3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */,
 				94890C099DFFDB85FAE02626 /* ConversationListView.swift */,
@@ -133,8 +152,7 @@
 				0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */,
 				0154EA1107EBB16AE37ADD82 /* SettingsView.swift */,
 				68E0F677BDB9DCE279A10C7F /* TaskManagerView.swift */,
-			
-				F95758C78599 /* AboutView.swift */,);
+			);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -164,8 +182,8 @@
 				85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */,
 				9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */,
 				A07E16694A09D0B59035EA77 /* Message.swift */,
-			
-				B1C0E08F7FB8 /* SchemaVersioning.swift */,);
+				6C43381790B4D7F432649B1E /* SchemaVersioning.swift */,
+			);
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -188,6 +206,7 @@
 			isa = PBXGroup;
 			children = (
 				20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */,
+				4F65432DCDD2B9CC9C65C558 /* AppUninstaller.swift */,
 				FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */,
 				733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */,
 				29AF36BE09F983DF2B4D426D /* ModelManager.swift */,
@@ -197,8 +216,7 @@
 				2326917778ED8DB96533DDAC /* TranscriptionService.swift */,
 				7762C803FAF07C9D5686AA62 /* VideoConverter.swift */,
 				10F918C5F3D7076FC33893B1 /* LLM */,
-			
-				749D5D785980 /* AppUninstaller.swift */,);
+			);
 			path = Services;
 			sourceTree = "<group>";
 		};
@@ -209,6 +227,18 @@
 				B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */,
 			);
 			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		9951C2B0382E6C6479AEBD41 /* CTTranscriberTests */ = {
+			isa = PBXGroup;
+			children = (
+				CA572A35AFF6E28E3AE33DEA /* AppSettingsTests.swift */,
+				5DC3D113BC132595C3037512 /* AppUninstallerTests.swift */,
+				D119DFE232B9232CBA667516 /* FileStorageTests.swift */,
+				6749D28C6C39FDF71A8D3636 /* LLMErrorTests.swift */,
+				36D567A342F176B28E1D9528 /* MessageAnalysisTests.swift */,
+			);
+			path = CTTranscriberTests;
 			sourceTree = "<group>";
 		};
 		AD512143C811C3882755AB50 /* Python */ = {
@@ -225,6 +255,7 @@
 			isa = PBXGroup;
 			children = (
 				27ABE31824F927E9C4AAC145 /* CTTranscriber.app */,
+				1703CCB7714FBED5DEC72C62 /* CTTranscriberTests.xctest */,
 				37E38815C304D1AEC81942A0 /* CTTranscriberUITests.xctest */,
 			);
 			name = Products;
@@ -234,6 +265,7 @@
 			isa = PBXGroup;
 			children = (
 				32F37C5058D60D201AA3624A /* CTTranscriber */,
+				9951C2B0382E6C6479AEBD41 /* CTTranscriberTests */,
 				1FF6A8C20BBA1F661132A818 /* CTTranscriberUITests */,
 				B00C0F36FF95BF66311829EF /* Products */,
 			);
@@ -259,6 +291,24 @@
 			productName = CTTranscriber;
 			productReference = 27ABE31824F927E9C4AAC145 /* CTTranscriber.app */;
 			productType = "com.apple.product-type.application";
+		};
+		4EA4599722A9B1E12DA9680E /* CTTranscriberTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E05B2A63EDE70142DADA08A0 /* Build configuration list for PBXNativeTarget "CTTranscriberTests" */;
+			buildPhases = (
+				18049B6EAAA5CFC182FDBBC7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				43468EC5677675765A41BEA8 /* PBXTargetDependency */,
+			);
+			name = CTTranscriberTests;
+			packageProductDependencies = (
+			);
+			productName = CTTranscriberTests;
+			productReference = 1703CCB7714FBED5DEC72C62 /* CTTranscriberTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		5E926D6EEDBCB560A75F6DD2 /* CTTranscriberUITests */ = {
 			isa = PBXNativeTarget;
@@ -290,6 +340,10 @@
 					4E77C51A4B81A3A3AD110FE7 = {
 						DevelopmentTeam = "";
 					};
+					4EA4599722A9B1E12DA9680E = {
+						DevelopmentTeam = "";
+						TestTargetID = 4E77C51A4B81A3A3AD110FE7;
+					};
 					5E926D6EEDBCB560A75F6DD2 = {
 						DevelopmentTeam = "";
 						TestTargetID = 4E77C51A4B81A3A3AD110FE7;
@@ -311,6 +365,7 @@
 			projectRoot = "";
 			targets = (
 				4E77C51A4B81A3A3AD110FE7 /* CTTranscriber */,
+				4EA4599722A9B1E12DA9680E /* CTTranscriberTests */,
 				5E926D6EEDBCB560A75F6DD2 /* CTTranscriberUITests */,
 			);
 		};
@@ -332,13 +387,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		18049B6EAAA5CFC182FDBBC7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				95077C42152E3C617D052D85 /* AppSettingsTests.swift in Sources */,
+				41D07F4E95400E950A46108D /* AppUninstallerTests.swift in Sources */,
+				08B56A0B91365A582AD52D1C /* FileStorageTests.swift in Sources */,
+				8F9FFBA959A0B4C7CBEA667B /* LLMErrorTests.swift in Sources */,
+				93B0025F8085DD7AFDE5CAF9 /* MessageAnalysisTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		6D9378AA93A69C0438D95593 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B5CE20B664B152F6BCC2C340 /* AboutView.swift in Sources */,
 				C6E8B49EBEB96AE05CC35BEA /* AnthropicService.swift in Sources */,
 				70EF0A3E614395B956C9EC6A /* AppLogger.swift in Sources */,
 				452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */,
+				24030E39554301922AB7CF08 /* AppUninstaller.swift in Sources */,
 				17D2DE8BA27288D04F267D64 /* Attachment.swift in Sources */,
 				992803DC943ED97DF62E8A4E /* AudioPlaybackManager.swift in Sources */,
 				F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */,
@@ -358,6 +427,7 @@
 				359C21BC78DCBD9EF78384F2 /* ModelManagerView.swift in Sources */,
 				A7D6F9392D76F03CD1D1ECD5 /* OpenAICompatibleService.swift in Sources */,
 				233BD93D35A2878C5347F3C5 /* PythonEnvironment.swift in Sources */,
+				FAA9D555A4F88EA8389597B6 /* SchemaVersioning.swift in Sources */,
 				3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */,
 				B8F1E1CE6A8614F8D6D4DD9E /* SettingsStorage.swift in Sources */,
 				34F36C5862E02B79DE6D5657 /* SettingsView.swift in Sources */,
@@ -365,10 +435,7 @@
 				691D1E5A263BD0AFD24C50D6 /* TaskManagerView.swift in Sources */,
 				C4217819DA986D07E306E2E2 /* TranscriptionService.swift in Sources */,
 				57B70598411440A489335212 /* VideoConverter.swift in Sources */,
-			
-				8826C94F3A8B /* AppUninstaller.swift in Sources */,
-				BB046380EF64 /* AboutView.swift in Sources */,
-				933DB708429E /* SchemaVersioning.swift in Sources */,);
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F769020B3E071F2848036030 /* Sources */ = {
@@ -382,6 +449,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		43468EC5677675765A41BEA8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E77C51A4B81A3A3AD110FE7 /* CTTranscriber */;
+			targetProxy = 3DAAA7E1074CBDB9CFBD3ED8 /* PBXContainerItemProxy */;
+		};
 		8C6059CA2E65AA57A4CA3810 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 4E77C51A4B81A3A3AD110FE7 /* CTTranscriber */;
@@ -390,6 +462,24 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		08BDDAC78C58F688558A3400 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber.tests";
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CT Transcriber.app/Contents/MacOS/CT Transcriber";
+				TEST_TARGET_NAME = CTTranscriber;
+			};
+			name = Debug;
+		};
 		5CB50F041E44E54E96179F0A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -465,6 +555,24 @@
 				TEST_TARGET_NAME = CTTranscriber;
 			};
 			name = Debug;
+		};
+		B75A0DAF4B14B2058F529CC2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber.tests";
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CT Transcriber.app/Contents/MacOS/CT Transcriber";
+				TEST_TARGET_NAME = CTTranscriber;
+			};
+			name = Release;
 		};
 		F5266AFC8EE8BD619978F424 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -613,6 +721,15 @@
 			buildConfigurations = (
 				FC26131AD60CA383E28504C4 /* Debug */,
 				F5266AFC8EE8BD619978F424 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E05B2A63EDE70142DADA08A0 /* Build configuration list for PBXNativeTarget "CTTranscriberTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				08BDDAC78C58F688558A3400 /* Debug */,
+				B75A0DAF4B14B2058F529CC2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -31,6 +31,21 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: CT Transcriber
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
 
+  CTTranscriberTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - CTTranscriberTests
+    dependencies:
+      - target: CTTranscriber
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.branch.ct-transcriber.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: CTTranscriber
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CT Transcriber.app/Contents/MacOS/CT Transcriber"
+
   CTTranscriberUITests:
     type: bundle.ui-testing
     platform: macOS

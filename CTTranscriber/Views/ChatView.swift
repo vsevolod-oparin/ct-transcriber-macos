@@ -723,7 +723,7 @@ private let collapsedPreviewLines = 5
 private let largeTextThreshold = 5_000
 
 /// Pre-analyzed message metadata to avoid recomputing on every render.
-private struct MessageAnalysis {
+struct MessageAnalysis {
     let isError: Bool
     /// Estimated line count. Exact for short messages, sampled estimate for large ones.
     let lineCount: Int
@@ -742,7 +742,9 @@ private struct MessageAnalysis {
         isError = prefix100.contains("⚠") ||
                   prefix100.hasPrefix("Transcription cancelled")
 
-        hasTimestamps = content.utf8.count > 5 && content.contains("[") && content.contains("→")
+        // Timestamps appear near the start of transcription results — check prefix only
+        let timestampSample = content.prefix(500)
+        hasTimestamps = timestampSample.contains("[") && timestampSample.contains("→")
 
         // Line counting: exact for small, estimated for large
         let utf8 = content.utf8
