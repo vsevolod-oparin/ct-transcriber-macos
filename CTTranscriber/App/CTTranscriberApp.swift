@@ -206,6 +206,12 @@ extension Notification.Name {
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var pendingOpenURLs: [URL] = []
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Register this object as the Services provider.
+        // The service name matches NSPortName in Info.plist.
+        NSApp.servicesProvider = self
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         AudioPlaybackManager.shared.stopAll()
     }
@@ -226,5 +232,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return false
         }
         return true
+    }
+
+    // MARK: - Services Provider
+
+    /// Called by macOS when user selects "Transcribe with CT Transcriber" from
+    /// Finder's right-click → Services menu. Files are passed as filenames on the pasteboard.
+    @MainActor @objc func openFilesFromService(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let fileURLs = pboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL], !fileURLs.isEmpty else {
+            error.pointee = "No files received" as NSString
+            return
+        }
+
+        AppLogger.info("Services: received \(fileURLs.count) file(s)", category: "app")
+        pendingOpenURLs.append(contentsOf: fileURLs)
+
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.isVisible }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 }

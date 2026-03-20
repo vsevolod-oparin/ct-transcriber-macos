@@ -28,6 +28,34 @@
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Transcribe with CT Transcriber</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>openFilesFromService</string>
+			<key>NSPortName</key>
+			<string>CT Transcriber</string>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.audio</string>
+				<string>public.movie</string>
+				<string>public.video</string>
+				<string>public.mpeg-4</string>
+				<string>com.apple.quicktime-movie</string>
+				<string>org.webmproject.webm</string>
+				<string>org.matroska.mkv</string>
+				<string>public.mp3</string>
+				<string>com.apple.m4a-audio</string>
+				<string>com.microsoft.waveform-audio</string>
+				<string>org.xiph.flac</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
