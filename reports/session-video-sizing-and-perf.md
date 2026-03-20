@@ -112,10 +112,10 @@ Additional guards:
 
 ---
 
-## Known Bugs (remaining)
+## Known Bugs — RESOLVED (v0.3.1)
 
-1. **Brief typing freeze at transcription transitions** — mitigated but not eliminated. Full fix requires `@Query` instead of `refreshConversations()`.
-2. **Brief input block with multiple audio attachments** — mitigated with coalesced refresh. Full fix requires batching.
+1. **Brief typing freeze at transcription transitions** — Root cause found via timing instrumentation: `PythonEnvironment.check()` spawned a Python subprocess (1100-1800ms) on every `startTranscription`. Fixed by caching the result.
+2. **Brief input block with multiple audio attachments** — Same root cause. All other MainActor operations measured at 1-52ms.
 
 ---
 

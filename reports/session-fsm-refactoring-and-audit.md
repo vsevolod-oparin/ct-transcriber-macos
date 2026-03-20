@@ -72,21 +72,21 @@ Split 2055-line file into 6 files:
 
 ---
 
-## Known Bugs (documented but not fully resolved)
+## Known Bugs — RESOLVED (v0.3.1)
 
-### Bug (b): Brief typing freeze at transcription transitions
+### Bug (b): Typing freeze at transcription transitions — FIXED
 
-When one transcription finishes and another starts, there's a brief input freeze. Root cause: `saveContext()` + `refreshConversations()` on MainActor triggers full SwiftUI view tree re-evaluation. Mitigated (throttling, run loop yield) but not eliminated. Full fix requires replacing `refreshConversations()` with targeted SwiftData observation or `@Query`.
+Root cause found via timing instrumentation: `PythonEnvironment.check()` spawned a Python subprocess (1100-1800ms) on every `startTranscription` call. Fixed by caching the check result. All other MainActor operations measured at 1-52ms.
 
-### Bug (c): Brief input block when attaching multiple audio files
+### Bug (c): Input block with multiple audio attachments — FIXED
 
-First file appears immediately, then brief freeze before remaining files appear. Root cause: per-file `saveContext()` + `startTranscription()` setup on MainActor. Mitigated (coalesced refresh, skip redundant saves). Full fix requires batching all N attachment creations into a single MainActor block.
+Same root cause as bug (b). With PythonEnvironment caching, the per-file overhead is eliminated.
 
 ---
 
 ## What the ROADMAP Says About Next Steps
 
-All milestones through **M11b (Audit Fixes)** are complete. The project is at **v0.2.0** — a working, distributed macOS app.
+All milestones through **M13 (Content Export & Markdown)** are complete. The project is at **v0.4.0**.
 
 ### Planned future milestones:
 
@@ -95,19 +95,15 @@ All milestones through **M11b (Audit Fixes)** are complete. The project is at **
 - Implement MCP client for tool use in chat
 - Tool-use UI (expandable cards)
 
-**Milestone 13: Content Export & Markdown** (Future)
-- Save As for attachments, SRT/TXT/MD export
-- Markdown rendering in assistant messages (bold, code blocks, lists, syntax highlighting)
-- Conversation import/export (JSON, Markdown, bulk ZIP)
+**Milestone 13: Content Export & Markdown** — ✅ Complete (v0.4.0)
 
-### Future considerations (from TelegramSwift research):
-- Priority queue for transcriptions
-- Lite Mode / Low Power settings
-- Extract services into local Swift Package (when >50 files)
+### Subsequent session resolved:
+1. **Bugs (b) and (c)** — ✅ Fixed in v0.3.1. Root cause: `PythonEnvironment.check()` spawning a subprocess (1.1s) on every transcription start. Fixed by caching.
+2. **Milestone 13** — ✅ Complete in v0.4.0. Markdown rendering, PDF/JSON/MD export, import, media save.
+3. **SchemaVersioning.swift** — ✅ Wired up in v0.3.0 with 8 unit tests.
 
-### What this session suggests should come next:
-
-1. **Fix bugs (b) and (c) properly** — replace `refreshConversations()` with `@Query` or targeted observation. This is architectural but would eliminate the MainActor saturation pattern at its root.
-2. **Milestone 13 (Markdown)** — markdown rendering in assistant messages would significantly improve the chat experience, especially for LLM responses that use formatting.
-3. **Wire up `SchemaVersioning.swift`** — it's dead code. Before the next schema change, it should either be properly integrated or removed.
-4. **Swift 6 concurrency readiness** — the `@MainActor` additions and `Task.detached` fixes prepare for strict concurrency, but full Swift 6 compliance would catch remaining issues at compile time.
+### Remaining future work:
+- **M12: MCP Support** — tool use in LLM chat
+- **Swift 6 concurrency readiness** — full strict concurrency compliance
+- Code syntax highlighting (needs third-party dependency)
+- Priority queue for transcriptions, Lite Mode, Swift Package extraction

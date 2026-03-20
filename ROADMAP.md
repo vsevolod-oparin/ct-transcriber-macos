@@ -808,35 +808,37 @@ Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance
 
 ---
 
-## Milestone 13 (Future): Content Export & Markdown
+## Milestone 13: Content Export & Markdown ✅
 
 **Goal:** Make media downloadable, render markdown in chat, import/export conversations.
+**Status:** Complete (2026-03-20, v0.4.0) — see `reports/milestone-13-content-export-markdown.md`
 
 ### Tasks
 
 **Downloadable media:**
-- [ ] "Save As..." button/context menu on audio, video, and image attachments
-- [ ] Export transcription text as `.txt`, `.srt` (subtitles), or `.md` file
-- [ ] Drag attachment out of the app to Finder (export via drag)
+- [x] "Save As..." button/context menu on audio, video, and image attachments
+- [x] Export transcription text as `.txt`, `.srt` (subtitles), or `.md` file
+- [ ] Drag attachment out of the app to Finder (export via drag) — deferred
 
 **Markdown preview:**
-- [ ] Render markdown in assistant messages (bold, italic, code blocks, lists, headers)
-- [ ] Option to toggle between raw text and rendered markdown (per bubble or global setting)
-- [ ] Code blocks with syntax highlighting and copy button
-- [ ] Rendered inline in the bubble (not a separate window) for seamless reading
+- [x] Render markdown in assistant messages (bold, italic, code blocks, lists, headers, tables)
+- [x] Option to toggle between raw text and rendered markdown (per-conversation toolbar button)
+- [x] Code blocks with copy button (syntax highlighting deferred — needs third-party dep)
+- [x] Rendered inline in the bubble (not a separate window) for seamless reading
 
 **Conversation import/export:**
-- [ ] Export conversation as JSON (messages + metadata, without binary attachments)
-- [ ] Export conversation as Markdown file (human-readable)
-- [ ] Import conversation from JSON (creates new conversation with history)
-- [ ] Bulk export: export all conversations as a ZIP archive
-- [ ] File menu: Export Conversation (Cmd+E), Import Conversation
+- [x] Export conversation as JSON (messages + metadata, without binary attachments)
+- [x] Export conversation as Markdown file (human-readable)
+- [x] Export conversation as PDF (formatted with real NSTextTable tables, inline markdown)
+- [x] Import conversation from JSON (creates new conversation with history)
+- [x] Bulk export: export all conversations as a ZIP archive
+- [x] File menu: Export as PDF (Cmd+E), Export as JSON (Cmd+Shift+E), Import (Cmd+Shift+I)
 
 ### Test Criteria
-- [ ] Right-click audio attachment → Save As → saves to chosen location
-- [ ] Markdown renders correctly (bold, code blocks, lists)
-- [ ] Export → Import round-trip preserves all messages
-- [ ] Bulk export creates valid ZIP with all conversations
+- [x] Right-click audio attachment → Save As → saves to chosen location
+- [x] Markdown renders correctly (bold, code blocks, lists)
+- [x] Export → Import round-trip preserves all messages
+- [x] Bulk export creates valid ZIP with all conversations
 
 ---
 
@@ -866,8 +868,9 @@ M0 (Skeleton)
  └── M10 (Polish & DMG) ← all above
       └── M11 (Distribution Hardening) ✅
            └── M11b (Audit Fixes) ✅
-                ├── M12 (MCP) [future]
-                └── M13 (Export & Markdown) [future]
+                └── FSM + Anti-Pattern Audit (v0.3.x) ✅
+                     └── M13 (Export & Markdown) ✅ (v0.4.0)
+                          └── M12 (MCP) [future]
 ```
 
 ## Suggested Implementation Order
@@ -885,8 +888,9 @@ M0 (Skeleton)
 | **Phase I** | M10 | ✅ Done | Polish + DMG distribution |
 | **Phase J** | M11 | ✅ Done | Distribution hardening, setup UX, uninstaller (v0.2.0) |
 | **Phase J+** | M11b | ✅ Done | 6-agent audit: 22 fixes (security, data races, threading, performance) |
-| **Phase K** | M12 | Future | MCP exploration |
-| **Phase L** | M13 | Future | Content export, markdown preview, conversation import/export |
+| **Phase K** | FSM + audit | ✅ Done | FSM refactoring, anti-pattern audit, crash fixes, video sizing, PythonEnv caching (v0.3.x) |
+| **Phase L** | M13 | ✅ Done | Markdown rendering, PDF/JSON/MD export, import, media save (v0.4.0) |
+| **Phase M** | M12 | Future | MCP exploration |
 
 ---
 

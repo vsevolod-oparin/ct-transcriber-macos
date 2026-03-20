@@ -208,35 +208,19 @@ Build: **SUCCEEDED** | Unit tests: **ALL PASSED**
 23. **`finishTranscription` yields run loop** — `DispatchQueue.main.async` before starting next transcription.
 24. **`transcribeAudio` skips redundant save** — `skipSaveRefresh` flag when called from `attachFile`.
 
-## Known Bugs (not fully resolved)
+## Known Bugs — RESOLVED
 
-### Bug (b): Typing throttle during transcription transitions
+### Bug (b): Typing throttle during transcription transitions — FIXED
 
-**Symptom:** When one transcription finishes and another starts, there is a brief period where user input freezes. Typing appears to stop, then all characters appear at once.
+**Root cause identified via timing instrumentation:** `PythonEnvironment.check()` spawned a Python subprocess (`import ctranslate2; import faster_whisper; print('ok')`) on every `startTranscription` call — taking **1100-1800ms on MainActor**. All other operations were fast: `saveContext` (1-8ms), `refreshConversations` (1-2ms), `updateNSView` (2-52ms).
 
-**Root cause:** The transition between transcriptions involves `finishTranscription` → `saveContext()` + `refreshConversations()` → `startTranscription()` (via `DispatchQueue.main.async`). Each step runs on MainActor. `refreshConversations()` re-fetches all conversations from SwiftData and triggers `@Observable` notifications, which causes full SwiftUI view tree re-evaluation. The `DispatchQueue.main.async` yield helps but doesn't eliminate the freeze if the refresh + view update takes longer than a frame.
+**Fix:** Cached `PythonEnvironment.check()` result. Once `.ready`, subsequent calls return immediately. Cache invalidated on settings change or environment setup.
 
-**Mitigations applied:**
-- Transcription stream loop runs off MainActor (`Task.detached`)
-- UI updates throttled to 300ms intervals (zero MainActor hops between intervals)
-- `finishTranscription` yields run loop before starting next transcription
-- `skipSaveRefresh` eliminates redundant saves during attachment flow
+### Bug (c): Brief input block when attaching multiple audio files — FIXED
 
-**What would fully fix it:** Replace `refreshConversations()` (full re-fetch) with targeted SwiftData observation — only update the specific conversation that changed, not the entire list. Or use `@Query` which handles incremental updates. This is a significant architectural change.
+Same root cause as bug (b) — `PythonEnvironment.check()` ran per file. With caching, the 1.1s overhead is eliminated. Additional mitigations (coalesced refresh, skip redundant saves, detached file I/O) further reduce MainActor pressure.
 
-### Bug (c): Brief input block when attaching multiple audio files
-
-**Symptom:** When attaching multiple audio files at once, the first appears immediately, then there is a short gap where typing is blocked before the remaining files appear.
-
-**Root cause:** Each `attachFile` completion runs a `MainActor.run` block that creates a Message + Attachment, calls `saveContext()`, and triggers `postAttachActions` (which calls `transcribeAudio` → `startTranscription`). With N files, N completion blocks queue on MainActor. Each block does SQLite writes and triggers SwiftUI observation. The coalesced refresh helps (1 refresh instead of N), but the per-file `saveContext()` + `startTranscription()` setup work still runs synchronously.
-
-**Mitigations applied:**
-- File I/O (`FileStorage.copyToStorage`) runs in `Task.detached`
-- Audio track check (`AVAsset.tracks`) moved off MainActor into detached task
-- Coalesced refresh: N attachments → 1 `refreshConversations()` call
-- `skipSaveRefresh` in `transcribeAudio` when called from attachment flow
-
-**What would fully fix it:** Batch all N attachment creations into a single `saveContext()` call. This requires restructuring `attachFile` to collect results from all detached copy tasks before doing a single MainActor block for all N messages. Or: use a serial background queue for attachment processing and only notify MainActor once at the end.
+**Future optimization (not a bug):** Replacing `refreshConversations()` with `@Query` and batching attachment creation would improve responsiveness further, but these are performance enhancements, not bug fixes.
 
 ## Remaining (not fixed — future work)
 
