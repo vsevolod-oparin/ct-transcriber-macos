@@ -41,6 +41,12 @@ struct AttachmentView: View {
                 FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
             }
         }
+        .onDrag {
+            let url = FileStorage.url(for: attachment.storedName)
+            let provider = NSItemProvider(item: url as NSURL, typeIdentifier: "public.file-url")
+            provider.suggestedName = attachment.originalName
+            return provider
+        }
         .contextMenu {
             Button("Save As...") {
                 saveAttachment(attachment)
