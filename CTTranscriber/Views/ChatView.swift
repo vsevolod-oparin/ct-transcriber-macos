@@ -23,6 +23,7 @@ struct ChatView: View {
                           onClickBackground: { viewModel.requestInputFocus() },
                           seekRequest: $viewModel.seekRequest,
                           fontScale: fontScale,
+                          renderMarkdown: conversation.renderMarkdown ?? true,
                           conversationID: conversation.id,
                           scrollToTopTrigger: viewModel.scrollToTopTrigger,
                           scrollToBottomTrigger: viewModel.scrollToBottomTrigger)
@@ -87,6 +88,16 @@ struct ChatView: View {
                         }
                     }
                 }
+            }
+            ToolbarItem(placement: .automatic) {
+                let isOn = conversation.renderMarkdown ?? true
+                Button {
+                    conversation.renderMarkdown = !isOn
+                } label: {
+                    Image(systemName: isOn ? "text.badge.checkmark" : "text.badge.xmark")
+                        .foregroundStyle(isOn ? Color.accentColor : .secondary)
+                }
+                .help(isOn ? "Markdown on (click to disable)" : "Markdown off (click to enable)")
             }
         }
         .onChange(of: viewModel.focusCounter) { _, _ in

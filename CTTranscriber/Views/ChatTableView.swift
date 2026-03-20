@@ -68,6 +68,7 @@ struct ChatTableView: NSViewRepresentable {
     let onClickBackground: () -> Void
     @Binding var seekRequest: (id: UUID, storedName: String, time: TimeInterval)?
     let fontScale: Double
+    let renderMarkdown: Bool
     let conversationID: UUID?
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
@@ -113,6 +114,7 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.onDropFiles = onDropFiles
         context.coordinator.seekRequest = $seekRequest
         context.coordinator.fontScale = fontScale
+        context.coordinator.renderMarkdown = renderMarkdown
         tableView.onClickBackground = onClickBackground
 
         // Set initial data so the table isn't empty on first render
@@ -154,12 +156,21 @@ struct ChatTableView: NSViewRepresentable {
         coordinator.seekRequest = $seekRequest
 
         let oldFontScale = coordinator.fontScale
+        let oldRenderMarkdown = coordinator.renderMarkdown
         coordinator.fontScale = fontScale
+        coordinator.renderMarkdown = renderMarkdown
         coordinator.isStreaming = isStreaming
 
         // Skip all row updates during live resize — heights recalculated in viewDidEndLiveResize
         if let chatTable = coordinator.tableView as? ChatNSTableView, chatTable.isLiveResizing {
             coordinator.messages = liveMessages
+            return
+        }
+
+        // Markdown rendering toggled — invalidate all heights and reload
+        if renderMarkdown != oldRenderMarkdown, let tableView = coordinator.tableView {
+            coordinator.heightCache.removeAll()
+            tableView.reloadData()
             return
         }
 
@@ -317,6 +328,7 @@ struct ChatTableView: NSViewRepresentable {
         /// Shared seek request state — passed through to AudioPlayerView bindings.
         var seekRequest: Binding<(id: UUID, storedName: String, time: TimeInterval)?>?
         var fontScale: Double = 1.0
+        var renderMarkdown: Bool = true
         var conversationID: UUID?
 
         weak var tableView: NSTableView?
@@ -383,6 +395,7 @@ struct ChatTableView: NSViewRepresentable {
                 message: message,
                 isStreamingThis: isStreamingThis,
                 isExpanded: isExpanded,
+                renderMarkdown: renderMarkdown,
                 onRetry: { [weak self] in self?.onRetry(message) },
                 onCollapseToggle: { [weak self] in
                     self?.toggleExpanded(for: message.id, row: row)
@@ -432,6 +445,7 @@ struct ChatTableView: NSViewRepresentable {
                 message: message,
                 isStreamingThis: isStreamingThis,
                 isExpanded: isExpanded,
+                renderMarkdown: renderMarkdown,
                 onRetry: {},
                 onCollapseToggle: {},
                 seekRequest: seekBinding

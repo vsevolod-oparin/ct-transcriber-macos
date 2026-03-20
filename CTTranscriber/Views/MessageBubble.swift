@@ -106,6 +106,7 @@ struct MessageBubble: View {
     let message: Message
     var isStreamingThis: Bool = false
     var isExpanded: Bool = false
+    var renderMarkdown: Bool = true
     let onRetry: () -> Void
     let onCollapseToggle: () -> Void
     @Binding var seekRequest: (id: UUID, storedName: String, time: TimeInterval)?
@@ -235,8 +236,15 @@ struct MessageBubble: View {
                               fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale))
             } else {
                 HStack(alignment: .bottom, spacing: 4) {
-                    Text(message.content)
-                        .textSelection(.enabled)
+                    if !isUser && !isStreamingThis && renderMarkdown {
+                        MarkdownContentView(
+                            content: message.content,
+                            fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale)
+                        )
+                    } else {
+                        Text(message.content)
+                            .textSelection(.enabled)
+                    }
 
                     if isStreamingThis {
                         ProgressView()

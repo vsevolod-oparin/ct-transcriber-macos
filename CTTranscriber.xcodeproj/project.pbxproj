@@ -55,6 +55,7 @@
 		AA0001030000000000000003 /* MediaPlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002030000000000000003 /* MediaPlayerViews.swift */; };
 		AA0001040000000000000004 /* AttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002040000000000000004 /* AttachmentView.swift */; };
 		AA0001050000000000000005 /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002050000000000000005 /* ChatInputBar.swift */; };
+		AA0001060000000000000006 /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002060000000000000006 /* MarkdownContentView.swift */; };
 		BB0001010000000000000001 /* SchemaVersioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0002010000000000000001 /* SchemaVersioningTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -129,6 +130,7 @@
 		AA0002030000000000000003 /* MediaPlayerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPlayerViews.swift; sourceTree = "<group>"; };
 		AA0002040000000000000004 /* AttachmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentView.swift; sourceTree = "<group>"; };
 		AA0002050000000000000005 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
+		AA0002060000000000000006 /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
 		BB0002010000000000000001 /* SchemaVersioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioningTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -164,6 +166,7 @@
 				3B7AF3E78D8099AD3ACA4005 /* ContentView.swift */,
 				94890C099DFFDB85FAE02626 /* ConversationListView.swift */,
 				4B6CB7F271E8854A08F413E9 /* EnvironmentSetupView.swift */,
+				AA0002060000000000000006 /* MarkdownContentView.swift */,
 				AA0002030000000000000003 /* MediaPlayerViews.swift */,
 				AA0002020000000000000002 /* MessageBubble.swift */,
 				0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */,
@@ -459,6 +462,7 @@
 				AA0001030000000000000003 /* MediaPlayerViews.swift in Sources */,
 				AA0001040000000000000004 /* AttachmentView.swift in Sources */,
 				AA0001050000000000000005 /* ChatInputBar.swift in Sources */,
+				AA0001060000000000000006 /* MarkdownContentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

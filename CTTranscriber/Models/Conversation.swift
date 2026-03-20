@@ -10,6 +10,8 @@ final class Conversation {
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
 
+    var renderMarkdown: Bool?
+
     init(title: String = "New Conversation") {
         self.id = UUID()
         self.title = title
