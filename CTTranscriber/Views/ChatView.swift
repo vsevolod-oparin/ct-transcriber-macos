@@ -26,7 +26,8 @@ struct ChatView: View {
                           renderMarkdown: conversation.renderMarkdown ?? true,
                           conversationID: conversation.id,
                           scrollToTopTrigger: viewModel.scrollToTopTrigger,
-                          scrollToBottomTrigger: viewModel.scrollToBottomTrigger)
+                          scrollToBottomTrigger: viewModel.scrollToBottomTrigger,
+                          videoUpdateTrigger: viewModel.videoUpdateTrigger)
 
             if viewModel.isTranscribingCurrentConversation {
                 TranscriptionProgressBar(

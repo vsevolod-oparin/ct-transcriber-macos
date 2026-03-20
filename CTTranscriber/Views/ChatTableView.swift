@@ -72,6 +72,9 @@ struct ChatTableView: NSViewRepresentable {
     let conversationID: UUID?
     let scrollToTopTrigger: Int
     let scrollToBottomTrigger: Int
+    /// Bumped when video aspect ratios change (static cache, not SwiftData).
+    /// Forces updateNSView to re-evaluate video layout keys.
+    let videoUpdateTrigger: Int
 
     func makeCoordinator() -> Coordinator {
         Coordinator()

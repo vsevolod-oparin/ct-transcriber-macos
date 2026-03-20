@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SettingsManager.self) private var settingsManager
+    @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
     @Binding var modelManager: ModelManager?
     /// AppDelegate receives file-open events from macOS and queues URLs here.
     @ObservedObject var appDelegate: AppDelegate
@@ -26,7 +27,8 @@ struct ContentView: View {
                 showTaskManager: $showTaskManager,
                 setupReason: $setupReason,
                 settingsManager: settingsManager,
-                modelContext: modelContext
+                modelContext: modelContext,
+                conversations: conversations
             ))
     }
 
@@ -158,6 +160,7 @@ private struct ContentViewModifiers: ViewModifier {
     @Binding var setupReason: String
     let settingsManager: SettingsManager
     let modelContext: ModelContext
+    let conversations: [Conversation]
 
     func body(content: Content) -> some View {
         content
@@ -166,6 +169,9 @@ private struct ContentViewModifiers: ViewModifier {
                 if oldID != newID {
                     AudioPlaybackManager.shared.stopAll()
                 }
+            }
+            .onChange(of: conversations) { _, newConversations in
+                viewModel?.conversations = newConversations
             }
             .task {
                 AppLogger.info("ContentView.task starting", category: "app")
@@ -185,6 +191,7 @@ private struct ContentViewModifiers: ViewModifier {
                                            settingsManager: settingsManager,
                                            modelManager: modelManager!)
                     vm.taskManager = taskManager
+                    vm.conversations = conversations
                     viewModel = vm
                     AppLogger.info("ViewModel created", category: "app")
                 }

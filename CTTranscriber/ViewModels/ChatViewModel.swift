@@ -23,7 +23,7 @@ final class ChatViewModel {
     var highlightCursor: Int = 0
     var messageText: String = ""
     var searchText: String = ""
-    private(set) var conversations: [Conversation] = []
+    var conversations: [Conversation] = []
 
     /// Conversations filtered by search text.
     var filteredConversations: [Conversation] {
@@ -44,6 +44,9 @@ final class ChatViewModel {
         }
         messageText = drafts[newID ?? UUID()] ?? ""
     }
+    /// Incremented to force a ChatTableView re-evaluation after video aspect ratio changes.
+    /// Video aspect ratios live in a static cache (not SwiftData), so @Query won't detect them.
+    private(set) var videoUpdateTrigger: Int = 0
     /// Incremented whenever the detail view should reclaim input focus.
     private(set) var focusCounter: Int = 0
     /// Incremented to trigger scroll-to-top in the chat table.
@@ -99,9 +102,6 @@ final class ChatViewModel {
     private var modelContext: ModelContext
     private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingTranscriptions: [(audioPath: String, displayName: String, conversationID: UUID, messageID: UUID)] = []
-    /// Coalesces multiple rapid `refreshConversations()` calls into a single deferred refresh.
-    private var pendingRefreshWorkItem: DispatchWorkItem?
-
     // Dependencies — constructor-injected for testability
     let settingsManager: SettingsManager
     let modelManager: ModelManager
@@ -111,7 +111,6 @@ final class ChatViewModel {
         self.modelContext = modelContext
         self.settingsManager = settingsManager
         self.modelManager = modelManager
-        refreshConversations()
     }
 
     nonisolated deinit {
@@ -135,7 +134,6 @@ final class ChatViewModel {
         let conversation = Conversation()
         modelContext.insert(conversation)
         saveContext()
-        refreshConversations()
         selectedConversationID = conversation.id
     }
 
@@ -187,7 +185,6 @@ final class ChatViewModel {
         conversation.title = newTitle
         conversation.updatedAt = Date()
         saveContext()
-        refreshConversations()
     }
 
     func deleteConversation(_ conversation: Conversation) {
@@ -230,7 +227,6 @@ final class ChatViewModel {
         let wasSelected = selectedConversationID == conversation.id
         modelContext.delete(conversation)
         saveContext()
-        refreshConversations()
 
         if wasSelected {
             selectedConversationID = conversations.first?.id
@@ -294,7 +290,6 @@ final class ChatViewModel {
                     message.content = "⏳ Retrying transcription..."
                     message.lifecycle = .transcriptionQueued
                     saveContext()
-                    refreshConversations()
                     startTranscription(
                         audioPath: audioURL.path,
                         displayName: att.originalName,
@@ -309,7 +304,6 @@ final class ChatViewModel {
             conversation.messages.removeAll { $0.id == message.id }
             modelContext.delete(message)
             saveContext()
-            refreshConversations()
             requestLLMResponse(for: conversation)
         } else if message.role == .user {
             // Re-send the user message: delete it and any following assistant message, re-send
@@ -328,7 +322,6 @@ final class ChatViewModel {
             conversation.messages.append(newMessage)
             conversation.updatedAt = Date()
             saveContext()
-            refreshConversations()
             requestLLMResponse(for: conversation)
         }
     }
@@ -359,7 +352,6 @@ final class ChatViewModel {
         messageText = ""
         lastError = nil
         saveContext()
-        refreshConversations()
 
         requestLLMResponse(for: conversation)
     }
@@ -375,7 +367,6 @@ final class ChatViewModel {
             last.lifecycle = .complete
         }
         saveContext()
-        refreshConversations()
     }
 
     private func requestLLMResponse(for conversation: Conversation) {
@@ -387,7 +378,6 @@ final class ChatViewModel {
             errorMessage.lifecycle = .errorLLM
             conversation.messages.append(errorMessage)
             saveContext()
-            refreshConversations()
             return
         }
 
@@ -401,7 +391,6 @@ final class ChatViewModel {
         assistantMessage.lifecycle = .streaming
         conversation.messages.append(assistantMessage)
         saveContext()
-        refreshConversations()
 
         // Each conversation gets its own streaming Task — fully isolated
         let task = Task { [weak self] in
@@ -481,7 +470,6 @@ final class ChatViewModel {
             }
         }
         saveContext()
-        refreshConversations()
     }
 
     private func buildMessageDTOs(for conversation: Conversation) -> [ChatMessageDTO] {
@@ -584,7 +572,6 @@ final class ChatViewModel {
             conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
             conversation.updatedAt = Date()
             self.saveContext()
-            self.refreshConversations()
         }
         activities[convoID] = .generatingTitle(task: titleTask)
     }
@@ -604,7 +591,6 @@ final class ChatViewModel {
 
         modelContext.insert(conversation)
         saveContext()
-        refreshConversations()
         selectedConversationID = conversation.id
 
         for url in urls {
@@ -633,9 +619,6 @@ final class ChatViewModel {
                 conversation.messages.append(message)
                 conversation.updatedAt = Date()
                 saveContext()
-                // Use coalesced refresh: when multiple files are attached rapidly,
-                // only one refresh fires after the last attachment completes.
-                scheduleCoalescedRefresh()
 
                 self.postAttachActions(kind: kind, storedName: storedName, originalName: originalName,
                                        attachment: attachment, conversation: conversation,
@@ -653,7 +636,7 @@ final class ChatViewModel {
             Task.detached(priority: .utility) { [weak self] in
                 ChatTableView.Coordinator.precomputeVideoAspectRatio(url: videoURL)
                 await MainActor.run {
-                    self?.scheduleCoalescedRefresh()
+                    self?.videoUpdateTrigger += 1
                 }
             }
         }
@@ -680,7 +663,6 @@ final class ChatViewModel {
                     await MainActor.run { [self] in
                         attachment.convertedName = mp4Name
                         saveContext()
-                        refreshConversations()
                     }
                 }
             }
@@ -697,7 +679,6 @@ final class ChatViewModel {
         conversation.messages.append(transcriptMessage)
         if !skipSaveRefresh {
             saveContext()
-            refreshConversations()
         }
 
         // Queue if at capacity
@@ -836,7 +817,6 @@ final class ChatViewModel {
             transcriptionProgress = 0
         }
         saveContext()
-        refreshConversations()
 
         // Yield the run loop before starting next transcription — lets input events process
         let maxParallel = settingsManager.settings.transcription.maxParallelTranscriptions
@@ -951,7 +931,6 @@ final class ChatViewModel {
             do {
                 let data = try Data(contentsOf: url)
                 let conversation = try ConversationExporter.importJSON(data: data, into: modelContext)
-                refreshConversations()
                 selectedConversationID = conversation.id
             } catch {
                 lastError = "Import failed: \(error.localizedDescription)"
@@ -976,18 +955,6 @@ final class ChatViewModel {
 
     // MARK: - Private
 
-    private func refreshConversations() {
-        let descriptor = FetchDescriptor<Conversation>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        do {
-            conversations = try modelContext.fetch(descriptor)
-        } catch {
-            AppLogger.error("Failed to fetch conversations: \(error)", category: "data")
-            conversations = []
-        }
-    }
-
     private func saveContext() {
         do {
             try modelContext.save()
@@ -997,15 +964,6 @@ final class ChatViewModel {
     }
 
     func refreshAfterVideoChange() {
-        scheduleCoalescedRefresh()
-    }
-
-    private func scheduleCoalescedRefresh() {
-        pendingRefreshWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.refreshConversations()
-        }
-        pendingRefreshWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+        videoUpdateTrigger += 1
     }
 }
