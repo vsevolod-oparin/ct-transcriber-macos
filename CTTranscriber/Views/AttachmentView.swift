@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Attachment View
 
@@ -17,26 +18,54 @@ struct AttachmentView: View {
     }
 
     var body: some View {
-        switch attachment.kind {
-        case .audio:
-            AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
-        case .video:
-            if isUnsupportedVideo && attachment.convertedName == nil {
-                UnsupportedVideoView(attachment: attachment, isConverting: true)
-            } else {
-                let playName = attachment.convertedName ?? attachment.storedName
-                let url = FileStorage.url(for: playName)
-                let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
-                VideoPlayerView(attachment: attachment,
-                                playbackStoredName: attachment.convertedName,
-                                initialAspectRatio: ratio,
-                                seekRequest: $seekRequest
-                )
+        Group {
+            switch attachment.kind {
+            case .audio:
+                AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
+            case .video:
+                if isUnsupportedVideo && attachment.convertedName == nil {
+                    UnsupportedVideoView(attachment: attachment, isConverting: true)
+                } else {
+                    let playName = attachment.convertedName ?? attachment.storedName
+                    let url = FileStorage.url(for: playName)
+                    let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
+                    VideoPlayerView(attachment: attachment,
+                                    playbackStoredName: attachment.convertedName,
+                                    initialAspectRatio: ratio,
+                                    seekRequest: $seekRequest
+                    )
+                }
+            case .image:
+                ImageAttachmentView(attachment: attachment)
+            case .text:
+                FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
             }
-        case .image:
-            ImageAttachmentView(attachment: attachment)
-        case .text:
-            FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
+        }
+        .contextMenu {
+            Button("Save As...") {
+                saveAttachment(attachment)
+            }
+            Button("Reveal in Finder") {
+                let url = FileStorage.url(for: attachment.storedName)
+                NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+            }
+        }
+    }
+
+    private func saveAttachment(_ attachment: Attachment) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = attachment.originalName
+        if panel.runModal() == .OK, let destURL = panel.url {
+            let sourceURL = FileStorage.url(for: attachment.storedName)
+            do {
+                try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Save Failed"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
         }
     }
 }

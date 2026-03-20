@@ -49,6 +49,7 @@
 		EC20B31187147F173BFA7292 /* transcribe.py in Resources */ = {isa = PBXBuildFile; fileRef = FF7A27F7EC2A302BBF0DB51A /* transcribe.py */; };
 		F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */; };
 		FAA9D555A4F88EA8389597B6 /* SchemaVersioning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C43381790B4D7F432649B1E /* SchemaVersioning.swift */; };
+		CC0001010000000000000001 /* ConversationExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002010000000000000001 /* ConversationExporter.swift */; };
 		FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */; };
 		AA0001010000000000000001 /* ChatTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002010000000000000001 /* ChatTableView.swift */; };
 		AA0001020000000000000002 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002020000000000000002 /* MessageBubble.swift */; };
@@ -105,6 +106,7 @@
 		6749D28C6C39FDF71A8D3636 /* LLMErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMErrorTests.swift; sourceTree = "<group>"; };
 		68E0F677BDB9DCE279A10C7F /* TaskManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskManagerView.swift; sourceTree = "<group>"; };
 		6C43381790B4D7F432649B1E /* SchemaVersioning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaVersioning.swift; sourceTree = "<group>"; };
+		CC0002010000000000000001 /* ConversationExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationExporter.swift; sourceTree = "<group>"; };
 		733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStorage.swift; sourceTree = "<group>"; };
 		7762C803FAF07C9D5686AA62 /* VideoConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoConverter.swift; sourceTree = "<group>"; };
 		85030AAD005E8E52FD0852E5 /* BackgroundTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundTask.swift; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 				20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */,
 				4F65432DCDD2B9CC9C65C558 /* AppUninstaller.swift */,
 				FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */,
+				CC0002010000000000000001 /* ConversationExporter.swift */,
 				733F64ADBB07315EFC4D8CD2 /* FileStorage.swift */,
 				29AF36BE09F983DF2B4D426D /* ModelManager.swift */,
 				3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */,
@@ -438,6 +441,7 @@
 				0C6DAE0E0E3BB1B8D180662E /* ChatViewModel.swift in Sources */,
 				C3FC14CE7048400AFE174901 /* ContentView.swift in Sources */,
 				988D58DA9740238EDAC3E3CB /* Conversation.swift in Sources */,
+				CC0001010000000000000001 /* ConversationExporter.swift in Sources */,
 				E816061D4DC7642B48E733DC /* ConversationListView.swift in Sources */,
 				BAA9B052D765EE9781B469D8 /* EnvironmentSetupView.swift in Sources */,
 				FE28F286885BF46266AA3FE7 /* FileStorage.swift in Sources */,

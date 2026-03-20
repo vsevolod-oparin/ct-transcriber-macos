@@ -76,6 +76,30 @@ struct CTTranscriberApp: App {
                 .keyboardShortcut("o", modifiers: .command)
             }
 
+            // File menu: Export / Import
+            CommandGroup(after: .importExport) {
+                Button("Export Conversation as JSON...") {
+                    NotificationCenter.default.post(name: .exportConversationJSON, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: .command)
+
+                Button("Export Conversation as Markdown...") {
+                    NotificationCenter.default.post(name: .exportConversationMarkdown, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("Export All Conversations...") {
+                    NotificationCenter.default.post(name: .exportAllConversations, object: nil)
+                }
+
+                Divider()
+
+                Button("Import Conversation...") {
+                    NotificationCenter.default.post(name: .importConversation, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
+
             // View menu: Font scaling
             CommandGroup(after: .textFormatting) {
                 Button("Increase Font Size") {
@@ -164,6 +188,10 @@ struct CTTranscriberApp: App {
 extension Notification.Name {
     static let createNewConversation = Notification.Name("createNewConversation")
     static let videoAspectRatioDidChange = Notification.Name("videoAspectRatioDidChange")
+    static let exportConversationJSON = Notification.Name("exportConversationJSON")
+    static let exportConversationMarkdown = Notification.Name("exportConversationMarkdown")
+    static let exportAllConversations = Notification.Name("exportAllConversations")
+    static let importConversation = Notification.Name("importConversation")
 }
 
 // MARK: - App Delegate

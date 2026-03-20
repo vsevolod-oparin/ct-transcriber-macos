@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Message Content Analysis (computed once, cached)
 
@@ -347,6 +348,18 @@ struct MessageBubble: View {
             } label: {
                 Label("Export as SRT...", systemImage: "doc.text")
             }
+
+            Button {
+                exportAsText(content: message.content)
+            } label: {
+                Label("Export as Text...", systemImage: "doc.plaintext")
+            }
+
+            Button {
+                exportAsMarkdown(content: message.content)
+            } label: {
+                Label("Export as Markdown...", systemImage: "doc.richtext")
+            }
         }
 
         if info.isError {
@@ -411,6 +424,63 @@ struct MessageBubble: View {
                 alert.runModal()
             }
         }
+    }
+
+    private func exportAsText(content: String) {
+        let plain = content.split(separator: "\n").map { line in
+            let str = String(line)
+            if let bracket = str.range(of: "] ") {
+                return String(str[bracket.upperBound...])
+            }
+            return str
+        }.joined(separator: "\n")
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = deriveExportFilename(extension: "txt")
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try plain.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Export Failed"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+        }
+    }
+
+    private func exportAsMarkdown(content: String) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.nameFieldStringValue = deriveExportFilename(extension: "md")
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try content.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Export Failed"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+        }
+    }
+
+    /// Derives an export filename from the audio attachment's original name in the previous message.
+    private func deriveExportFilename(extension ext: String) -> String {
+        if let conversation = message.conversation {
+            let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+            if let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 {
+                let prev = sorted[myIndex - 1]
+                if let att = prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video }) {
+                    let baseName = (att.originalName as NSString).deletingPathExtension
+                    return "\(baseName).\(ext)"
+                }
+            }
+        }
+        return "transcript.\(ext)"
     }
 
     /// Converts "m:ss" or "h:mm:ss" to SRT format "HH:MM:SS,000"

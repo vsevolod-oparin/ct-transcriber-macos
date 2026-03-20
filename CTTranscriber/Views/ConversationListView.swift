@@ -66,6 +66,17 @@ struct ConversationListView: View {
                             Label("Rename", systemImage: "pencil")
                         }
                         Divider()
+                        Button {
+                            viewModel.exportConversationJSON(conversation)
+                        } label: {
+                            Label("Export as JSON...", systemImage: "arrow.down.doc")
+                        }
+                        Button {
+                            viewModel.exportConversationMarkdown(conversation)
+                        } label: {
+                            Label("Export as Markdown...", systemImage: "doc.richtext")
+                        }
+                        Divider()
                         Button(role: .destructive) {
                             viewModel.deleteConversation(conversation)
                         } label: {

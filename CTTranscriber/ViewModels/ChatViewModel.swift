@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 import AVFoundation
+import UniformTypeIdentifiers
 
 enum ConversationActivity {
     case streaming(task: Task<Void, Never>)
@@ -885,6 +886,74 @@ final class ChatViewModel {
             return String(format: "%d:%02d.%d", m, s, tenths)
         } else {
             return String(format: "%d.%d", s, tenths)
+        }
+    }
+
+    // MARK: - Conversation Export / Import
+
+    func exportConversationJSON(_ conversation: Conversation) {
+        guard let data = try? ConversationExporter.exportJSON(conversation: conversation) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        let safeName = conversation.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "\(safeName).json"
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try data.write(to: url)
+            } catch {
+                lastError = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func exportConversationMarkdown(_ conversation: Conversation) {
+        let md = ConversationExporter.exportMarkdown(conversation: conversation)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        let safeName = conversation.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "\(safeName).md"
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try md.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                lastError = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func importConversation() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let data = try Data(contentsOf: url)
+                let conversation = try ConversationExporter.importJSON(data: data, into: modelContext)
+                refreshConversations()
+                selectedConversationID = conversation.id
+            } catch {
+                lastError = "Import failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func exportAllConversations() {
+        guard !conversations.isEmpty else { return }
+        do {
+            let data = try ConversationExporter.exportBulkZIP(conversations: conversations)
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [UTType(filenameExtension: "zip") ?? .data]
+            panel.nameFieldStringValue = "conversations-export.zip"
+            if panel.runModal() == .OK, let url = panel.url {
+                try data.write(to: url)
+            }
+        } catch {
+            lastError = "Export failed: \(error.localizedDescription)"
         }
     }
 
