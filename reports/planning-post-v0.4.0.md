@@ -18,14 +18,14 @@ All milestones M0–M11b and M13 are complete. The FSM refactoring, anti-pattern
 - Implement MCP client connecting to local MCP servers
 - Allow user to configure MCP server endpoints
 
-## High-Value Improvements (no milestone needed)
+## High-Value Improvements — COMPLETED
 
-| Item | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| Code syntax highlighting | Small | High | HighlightSwift SPM dependency. 50+ languages, auto-detection, dark mode. |
-| `@Query` instead of `refreshConversations()` | Medium | Medium | Current approach re-fetches ALL conversations on every state change. `@Query` gives incremental updates. |
-| Drag attachment to Finder | Small | Low | NSItemProvider integration. Right-click "Save As" exists. |
-| Swift 6 strict concurrency | Medium | Medium | `@MainActor` and `Task.detached` fixes prepare for it. Strict checking catches remaining edge cases. |
+| Item | Status | Notes |
+|------|--------|-------|
+| Code syntax highlighting | ✅ Done | Regex-based, zero dependencies. Keywords, types, strings, numbers, comments, decorators. Cached. |
+| `@Query` instead of `refreshConversations()` | ✅ Done | Removed ~20 manual refresh calls. SwiftData auto-updates via `@Query`. |
+| Drag attachment to Finder | ✅ Done | `.onDrag` with NSItemProvider on AttachmentView. |
+| Swift 6 strict concurrency | ✅ Done | `SWIFT_STRICT_CONCURRENCY = complete`. Zero concurrency warnings. |
 
 ## Lower-Priority Deferred Items
 
@@ -33,7 +33,6 @@ All milestones M0–M11b and M13 are complete. The FSM refactoring, anti-pattern
 |------|--------|-------|
 | Share extension | M9 | Finder share menu "Open in CT Transcriber" |
 | Line-level timestamp click-to-seek | M7b+ | Infrastructure ready via `seekRequest` |
-| Visibility-based audio playback pause | M7b+ | Pause when cell scrolls off screen |
 | `NSCache` for video thumbnails | M7b+ | Current in-memory loading sufficient |
 | `isDynamicContentLocked` for scroll perf | M8c | Disable layout recalc during rapid scroll |
 | 1000+ message stress test | M8c | Not yet tested at scale |
@@ -41,11 +40,12 @@ All milestones M0–M11b and M13 are complete. The FSM refactoring, anti-pattern
 | Timer → `.onReceive(Timer.publish)` | Audit #7 | Functional but not idiomatic SwiftUI |
 | Priority queue for transcriptions | TelegramSwift research | User-initiated preempts auto-queued |
 | Lite Mode / Low Power | TelegramSwift research | Reduce streaming frequency, smaller models |
-| Extract into Swift Package | TelegramSwift research | When codebase exceeds ~50 files (currently 39) |
+| Extract into Swift Packages | TelegramSwift research | When codebase exceeds ~50 files (currently 40) |
+
+**Rejected:** Visibility-based audio playback pause — bad UX for podcasts/long audio. Mini-player handles scroll-out correctly.
 
 ## Recommended Priority Order
 
-1. **Code syntax highlighting** — highest UX return for lowest effort
+1. **Line-level timestamp click-to-seek** — small, high UX value for transcription users
 2. **M12: MCP** — biggest feature expansion
-3. **`@Query` migration** — architectural improvement for scale
-4. **Swift 6 readiness** — future-proofing
+3. **1000+ message stress test** — validates NSTableView at scale

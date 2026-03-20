@@ -558,7 +558,7 @@ Telegram's chat is built on a heavily customized NSTableView with:
 
 **Deferred:**
 - [ ] Click transcript timestamp to seek (line-level UI — infrastructure ready via `seekRequest`)
-- [ ] Visibility-based audio playback pause (needs scroll delegate integration)
+- [x] ~~Visibility-based audio playback pause~~ — Rejected: bad UX for podcasts/long audio. Mini-player handles scroll-out correctly.
 - [ ] `NSCache` for thumbnails (current in-memory loading sufficient at scale)
 
 ### Test Criteria
@@ -818,12 +818,12 @@ Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance
 **Downloadable media:**
 - [x] "Save As..." button/context menu on audio, video, and image attachments
 - [x] Export transcription text as `.txt`, `.srt` (subtitles), or `.md` file
-- [ ] Drag attachment out of the app to Finder (export via drag) — deferred
+- [x] Drag attachment out of the app to Finder (export via drag)
 
 **Markdown preview:**
 - [x] Render markdown in assistant messages (bold, italic, code blocks, lists, headers, tables)
 - [x] Option to toggle between raw text and rendered markdown (per-conversation toolbar button)
-- [x] Code blocks with copy button (syntax highlighting deferred — needs third-party dep)
+- [x] Code blocks with syntax highlighting and copy button (regex-based, zero dependencies)
 - [x] Rendered inline in the bubble (not a separate window) for seamless reading
 
 **Conversation import/export:**
@@ -890,6 +890,7 @@ M0 (Skeleton)
 | **Phase J+** | M11b | ✅ Done | 6-agent audit: 22 fixes (security, data races, threading, performance) |
 | **Phase K** | FSM + audit | ✅ Done | FSM refactoring, anti-pattern audit, crash fixes, video sizing, PythonEnv caching (v0.3.x) |
 | **Phase L** | M13 | ✅ Done | Markdown rendering, PDF/JSON/MD export, import, media save (v0.4.0) |
+| **Phase L+** | Post-M13 | ✅ Done | Syntax highlighting, @Query migration, Swift strict concurrency, drag-to-Finder |
 | **Phase M** | M12 | Future | MCP exploration |
 
 ---

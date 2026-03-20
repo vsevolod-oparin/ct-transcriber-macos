@@ -148,14 +148,14 @@ Import creates a new `Conversation` with `Message` objects. Attachment metadata 
 **Downloadable media:**
 - [x] "Save As..." context menu on audio, video, and image attachments
 - [x] Export transcription text as `.txt`, `.srt`, `.md`
-- [ ] Drag attachment out of the app to Finder (deferred — lower priority)
+- [x] Drag attachment out of the app to Finder (via `.onDrag` with NSItemProvider)
 
 **Markdown preview:**
 - [x] Render markdown in assistant messages (bold, italic, code blocks, lists, headers)
 - [x] Option to toggle between raw text and rendered markdown (per-conversation toolbar button)
 - [x] Code blocks with copy button
 - [x] Rendered inline in the bubble
-- [ ] Syntax highlighting in code blocks (deferred — would require third-party dependency)
+- [x] Syntax highlighting in code blocks (regex-based, zero dependencies — keywords, strings, comments, numbers, types, decorators)
 
 **Conversation import/export:**
 - [x] Export conversation as JSON
@@ -170,3 +170,26 @@ Import creates a new `Conversation` with `Message` objects. Attachment metadata 
 - [x] Markdown renders correctly (bold, code blocks, lists)
 - [x] Export → Import round-trip preserves all messages
 - [x] Bulk export creates valid ZIP with all conversations
+
+---
+
+## Post-M13 Improvements (same session)
+
+**Syntax highlighting** (`SyntaxHighlighter.swift`):
+- Regex-based, zero dependencies. Covers keywords (Swift, Python, JS/TS, C/C++, Rust, Go, Java, Ruby, shell), types, strings, numbers, comments, decorators.
+- Cached by `(code.hashValue, fontSize, isDark)` with 64-entry LRU. Dark mode aware.
+
+**`@Query` migration:**
+- Replaced ~20 manual `refreshConversations()` calls with `@Query(sort: \Conversation.updatedAt, order: .reverse)` in ContentView.
+- Removed `refreshConversations()`, `scheduleCoalescedRefresh()`, `pendingRefreshWorkItem`.
+- SwiftData auto-detects changes after `saveContext()`.
+
+**Swift strict concurrency:**
+- Enabled `SWIFT_STRICT_CONCURRENCY = complete` in both Debug and Release.
+- Fixed ~40 warnings: `nonisolated(unsafe)` for static caches, `@MainActor` on Coordinator/ConversationExporter, `MainActor.assumeIsolated` for Timer callbacks, `UncheckedSendableBox` for SwiftData objects crossing isolation boundaries.
+- Zero concurrency warnings remaining.
+
+**Drag attachment to Finder:**
+- `.onDrag` on AttachmentView with `NSItemProvider` providing the file URL and original filename.
+
+**Rejected:** Visibility-based audio playback pause — bad UX for podcasts. Mini-player design handles scroll-out correctly.
