@@ -191,23 +191,46 @@ enum ConversationExporter {
                         result.append(NSAttributedString(string: "\n"))
                     case .table(let rows):
                         guard !rows.isEmpty else { break }
+                        let colCount = rows.map(\.count).max() ?? 0
+                        guard colCount > 0 else { break }
 
-                        // Render each row as "Header: Value" blocks for reliable formatting.
-                        // Text-based column alignment breaks with proportional fonts,
-                        // multi-line cells (from <br>), and mixed-width scripts (Cyrillic, CJK).
-                        let headers = rows[0]
-                        let labelAttrs: [NSAttributedString.Key: Any] = [.font: boldFont, .foregroundColor: NSColor.secondaryLabelColor]
+                        let table = NSTextTable()
+                        table.numberOfColumns = colCount
+                        table.setContentWidth(100, type: .percentageValueType)
 
-                        for row in rows.dropFirst() {
-                            for (c, cell) in row.enumerated() {
-                                let header = c < headers.count ? headers[c] : "Column \(c + 1)"
-                                result.append(NSAttributedString(string: "\(header): ", attributes: labelAttrs))
-                                let cellRendered = Self.markdownToNSAttributedString(cell, baseFont: bodyFont)
-                                result.append(cellRendered)
-                                result.append(NSAttributedString(string: "\n"))
+                        let borderColor = NSColor.separatorColor
+                        let headerBg = NSColor.controlBackgroundColor
+
+                        for (rowIdx, row) in rows.enumerated() {
+                            for colIdx in 0..<colCount {
+                                let cellText = colIdx < row.count ? row[colIdx] : ""
+                                let cellFont = rowIdx == 0 ? boldFont : bodyFont
+
+                                let block = NSTextTableBlock(table: table, startingRow: rowIdx, rowSpan: 1, startingColumn: colIdx, columnSpan: 1)
+                                block.setWidth(0.5, type: .absoluteValueType, for: .border)
+                                block.setBorderColor(borderColor)
+                                block.setWidth(4, type: .absoluteValueType, for: .padding)
+                                if rowIdx == 0 {
+                                    block.backgroundColor = headerBg
+                                }
+
+                                let cellParagraph = NSMutableParagraphStyle()
+                                cellParagraph.textBlocks = [block]
+
+                                let cellAttr = Self.markdownToNSAttributedString(cellText, baseFont: cellFont)
+                                let mutable = NSMutableAttributedString(attributedString: cellAttr)
+                                mutable.addAttribute(.paragraphStyle, value: cellParagraph, range: NSRange(location: 0, length: mutable.length))
+                                // Ensure trailing newline for each cell
+                                if !cellText.hasSuffix("\n") {
+                                    let nlAttr = NSMutableAttributedString(string: "\n")
+                                    nlAttr.addAttribute(.paragraphStyle, value: cellParagraph, range: NSRange(location: 0, length: 1))
+                                    nlAttr.addAttribute(.font, value: cellFont, range: NSRange(location: 0, length: 1))
+                                    mutable.append(nlAttr)
+                                }
+                                result.append(mutable)
                             }
-                            result.append(NSAttributedString(string: "\n"))
                         }
+                        result.append(NSAttributedString(string: "\n"))
                     }
                 }
             }
