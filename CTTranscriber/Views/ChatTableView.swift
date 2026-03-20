@@ -39,6 +39,28 @@ struct ChatTableView: NSViewRepresentable {
         return parts.joined(separator: "|")
     }
 
+    /// Synchronously reads video track metadata for all video attachments in the message list
+    /// and populates the static aspect ratio cache. Called before reloadData so that
+    /// measureRowHeight uses correct dimensions on the first render.
+    static func precomputeVideoRatios(for messages: [Message]) {
+        for msg in messages where !msg.isDeleted && msg.modelContext != nil {
+            for att in msg.attachments where att.kind == .video && !att.isDeleted && att.modelContext != nil {
+                let playName = att.convertedName ?? att.storedName
+                let url = FileStorage.url(for: playName)
+                guard Coordinator.videoAspectRatio(url: url) == 16.0 / 9.0 else { continue }
+                let asset = AVAsset(url: url)
+                if let track = asset.tracks(withMediaType: .video).first {
+                    let size = track.naturalSize.applying(track.preferredTransform)
+                    let w = abs(size.width)
+                    let h = abs(size.height)
+                    if w > 0 && h > 0 {
+                        Coordinator.setVideoAspectRatio(w / h, for: url)
+                    }
+                }
+            }
+        }
+    }
+
     let messages: [Message]
     let isStreaming: Bool
     let onRetry: (Message) -> Void
@@ -100,6 +122,9 @@ struct ChatTableView: NSViewRepresentable {
         context.coordinator.contentLengthSnapshot = Dictionary(
             uniqueKeysWithValues: messages.map { ($0.id, Self.messageHash($0)) }
         )
+
+        // Precompute video aspect ratios before first render
+        Self.precomputeVideoRatios(for: messages)
 
         // Reload after setting data — the table already queried numberOfRows
         // during setup (returning 0), so it needs an explicit reload.
@@ -164,6 +189,8 @@ struct ChatTableView: NSViewRepresentable {
             coordinator.conversationID = conversationID
             coordinator.messages = liveMessages
             coordinator.heightCache.removeAll()
+
+            Self.precomputeVideoRatios(for: liveMessages)
 
             coordinator.expandedMessages.removeAll()
             coordinator.contentLengthSnapshot = Dictionary(uniqueKeysWithValues: liveMessages.map { ($0.id, Self.messageHash($0)) })
@@ -417,25 +444,6 @@ struct ChatTableView: NSViewRepresentable {
 
             let controller = NSHostingController(rootView: bubble)
             let size = controller.sizeThatFits(in: NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude))
-
-            // Diagnostic: also measure with NSHostingView for comparison
-            let hostingView = NSHostingView(rootView: bubble)
-            hostingView.frame = NSRect(x: 0, y: 0, width: targetWidth, height: 10000)
-            hostingView.layoutSubtreeIfNeeded()
-            let fittingHeight = hostingView.fittingSize.height
-            let intrinsicHeight = hostingView.intrinsicContentSize.height
-
-            let hasVideo = !message.isDeleted && message.modelContext != nil &&
-                message.attachments.contains { $0.kind == .video }
-            if hasVideo || abs(size.height - fittingHeight) > 5 {
-                let attCount = message.attachments.count
-                let videoAtt = message.attachments.first { $0.kind == .video }
-                let converted = videoAtt?.convertedName ?? "nil"
-                let playName = videoAtt?.convertedName ?? videoAtt?.storedName ?? "?"
-                let ratio = Coordinator.videoAspectRatio(url: FileStorage.url(for: playName))
-                AppLogger.debug("measureRow[\(row)]: sizeThatFits=\(Int(size.height)) fitting=\(Int(fittingHeight)) targetW=\(Int(targetWidth)) atts=\(attCount) converted=\(converted) ratio=\(String(format:"%.2f",ratio)) fontScale=\(fontScale) content='\(message.content.prefix(40))'", category: "table-height")
-            }
-
             return max(size.height, 30)
         }
 

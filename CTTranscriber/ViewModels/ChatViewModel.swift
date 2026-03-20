@@ -669,6 +669,13 @@ final class ChatViewModel {
                 let transSettings = settingsManager.settings.transcription
                 if let mp4Name = await VideoConverter.convertToMP4(
                     storedName: storedName, settings: transSettings) {
+                    // Precompute aspect ratio from the converted MP4 BEFORE updating UI.
+                    // The original file (WebM/MKV) can't be read by AVAsset, so
+                    // precomputeVideoAspectRatio fails for it. Computing from the MP4
+                    // ensures the first render after conversion uses the correct ratio.
+                    let mp4URL = FileStorage.url(for: mp4Name)
+                    ChatTableView.Coordinator.precomputeVideoAspectRatio(url: mp4URL)
+
                     await MainActor.run { [self] in
                         attachment.convertedName = mp4Name
                         saveContext()

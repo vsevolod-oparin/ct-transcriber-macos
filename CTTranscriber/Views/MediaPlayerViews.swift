@@ -256,10 +256,12 @@ struct VideoPlayerView: View {
     }
 
     /// Compute video display dimensions from aspect ratio.
+    /// Portrait videos get more height since they're already narrow.
     private var videoSize: (width: CGFloat, height: CGFloat) {
         let maxW = sp(350)
-        let maxH = sp(300)
         let ratio = effectiveAspectRatio
+        let isPortrait = ratio < 1.0
+        let maxH = isPortrait ? sp(450) : sp(300)
         let h = min(maxH, maxW / ratio)
         let w = h * ratio
         return (w, h)
