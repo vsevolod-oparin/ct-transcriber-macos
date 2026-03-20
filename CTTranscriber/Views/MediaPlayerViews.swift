@@ -14,7 +14,6 @@ struct AudioPlayerView: View {
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
     @State private var isDragging = false
-    @State private var timer: Timer?
     @State private var videoThumbnail: NSImage?
     @State private var loadError: String?
     @Environment(\.fontScale) private var fontScale
@@ -89,6 +88,16 @@ struct AudioPlayerView: View {
         .clipShape(RoundedRectangle(cornerRadius: sp(6)))
         .onAppear { loadMetadata() }
         .onDisappear { cleanup() }
+        .onReceive(Timer.publish(every: Self.progressUpdateInterval, on: .main, in: .common).autoconnect()) { _ in
+            guard isPlaying, let player, !isDragging else { return }
+            currentTime = player.currentTime
+            AudioPlaybackManager.shared.currentTime = currentTime
+            if !player.isPlaying {
+                isPlaying = false
+                persistPosition()
+                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+            }
+        }
         .onChange(of: seekRequest?.id) { _, _ in
             guard let req = seekRequest, req.storedName == attachment.storedName else { return }
             if player == nil { loadMetadata() }
@@ -155,7 +164,6 @@ struct AudioPlayerView: View {
             onResume: { [self] in
                 player?.play()
                 isPlaying = true
-                startTimer()
             },
             onSeek: { [self] time in
                 player?.currentTime = time
@@ -163,7 +171,6 @@ struct AudioPlayerView: View {
                 if !isPlaying {
                     player?.play()
                     isPlaying = true
-                    startTimer()
                 }
             },
             onGetCurrentTime: {
@@ -173,48 +180,24 @@ struct AudioPlayerView: View {
 
         player?.play()
         isPlaying = true
-        startTimer()
     }
 
     private func pausePlayback() {
         player?.pause()
         isPlaying = false
-        stopTimer()
         persistPosition()
         AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
     }
 
-    private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: Self.progressUpdateInterval, repeats: true) { _ in
-            MainActor.assumeIsolated {
-                guard let player, !isDragging else { return }
-                currentTime = player.currentTime
-                AudioPlaybackManager.shared.currentTime = currentTime
-                if !player.isPlaying {
-                    isPlaying = false
-                    persistPosition()
-                    stopTimer()
-                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
-                }
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
 
     private func cleanup() {
         persistPosition()
         // Don't stop playback when scrolling out — the mini-player takes over.
-        // Only stop the UI timer; the AVAudioPlayer continues in the background.
-        // The AudioPlaybackManager keeps tracking the state.
+        // The .onReceive timer auto-stops when the view disappears.
         if !isPlaying {
             player?.stop()
             AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
         }
-        stopTimer()
     }
 
     /// Saves current playback position to the SwiftData Attachment model.
@@ -378,6 +361,15 @@ struct VideoPlayerView: View {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             MainActor.assumeIsolated {
                 guard !isDragging else { return }
+
+                // Detect playback started by native AVPlayerView controls
+                // (bypasses our startPlayback method)
+                if player.rate > 0 && !isPlaying {
+                    startPlayback()
+                } else if player.rate == 0 && isPlaying {
+                    pausePlayback()
+                }
+
                 let seconds = CMTimeGetSeconds(time)
                 if seconds.isFinite {
                     currentTime = seconds
