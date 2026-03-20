@@ -22,10 +22,29 @@ enum PythonEnvironment {
     private static let bundledMinicondaPath =
         NSHomeDirectory() + "/.ct-transcriber/miniconda"
 
+    /// Cached result of the last successful environment check.
+    /// Cleared when settings change via `invalidateCache()`.
+    private static var cachedStatus: Status?
+    private static var cachedSettingsKey: String?
+
+    /// Invalidates the cached environment check. Call when transcription settings change.
+    static func invalidateCache() {
+        cachedStatus = nil
+        cachedSettingsKey = nil
+    }
+
     // MARK: - Detection
 
     /// Checks if the conda environment is set up and functional.
+    /// Results are cached: once `.ready`, subsequent calls return immediately
+    /// until `invalidateCache()` is called or settings change.
     static func check(settings: TranscriptionSettings) -> Status {
+        let settingsKey = "\(settings.condaEnvName)"
+        if let cached = cachedStatus, cachedSettingsKey == settingsKey,
+           case .ready = cached {
+            return cached
+        }
+
         AppLogger.info("Checking Python environment...", category: "python-env")
 
         guard let condaPath = findConda() else {
@@ -60,7 +79,10 @@ enum PythonEnvironment {
         }
 
         AppLogger.info("Python environment ready", category: "python-env")
-        return .ready(pythonPath: pythonPath)
+        let result = Status.ready(pythonPath: pythonPath)
+        cachedStatus = result
+        cachedSettingsKey = settingsKey
+        return result
     }
 
     /// Returns the path to the Python executable in the conda env, or nil.

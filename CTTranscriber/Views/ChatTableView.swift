@@ -421,7 +421,6 @@ struct ChatTableView: NSViewRepresentable {
             return height
         }
 
-        /// Expensive height calculation — only called on cache miss.
         private func measureRowHeight(message: Message, row: Int, tableView: NSTableView) -> CGFloat {
             let isExpanded = expandedMessages.contains(message.id)
             let isStreamingThis = isStreaming && row == messages.count - 1 && message.role == .assistant
