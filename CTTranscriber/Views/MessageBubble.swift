@@ -229,9 +229,26 @@ struct MessageBubble: View {
     @ViewBuilder
     private func bubbleContent(info: MessageAnalysis) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if info.isLong && !isExpanded && !isStreamingThis {
+            if info.isLong && !isExpanded && !isStreamingThis && info.hasTimestamps,
+               let audioName = findAudioAttachment() {
+                TranscriptTextView(
+                    content: info.collapsedPreview,
+                    audioStoredName: audioName,
+                    seekRequest: $seekRequest,
+                    fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale),
+                    textColor: isUser ? .white : .labelColor
+                )
+            } else if info.isLong && !isExpanded && !isStreamingThis {
                 Text(info.collapsedPreview)
                     .textSelection(.enabled)
+            } else if info.hasTimestamps && !isStreamingThis, let audioName = findAudioAttachment() {
+                TranscriptTextView(
+                    content: message.content,
+                    audioStoredName: audioName,
+                    seekRequest: $seekRequest,
+                    fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale),
+                    textColor: isUser ? .white : .labelColor
+                )
             } else if message.content.count > largeTextThreshold && !isStreamingThis {
                 LargeTextView(text: message.content, textColor: isUser ? .white : .labelColor,
                               fontSize: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale))
@@ -533,6 +550,183 @@ struct MessageBubble: View {
         let min = Int(time) / 60
         let sec = Int(time) % 60
         return String(format: "%d:%02d", min, sec)
+    }
+}
+
+// MARK: - Transcript Text View (NSTextView with clickable timestamps + text selection)
+
+/// NSTextView-based transcript renderer with clickable timestamp lines.
+/// Click handling uses line-number detection (not NSTextView links) to avoid
+/// coordinate offset issues in the NSHostingView → NSTableView embedding.
+struct TranscriptTextView: NSViewRepresentable {
+    let content: String
+    let audioStoredName: String
+    @Binding var seekRequest: (id: UUID, storedName: String, time: TimeInterval)?
+    let fontSize: CGFloat
+    let textColor: NSColor
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> TranscriptNSTextView {
+        let textView = TranscriptNSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isVerticallyResizable = false
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+        textView.coordinator = context.coordinator
+        return textView
+    }
+
+    func updateNSView(_ textView: TranscriptNSTextView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.lineTimestamps = parseLineTimestamps()
+        let currentLen = textView.textStorage?.length ?? 0
+        if currentLen != content.count {
+            textView.textStorage?.setAttributedString(buildAttributedString())
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView textView: TranscriptNSTextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 400
+        textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        let usedRect = textView.layoutManager?.usedRect(for: textView.textContainer!) ?? .zero
+        let height = usedRect.height + textView.textContainerInset.height * 2
+        return CGSize(width: width, height: height)
+    }
+
+    /// Parse timestamps per source line (index in the original content).
+    private func parseLineTimestamps() -> [Int: TimeInterval] {
+        var result: [Int: TimeInterval] = [:]
+        let lines = content.components(separatedBy: "\n")
+        for (i, line) in lines.enumerated() {
+            let str = line.trimmingCharacters(in: .whitespaces)
+            guard str.hasPrefix("["),
+                  let arrowRange = str.range(of: " \u{2192} ") ?? str.range(of: "\u{2192}") else { continue }
+            let timeStr = String(str[str.index(after: str.startIndex)..<arrowRange.lowerBound])
+            if let time = parseTimestamp(timeStr) {
+                result[i] = time
+            }
+        }
+        return result
+    }
+
+    private func buildAttributedString() -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let bodyFont = NSFont.systemFont(ofSize: fontSize)
+        let timestampFont = NSFont.monospacedSystemFont(ofSize: fontSize * 0.9, weight: .regular)
+        let timestampColor = NSColor.secondaryLabelColor
+        let bodyAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: textColor]
+
+        let lines = content.components(separatedBy: "\n")
+        for (i, line) in lines.enumerated() {
+            let str = line.trimmingCharacters(in: .whitespaces)
+
+            if str.hasPrefix("["),
+               let bracketEnd = str.firstIndex(of: "]"),
+               str.contains("\u{2192}") {
+                let bracketContent = String(str[str.startIndex...bracketEnd])
+                let afterBracket = String(str[str.index(after: bracketEnd)...])
+                let tsAttrs: [NSAttributedString.Key: Any] = [.font: timestampFont, .foregroundColor: timestampColor]
+                result.append(NSAttributedString(string: bracketContent, attributes: tsAttrs))
+                result.append(NSAttributedString(string: afterBracket, attributes: bodyAttrs))
+            } else {
+                result.append(NSAttributedString(string: str, attributes: bodyAttrs))
+            }
+
+            if i < lines.count - 1 {
+                result.append(NSAttributedString(string: "\n", attributes: bodyAttrs))
+            }
+        }
+        return result
+    }
+
+    private func parseTimestamp(_ str: String) -> TimeInterval? {
+        let trimmed = str.trimmingCharacters(in: .whitespaces)
+        let parts = trimmed.split(separator: ":")
+        if parts.count == 2 {
+            guard let min = Double(parts[0]), let sec = Double(parts[1]) else { return nil }
+            return min * 60 + sec
+        } else if parts.count == 1 {
+            return Double(trimmed)
+        }
+        return nil
+    }
+
+    @MainActor
+    class Coordinator {
+        var parent: TranscriptTextView
+        var lineTimestamps: [Int: TimeInterval] = [:]
+
+        init(_ parent: TranscriptTextView) {
+            self.parent = parent
+        }
+
+        func handleClick(at point: NSPoint, in textView: NSTextView) {
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else { return }
+
+            // Convert click point to text container coordinates
+            let containerOrigin = textView.textContainerOrigin
+            let pointInContainer = NSPoint(x: point.x - containerOrigin.x, y: point.y - containerOrigin.y)
+
+            // Find the character index at this point
+            let charIndex = layoutManager.characterIndex(
+                for: pointInContainer,
+                in: textContainer,
+                fractionOfDistanceBetweenInsertionPoints: nil
+            )
+
+            // Find which source line this character belongs to
+            let fullText = textView.string
+            let prefix = fullText.prefix(charIndex)
+            let sourceLine = prefix.filter({ $0 == "\n" }).count
+
+            if let time = lineTimestamps[sourceLine] {
+                let mgr = AudioPlaybackManager.shared
+                if mgr.currentlyPlayingID == parent.audioStoredName {
+                    mgr.seek(to: time)
+                    if !mgr.isPlaying {
+                        mgr.togglePlayPause()
+                    }
+                } else {
+                    parent.seekRequest = (id: UUID(), storedName: parent.audioStoredName, time: time)
+                }
+            }
+        }
+    }
+}
+
+/// Custom NSTextView that detects single clicks on timestamp lines.
+/// Uses line-number based detection instead of NSTextView link attributes
+/// to avoid coordinate offset issues in NSHostingView embedding.
+class TranscriptNSTextView: NSTextView {
+    var coordinator: TranscriptTextView.Coordinator?
+
+    override func mouseDown(with event: NSEvent) {
+        let clickCount = event.clickCount
+        let point = convert(event.locationInWindow, from: nil)
+
+        // Single click on a timestamp line → seek
+        if clickCount == 1 {
+            coordinator?.handleClick(at: point, in: self)
+        }
+
+        // Always pass through for selection handling
+        super.mouseDown(with: event)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }
 

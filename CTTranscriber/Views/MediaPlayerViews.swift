@@ -145,6 +145,11 @@ struct AudioPlayerView: View {
             duration: duration,
             player: player,
             onPause: { [self] in pausePlayback() },
+            onResume: { [self] in
+                player?.play()
+                isPlaying = true
+                startTimer()
+            },
             onSeek: { [self] time in
                 player?.currentTime = time
                 currentTime = time
@@ -300,7 +305,8 @@ struct VideoPlayerView: View {
         .onDisappear { cleanup() }
         .onChange(of: seekRequest?.id) { _, _ in
             guard let req = seekRequest, req.storedName == attachment.storedName else { return }
-            avPlayer?.seek(to: CMTime(seconds: req.time, preferredTimescale: 600))
+            let target = CMTime(seconds: req.time, preferredTimescale: 600)
+            avPlayer?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
             currentTime = req.time
             if !isPlaying { startPlayback() }
             seekRequest = nil
@@ -397,14 +403,18 @@ struct VideoPlayerView: View {
             duration: duration,
             player: avPlayer,
             onPause: {
-                // Use manager's retained player — survives cell destruction
                 let mgr = AudioPlaybackManager.shared
                 (mgr.activePlayer as? AVPlayer)?.pause()
                 if let id = mgr.currentlyPlayingID { mgr.didStopPlaying(storedName: id) }
             },
+            onResume: {
+                guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return }
+                p.play()
+            },
             onSeek: { time in
                 guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return }
-                p.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+                let target = CMTime(seconds: time, preferredTimescale: 600)
+                p.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 p.play()
             },
             onGetCurrentTime: {

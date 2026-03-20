@@ -23,6 +23,8 @@ final class AudioPlaybackManager {
 
     /// Callback for the currently playing view to pause itself.
     private var pauseCallback: (() -> Void)?
+    /// Callback for the currently playing view to resume playback.
+    private var resumeCallback: (() -> Void)?
     /// Callback to seek the currently playing media.
     private var seekCallback: ((TimeInterval) -> Void)?
     /// Callback to get current time from the player (for mini-player updates).
@@ -42,6 +44,7 @@ final class AudioPlaybackManager {
         duration: TimeInterval = 0,
         player: AnyObject? = nil,
         onPause: @escaping () -> Void,
+        onResume: @escaping () -> Void = {},
         onSeek: @escaping (TimeInterval) -> Void = { _ in },
         onGetCurrentTime: @escaping () -> TimeInterval = { 0 }
     ) {
@@ -56,6 +59,7 @@ final class AudioPlaybackManager {
         self.isPlaying = true
         self.activePlayer = player
         pauseCallback = onPause
+        resumeCallback = onResume
         seekCallback = onSeek
         getCurrentTimeCallback = onGetCurrentTime
         startMiniPlayerTimer()
@@ -80,6 +84,7 @@ final class AudioPlaybackManager {
             currentTime = 0
             duration = 0
             pauseCallback = nil
+            resumeCallback = nil
             seekCallback = nil
             getCurrentTimeCallback = nil
             activePlayer = nil
@@ -97,6 +102,7 @@ final class AudioPlaybackManager {
         currentTime = 0
         duration = 0
         pauseCallback = nil
+        resumeCallback = nil
         seekCallback = nil
         getCurrentTimeCallback = nil
         activePlayer = nil
@@ -121,10 +127,16 @@ final class AudioPlaybackManager {
 
     /// Toggle play/pause from the mini-player.
     func togglePlayPause() {
-        pauseCallback?()
+        if isPlaying {
+            pauseCallback?()
+        } else {
+            resumeCallback?()
+            isPlaying = true
+            startMiniPlayerTimer()
+        }
     }
 
-    /// Seek from the mini-player.
+    /// Seek from the mini-player or transcript click.
     func seek(to time: TimeInterval) {
         seekCallback?(time)
         currentTime = time
