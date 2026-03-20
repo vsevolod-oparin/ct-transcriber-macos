@@ -534,7 +534,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;
@@ -572,7 +572,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;

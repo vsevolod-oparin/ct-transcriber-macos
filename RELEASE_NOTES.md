@@ -2,6 +2,44 @@
 
 ---
 
+## v0.5.1 (2026-03-20)
+
+### Timestamp Click-to-Seek
+- Click any timestamp line in a transcript to seek the audio/video player to that position.
+- Works in both collapsed and expanded transcripts.
+- Full cross-line text selection for copy-paste (NSTextView-based renderer).
+- Timestamps rendered in monospaced secondary font — no underlines, pointing hand cursor on hover.
+- Seek uses AudioPlaybackManager directly when player is active (works even when audio cell scrolled out).
+- Frame-accurate seeking: `AVPlayer.seek` with `toleranceBefore: .zero, toleranceAfter: .zero`.
+
+### Mini Player Fix
+- Play/pause toggle now works correctly. Previously the mini player could only pause — now it can resume via new `resumeCallback` on AudioPlaybackManager.
+
+### macOS Services Integration
+- Right-click audio/video files in Finder → Services → "Transcribe with CT Transcriber".
+- No separate extension target — uses macOS Services via Info.plist `NSServices` entry.
+- Auto-cleanup: service registration lives in app bundle, removed when app is deleted.
+
+### NSCache Migration
+- Video aspect ratio cache: `[String: CGFloat]` dictionary → `NSCache<NSString, NSNumber>`. Auto-evicts under memory pressure.
+- Video thumbnail cache: per-cell `@State` regeneration → shared `NSCache<NSString, NSImage>`. Thumbnails persist across cell reuse — no re-generation on scroll-back.
+
+### Timer Modernization
+- AudioPlayerView: replaced `Timer.scheduledTimer` with `.onReceive(Timer.publish)`. No manual `startTimer()`/`stopTimer()`, no `MainActor.assumeIsolated` workaround, no leak risk.
+
+### Video Playback Fix
+- Fixed simultaneous video playback bug: native `AVPlayerView` floating controls could start playback without notifying `AudioPlaybackManager`. Now detected via periodic observer rate monitoring — our `startPlayback()`/`pausePlayback()` syncs with native control state.
+
+### Stress Test
+- Validated NSTableView at 1000+ and 5000 messages. Per-message hash: 0.004ms, sort: 0.080ms, markdown parse: 0.028ms. All sub-millisecond in hot paths.
+- `isDynamicContentLocked` scroll optimization attempted and rejected — placeholder cells caused visible flashing without meaningful performance gain. Height caching is sufficient.
+
+### Rejected Optimizations
+- `isDynamicContentLocked` (scroll placeholders) — visual flashing worse than any gain.
+- Visibility-based audio pause — bad UX for podcasts (rejected in v0.5.0).
+
+---
+
 ## v0.5.0 (2026-03-20)
 
 ### Syntax Highlighting
