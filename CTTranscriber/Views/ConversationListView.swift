@@ -76,6 +76,11 @@ struct ConversationListView: View {
                         } label: {
                             Label("Export as Markdown...", systemImage: "doc.richtext")
                         }
+                        Button {
+                            viewModel.exportConversationPDF(conversation)
+                        } label: {
+                            Label("Export as PDF...", systemImage: "doc.text")
+                        }
                         Divider()
                         Button(role: .destructive) {
                             viewModel.deleteConversation(conversation)

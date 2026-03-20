@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import AppKit
 
 enum ConversationExporter {
 
@@ -117,6 +118,165 @@ enum ConversationExporter {
 
         try context.save()
         return conversation
+    }
+
+    // MARK: - PDF Export
+
+    static func exportPDF(conversation: Conversation, pageWidth: CGFloat = 612) -> Data? {
+        guard !conversation.isDeleted, conversation.modelContext != nil else { return nil }
+
+        let sorted = conversation.messages
+            .filter { !$0.isDeleted && $0.modelContext != nil }
+            .sorted { $0.timestamp < $1.timestamp }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+
+        let bodyFont = NSFont.systemFont(ofSize: 12)
+        let boldFont = NSFont.boldSystemFont(ofSize: 12)
+        let titleFont = NSFont.boldSystemFont(ofSize: 18)
+        let headerFont = NSFont.boldSystemFont(ofSize: 13)
+        let codeFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let captionFont = NSFont.systemFont(ofSize: 10)
+        let separatorColor = NSColor.separatorColor
+
+        let result = NSMutableAttributedString()
+
+        // Title
+        let titleAttrs: [NSAttributedString.Key: Any] = [.font: titleFont, .foregroundColor: NSColor.labelColor]
+        result.append(NSAttributedString(string: conversation.title + "\n\n", attributes: titleAttrs))
+
+        let headerAttrs: [NSAttributedString.Key: Any] = [.font: headerFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let bodyAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: NSColor.labelColor]
+        let codeAttrs: [NSAttributedString.Key: Any] = [
+            .font: codeFont,
+            .foregroundColor: NSColor.labelColor,
+            .backgroundColor: NSColor.controlBackgroundColor
+        ]
+        let captionAttrs: [NSAttributedString.Key: Any] = [.font: captionFont, .foregroundColor: NSColor.tertiaryLabelColor]
+
+        for message in sorted {
+            let roleName = message.role == .user ? "You" : "Assistant"
+            let time = dateFormatter.string(from: message.timestamp)
+            result.append(NSAttributedString(string: "\(roleName) — \(time)\n", attributes: headerAttrs))
+
+            for attachment in message.attachments where !attachment.isDeleted && attachment.modelContext != nil {
+                result.append(NSAttributedString(string: "📎 \(attachment.originalName) (\(attachment.kind.rawValue))\n", attributes: captionAttrs))
+            }
+
+            if !message.content.isEmpty {
+                let segments = parseMarkdown(message.content)
+                for segment in segments {
+                    switch segment {
+                    case .text(let text):
+                        let rendered = Self.markdownToNSAttributedString(text, baseFont: bodyFont)
+                        result.append(rendered)
+                        result.append(NSAttributedString(string: "\n"))
+                    case .codeBlock(let code, let lang):
+                        if let lang {
+                            result.append(NSAttributedString(string: "\(lang):\n", attributes: captionAttrs))
+                        }
+                        result.append(NSAttributedString(string: code + "\n", attributes: codeAttrs))
+                    case .header(let text, let level):
+                        let hFont: NSFont
+                        switch level {
+                        case 1: hFont = NSFont.boldSystemFont(ofSize: 18)
+                        case 2: hFont = NSFont.boldSystemFont(ofSize: 16)
+                        case 3: hFont = NSFont.boldSystemFont(ofSize: 14)
+                        default: hFont = NSFont.boldSystemFont(ofSize: 13)
+                        }
+                        let rendered = Self.markdownToNSAttributedString(text, baseFont: hFont)
+                        result.append(rendered)
+                        result.append(NSAttributedString(string: "\n"))
+                    case .table(let rows):
+                        guard !rows.isEmpty else { break }
+
+                        // Render each row as "Header: Value" blocks for reliable formatting.
+                        // Text-based column alignment breaks with proportional fonts,
+                        // multi-line cells (from <br>), and mixed-width scripts (Cyrillic, CJK).
+                        let headers = rows[0]
+                        let labelAttrs: [NSAttributedString.Key: Any] = [.font: boldFont, .foregroundColor: NSColor.secondaryLabelColor]
+
+                        for row in rows.dropFirst() {
+                            for (c, cell) in row.enumerated() {
+                                let header = c < headers.count ? headers[c] : "Column \(c + 1)"
+                                result.append(NSAttributedString(string: "\(header): ", attributes: labelAttrs))
+                                let cellRendered = Self.markdownToNSAttributedString(cell, baseFont: bodyFont)
+                                result.append(cellRendered)
+                                result.append(NSAttributedString(string: "\n"))
+                            }
+                            result.append(NSAttributedString(string: "\n"))
+                        }
+                    }
+                }
+            }
+            result.append(NSAttributedString(string: "\n", attributes: bodyAttrs))
+
+            // Separator line
+            let separator = NSMutableAttributedString(string: "─────────────────────────────────\n\n", attributes: [:])
+            separator.addAttribute(.foregroundColor, value: separatorColor, range: NSRange(location: 0, length: separator.length))
+            separator.addAttribute(.font, value: captionFont, range: NSRange(location: 0, length: separator.length))
+            result.append(separator)
+        }
+
+        // Render to PDF via NSTextView
+        let margin: CGFloat = 40
+        let textWidth = pageWidth - margin * 2
+        let textStorage = NSTextStorage(attributedString: result)
+        let textContainer = NSTextContainer(containerSize: NSSize(width: textWidth, height: .greatestFiniteMagnitude))
+        textContainer.lineFragmentPadding = 0
+        let layoutManager = NSLayoutManager()
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let totalHeight = usedRect.height + margin * 2
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: pageWidth, height: totalHeight))
+        textView.textContainerInset = NSSize(width: margin, height: margin)
+        textView.textStorage?.setAttributedString(result)
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+
+        return textView.dataWithPDF(inside: textView.bounds)
+    }
+
+    /// Converts a markdown string to NSAttributedString with inline formatting
+    /// (bold, italic, strikethrough, inline code, links). Falls back to plain text.
+    private static func markdownToNSAttributedString(_ text: String, baseFont: NSFont) -> NSAttributedString {
+        let cleaned = text
+            .replacingOccurrences(of: "<br/>", with: "\n")
+            .replacingOccurrences(of: "<br />", with: "\n")
+            .replacingOccurrences(of: "<br>", with: "\n")
+
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        if let swiftAttr = try? AttributedString(markdown: cleaned, options: options) {
+            let nsAttr = NSMutableAttributedString(swiftAttr)
+            // Apply base font to ranges that don't have explicit font attributes
+            let fullRange = NSRange(location: 0, length: nsAttr.length)
+            nsAttr.enumerateAttribute(.font, in: fullRange) { value, range, _ in
+                if let existingFont = value as? NSFont {
+                    // Preserve bold/italic traits from markdown, but use base font size
+                    let traits = NSFontManager.shared.traits(of: existingFont)
+                    var newFont = baseFont
+                    if traits.contains(.boldFontMask) {
+                        newFont = NSFontManager.shared.convert(newFont, toHaveTrait: .boldFontMask)
+                    }
+                    if traits.contains(.italicFontMask) {
+                        newFont = NSFontManager.shared.convert(newFont, toHaveTrait: .italicFontMask)
+                    }
+                    nsAttr.addAttribute(.font, value: newFont, range: range)
+                } else {
+                    nsAttr.addAttribute(.font, value: baseFont, range: range)
+                }
+            }
+            nsAttr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+            return nsAttr
+        }
+        return NSAttributedString(string: cleaned, attributes: [.font: baseFont, .foregroundColor: NSColor.labelColor])
     }
 
     // MARK: - Bulk Export (ZIP)

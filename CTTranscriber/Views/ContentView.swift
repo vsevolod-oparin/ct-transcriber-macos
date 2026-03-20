@@ -259,6 +259,11 @@ private struct ExportImportNotifications: ViewModifier {
                     viewModel?.exportConversationMarkdown(convo)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .exportConversationPDF)) { _ in
+                if let convo = viewModel?.selectedConversation {
+                    viewModel?.exportConversationPDF(convo)
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .exportAllConversations)) { _ in
                 viewModel?.exportAllConversations()
             }

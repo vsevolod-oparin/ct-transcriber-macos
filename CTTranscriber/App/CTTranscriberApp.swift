@@ -78,15 +78,19 @@ struct CTTranscriberApp: App {
 
             // File menu: Export / Import
             CommandGroup(after: .importExport) {
+                Button("Export Conversation as PDF...") {
+                    NotificationCenter.default.post(name: .exportConversationPDF, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: .command)
+
                 Button("Export Conversation as JSON...") {
                     NotificationCenter.default.post(name: .exportConversationJSON, object: nil)
                 }
-                .keyboardShortcut("e", modifiers: .command)
+                .keyboardShortcut("e", modifiers: [.command, .shift])
 
                 Button("Export Conversation as Markdown...") {
                     NotificationCenter.default.post(name: .exportConversationMarkdown, object: nil)
                 }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
 
                 Button("Export All Conversations...") {
                     NotificationCenter.default.post(name: .exportAllConversations, object: nil)
@@ -190,6 +194,7 @@ extension Notification.Name {
     static let videoAspectRatioDidChange = Notification.Name("videoAspectRatioDidChange")
     static let exportConversationJSON = Notification.Name("exportConversationJSON")
     static let exportConversationMarkdown = Notification.Name("exportConversationMarkdown")
+    static let exportConversationPDF = Notification.Name("exportConversationPDF")
     static let exportAllConversations = Notification.Name("exportAllConversations")
     static let importConversation = Notification.Name("importConversation")
 }

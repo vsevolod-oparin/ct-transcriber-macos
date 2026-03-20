@@ -925,6 +925,23 @@ final class ChatViewModel {
         }
     }
 
+    func exportConversationPDF(_ conversation: Conversation) {
+        guard let data = ConversationExporter.exportPDF(conversation: conversation) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        let safeName = conversation.title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "\(safeName).pdf"
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try data.write(to: url)
+            } catch {
+                lastError = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     func importConversation() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
