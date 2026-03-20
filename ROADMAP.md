@@ -790,21 +790,253 @@ Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance
 
 ---
 
-## Milestone 12 (Future): MCP Support
+## Milestone 12: MCP Support
 
-**Goal:** Extend LLM capabilities with Model Context Protocol tools.
+**Goal:** Connect CT Transcriber to the MCP ecosystem — let the LLM use external tools (task managers, calendars, note-taking apps, web search) directly from the chat.
 
-### Tasks (Investigation)
-- [ ] Research MCP Swift SDK availability
-- [ ] Evaluate MCP tools: image search, maps, drawing
-- [ ] Design tool-use UI in chat (tool calls displayed as expandable cards)
-- [ ] Implement MCP client connecting to local MCP servers
-- [ ] Allow user to configure MCP server endpoints
+**Research:** Complete — see `reports/research-mcp-integration.md`
+**SDK:** Official Swift MCP SDK (`modelcontextprotocol/swift-sdk`), macOS 13.0+, Swift 6.1+. Fully compatible.
+**Differentiator:** No competing transcription app offers MCP support.
 
-### Test Criteria
-- [ ] MCP server connects successfully
-- [ ] Tool call results displayed inline in chat
-- [ ] User can enable/disable MCP tools in settings
+### M12a: MCP Infrastructure (MVP)
+
+**Goal:** MCP client that can connect to servers and execute tools from the chat.
+
+- [ ] Add official MCP Swift SDK as SPM dependency
+- [ ] Create `MCPClientManager` service — discovers configured servers, spawns stdio subprocesses or connects HTTP, maintains Client instances, aggregates available tools
+- [ ] MCP server configuration UI in Settings — add/remove servers, command + args + env vars, enable/disable toggles, health status indicators
+- [ ] JSON config file support (compatible with Claude Desktop format)
+- [ ] Extend `ChatViewModel` to present MCP tools to LLM via tool-use API (Anthropic `tool_use` / OpenAI `tools` parameter)
+- [ ] Handle `tool_use` responses — call MCPClientManager to execute, return results to LLM
+- [ ] Tool-call UI in chat — expandable cards showing tool name, parameters, status (pending/success/failed), and result
+- [ ] User approval prompts for destructive tools (write, delete, send)
+- [ ] Bundle Filesystem MCP server for basic file read/write
+
+### Test Criteria (M12a)
+- [ ] Configure an MCP server in Settings → server connects and lists tools
+- [ ] Ask LLM to use a tool → tool call card appears in chat → result displayed
+- [ ] Destructive tool shows approval prompt before execution
+- [ ] Server crash doesn't affect the app (subprocess isolation)
+
+---
+
+### M12b: macOS Native Integrations
+
+**Goal:** Connect to macOS-native apps via MCP — Calendar, Reminders, Notes.
+
+- [ ] Apple Calendar integration via Apple Events MCP server (EventKit) — create events, set reminders, query upcoming meetings
+- [ ] Apple Reminders integration — create tasks with due dates from meeting action items
+- [ ] Apple Notes integration — push meeting summaries and structured notes
+- [ ] Bundled or auto-configured — these servers use local macOS APIs, no external accounts needed
+
+### Test Criteria (M12b)
+- [ ] Transcribe meeting → ask LLM to create follow-up events → events appear in Calendar
+- [ ] Ask LLM to extract action items → tasks created in Reminders
+- [ ] Ask LLM to save meeting notes → note created in Apple Notes
+
+---
+
+### M12c: Productivity Ecosystem
+
+**Goal:** Connect to popular third-party productivity tools.
+
+- [ ] Notion MCP (official) — create pages, update databases, search workspace
+- [ ] Todoist MCP (official) — create tasks, set priorities and due dates
+- [ ] Obsidian MCP — read/write/search notes in local Obsidian vaults
+- [ ] Slack MCP (official) — post meeting summaries to channels
+- [ ] Web search (Brave Search / Exa MCP) — enrich conversations with web research
+
+### Test Criteria (M12c)
+- [ ] Transcribe meeting → LLM creates structured Notion page with action items
+- [ ] Ask LLM to post summary to Slack channel → message appears
+- [ ] Ask about a topic → LLM searches web and incorporates findings
+
+---
+
+### M12d: Advanced Workflows
+
+**Goal:** Enable multi-step agentic workflows and persistent knowledge.
+
+- [ ] Memory MCP server — persistent knowledge graph across conversations ("What did we decide about pricing in the last 3 meetings?")
+- [ ] Multi-step tool chains — LLM executes sequence of tools (transcribe → extract → create tasks → send summary)
+- [ ] Social media content generation from transcripts (Social Media Sync MCP)
+- [ ] Multi-language subtitle pipeline (Subtitle MCP)
+- [ ] MCP server registry browser — discover and install servers from the official registry
+
+### Test Criteria (M12d)
+- [ ] Ask about past conversations → Memory server provides context
+- [ ] One-shot meeting workflow: creates tasks + notes + calendar events + Slack message
+- [ ] Generate social media posts from a podcast transcript
+
+---
+
+### M12e: Rich Media Tools (Podcast Companion)
+
+**Goal:** Visual context enrichment during podcast/audio listening — maps, images, historical figures, generated illustrations.
+**Research:** See `reports/research-mcp-visual-media.md`
+
+**Rich tool-result rendering:**
+- [ ] Extend tool-call UI cards to display images (handle MCP `ImageContent` base64 + fetch from URLs)
+- [ ] MapKit widget for coordinates — render interactive map pins from location data returned by MCP tools
+- [ ] Bio/entity cards — structured layout with portrait image, name, dates, short description
+- [ ] Image gallery in tool results — multiple images from search results displayed as a grid
+
+**MCP servers for visual content:**
+- [ ] Google Maps Grounding Lite or Mapbox MCP — geocoding, place search → coordinates for MapKit rendering
+- [ ] Wikipedia MCP — article summaries, section extraction for context cards
+- [ ] Wikidata MCP — structured entity data (birth/death, nationality, relationships)
+- [ ] Unsplash MCP — high-quality photos of places, objects, landmarks (returns URLs)
+- [ ] Image generation MCP (DALL-E / Replicate / Flux) — generate podcast thumbnails, illustrations from descriptions
+
+**Architecture decision:** MCP images are base64-only with ~1MB limit. For a media-rich podcast companion:
+- MCP tools return **metadata + URLs** (lightweight, fast)
+- CT Transcriber renders natively using **MapKit, AsyncImage, custom card views** (rich, no size limit)
+- Reserve base64 `ImageContent` for generated images only
+
+**MCP Apps (optional, future):** The MCP Apps extension (January 2026) allows tools to return interactive HTML/JS UIs in sandboxed iframes. Could be used for interactive maps, dashboards, and knowledge panels without building native views.
+
+### Test Criteria (M12e)
+- [ ] Ask "Show me Danang on a map" → MapKit widget with pin appears in chat
+- [ ] Ask "Who was Emperor Minh Mang?" → bio card with portrait, dates, summary
+- [ ] Ask "Show me Vietnamese beaches" → image grid from Unsplash
+- [ ] Ask "Draw a thumbnail for this podcast" → generated image displayed inline
+
+---
+
+### M12f: Rich PDF Export (LLM-Designed Documents)
+
+**Goal:** Generate professional, magazine-quality PDF reports from conversations — with embedded images, maps, bio cards, and professional typography. The LLM designs the document structure; CT Transcriber renders via HTML/CSS + WebKit.
+**Research:** See `reports/research-rich-pdf-export.md`
+
+**HTML/CSS + WebKit rendering (zero dependencies):**
+- [ ] `RichPDFExporter` service — generates HTML from structured document plan, renders via `WKWebView.createPDF()`
+- [ ] CSS template with professional typography (Georgia/serif, proper line-height, margins, @page rules)
+- [ ] Convert markdown segments to HTML (reuse `parseMarkdown()` output)
+- [ ] Embed images as base64 data URIs (fetch from URLs, encode)
+- [ ] Map images via `MKMapSnapshotter` → base64 → `<img>` in HTML
+- [ ] Code blocks with CSS syntax highlighting colors
+- [ ] Styled tables with borders and header row
+- [ ] Multiple CSS themes: magazine, academic, minimal
+
+**LLM document design:**
+- [ ] Structured document plan JSON schema (title, sections, media placement, captions)
+- [ ] LLM generates plan from conversation content + collected MCP tool results
+- [ ] `generate_pdf` tool — native MCP tool handled by CT Transcriber internally
+- [ ] Document preview in a sheet — show live HTML in `WKWebView` before export
+
+**Conversational document editing:**
+- [ ] Document plan persists as conversation state — LLM reads and modifies it on each turn
+- [ ] Live preview updates on each LLM edit — user sees changes instantly in the preview sheet
+- [ ] Natural language editing: "Move the map to the top", "Make the intro shorter", "Add a section about Hue", "Use a different photo"
+- [ ] Section-level edits — LLM patches the specific section, doesn't regenerate the entire plan
+- [ ] User can approve/reject each edit before it applies (undo support)
+- [ ] "Export when ready" button on the preview sheet — saves final PDF to disk
+
+**Advanced (optional):**
+- [ ] Table of contents generation from headings
+- [ ] Bio cards with floated portrait images
+- [ ] Image gallery CSS grid layout
+- [ ] Typst backend for publication-quality output (running headers, page numbers, hyphenation)
+- [ ] Version history — save snapshots of document plan at each edit step
+
+### Test Criteria (M12f)
+- [ ] Transcribe podcast → research via MCP → ask "Create a PDF report" → preview appears with polished layout
+- [ ] Say "Move the map above the text" → preview updates with map repositioned
+- [ ] Say "Make the introduction shorter" → LLM edits that section, preview re-renders
+- [ ] Say "Add a photo of Hue" → LLM calls Unsplash MCP → image appears in preview
+- [ ] Click "Export" → PDF saved with proper page breaks, margins, typography, embedded images
+- [ ] Multiple themes produce visually distinct outputs
+
+---
+
+### Key Workflows Enabled by M12
+
+| Workflow | MCP Servers Used | Phase |
+|----------|-----------------|-------|
+| **Meeting → Action Items** | Todoist/Reminders + Calendar + Notes/Notion | M12b-c |
+| **Podcast → Show Notes** | Filesystem + Social Media Sync + Notion | M12c-d |
+| **Research → Analysis** | Web Search + Obsidian + Memory | M12c-d |
+| **Knowledge Building** | Memory + Filesystem | M12d |
+| **Meeting Prep** | Calendar + Memory | M12b+d |
+| **Follow-up Comms** | Slack + Email | M12c |
+| **Podcast Companion** | Maps + Wikipedia + Wikidata + Unsplash + DALL-E | M12e |
+| **Rich PDF Report** | All above + generate_pdf native tool | M12f (requires M12e) |
+| **Lecture Visual Notes** | VLM + Whisper transcription merged | M14b |
+| **PDF Quality Review** | VLM reviews rendered pages | M14c (requires M12f) |
+
+---
+
+## Milestone 14 (Future): Vision-Language Model Integration
+
+**Goal:** Understand what is shown in video/images, not just what is said. Combine audio transcription with visual content extraction.
+**Research:** See `reports/research-vlm-integration.md`
+**Differentiator:** No competing transcription app combines Whisper transcription with VLM visual extraction.
+
+### M14a: Image-in-Chat Understanding (prerequisite)
+
+**Goal:** Send image attachments to the LLM — users drop images and the LLM sees them.
+
+- [ ] Refactor `ChatMessageDTO` to support content blocks (`text` + `imageBase64`)
+- [ ] Update `AnthropicService` to format multimodal messages (content blocks with `type: "image"`)
+- [ ] Update `OpenAICompatibleService` for `image_url` with base64 data URIs
+- [ ] Update `buildMessageDTOs()` to include `.image` attachments as base64
+- [ ] Image resize utility — downscale to max 1568px before sending (Anthropic optimal)
+
+### Test Criteria (M14a)
+- [ ] Drop a screenshot into chat → LLM describes what's in it
+- [ ] Attach a photo of a whiteboard → LLM reads the text
+- [ ] Works with both Anthropic and OpenAI providers
+
+---
+
+### M14b: Lecture Video Visual Extraction
+
+**Goal:** Extract slides, whiteboard text, diagrams from lecture/presentation videos. Merge with audio transcript for comprehensive notes.
+
+- [ ] `VideoFrameExtractor` service using AVFoundation (`AVAssetImageGenerator`)
+- [ ] Scene-change detection — histogram comparison between consecutive frames, extract keyframes where visual content changes
+- [ ] Frame → VLM pipeline — batch keyframes, send to VLM, collect extracted text/descriptions
+- [ ] Transcript + visual merger — align visual content with audio transcript by timestamp
+- [ ] "Analyze Video Visuals" toggle per video attachment
+- [ ] Enhanced transcript output with slide content markers
+
+**Cost optimization:** Scene detection reduces API costs 24x (60-min lecture: $5.97 naive → $0.25 with scene detection for Claude Sonnet).
+
+### Test Criteria (M14b)
+- [ ] Upload a lecture video → visual analysis extracts slide text and diagrams
+- [ ] Output combines "[Slide content]" blocks with "[Audio transcript]" blocks aligned by timestamp
+- [ ] Works with both API VLMs (Claude, GPT-4o, Gemini) and local VLMs (LM Studio)
+
+---
+
+### M14c: PDF Quality Review Loop
+
+**Goal:** VLM auto-reviews generated PDFs for layout issues before export.
+
+- [ ] PDF page → CGImage converter (PDFKit)
+- [ ] VLM review prompt template: check truncation, overlap, alignment, page breaks
+- [ ] Structured feedback parsing — issues with page numbers and descriptions
+- [ ] Integration with M12f document editing loop — LLM fixes issues, re-renders
+
+### Test Criteria (M14c)
+- [ ] Generate PDF → VLM reviews → reports "header truncated on page 3" → LLM fixes → re-render clean
+
+---
+
+### M14d: Local VLM Support
+
+**Goal:** Privacy-first local VLM via MLX / LM Studio.
+
+- [ ] Documentation: configure LM Studio as a VLM provider (`baseURL: localhost:1234`)
+- [ ] "Local VLM" preset in provider settings
+- [ ] (Optional) Auto-detect LM Studio running locally
+- [ ] (Future) Custom MLX-VLM MCP server — expose local VLM as an MCP tool for text-only LLMs to delegate vision tasks
+
+**Recommended local model:** Moondream 3 (2B params, ~1.2GB at 4-bit, 35+ tok/s on M1 Max, ~4GB memory).
+
+### Test Criteria (M14d)
+- [ ] Configure LM Studio with Moondream 3 → drop image in chat → local VLM describes it
+- [ ] No internet required for image understanding
 
 ---
 
@@ -870,7 +1102,16 @@ M0 (Skeleton)
            └── M11b (Audit Fixes) ✅
                 └── FSM + Anti-Pattern Audit (v0.3.x) ✅
                      └── M13 (Export & Markdown) ✅ (v0.4.0)
-                          └── M12 (MCP) [future]
+                          └── M12a (MCP Infrastructure) [next]
+                               ├── M12b (macOS Native: Calendar, Reminders, Notes)
+                               ├── M12c (Ecosystem: Notion, Todoist, Slack, Web Search)
+                               ├── M12d (Advanced: Memory, Multi-step, Social Media)
+                               ├── M12e (Rich Media: Maps, Wikipedia, Images, Generation)
+                               └── M12f (Rich PDF: LLM-designed docs with WebKit rendering) ← M12e
+                                    └── M14c (PDF Quality Review) ← VLM
+                          M14a (Image-in-Chat VLM) [can start independently]
+                               ├── M14b (Lecture Video Visual Extraction)
+                               └── M14d (Local VLM via LM Studio/MLX)
 ```
 
 ## Suggested Implementation Order
@@ -891,7 +1132,15 @@ M0 (Skeleton)
 | **Phase K** | FSM + audit | ✅ Done | FSM refactoring, anti-pattern audit, crash fixes, video sizing, PythonEnv caching (v0.3.x) |
 | **Phase L** | M13 | ✅ Done | Markdown rendering, PDF/JSON/MD export, import, media save (v0.4.0) |
 | **Phase L+** | Post-M13 | ✅ Done | Syntax highlighting, @Query migration, Swift strict concurrency, drag-to-Finder |
-| **Phase M** | M12 | Future | MCP exploration |
+| **Phase M** | M12a | Next | MCP infrastructure: Swift SDK, client manager, tool-call UI, server config |
+| **Phase M+** | M12b | Future | macOS native: Apple Calendar, Reminders, Notes |
+| **Phase N** | M12c | Future | Ecosystem: Notion, Todoist, Obsidian, Slack, Web Search |
+| **Phase N+** | M12d | Future | Advanced: Memory, multi-step workflows, social media |
+| **Phase O** | M12e | Future | Rich Media: Maps, Wikipedia, images, generation (podcast companion) |
+| **Phase O+** | M12f | Future | Rich PDF: LLM-designed documents with WebKit rendering |
+| **Phase P** | M14a | Future | VLM: Image-in-chat understanding (~200 lines, prerequisite) |
+| **Phase P+** | M14b | Future | VLM: Lecture video visual extraction (slides, whiteboard, diagrams) |
+| **Phase Q** | M14c-d | Future | VLM: PDF quality review loop + local VLM via LM Studio |
 
 ---
 
