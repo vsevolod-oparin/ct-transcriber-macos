@@ -118,11 +118,18 @@ struct AudioPlayerView: View {
             loadError = "Failed to load audio"
         }
 
-        // Generate video thumbnail
+        // Load video thumbnail from cache or generate
         if attachment.kind == .video {
-            Task.detached(priority: .utility) {
-                let thumb = await Self.generateThumbnail(url: url)
-                await MainActor.run { videoThumbnail = thumb }
+            if let cached = ChatTableView.Coordinator.videoThumbnail(for: attachment.storedName) {
+                videoThumbnail = cached
+            } else {
+                Task.detached(priority: .utility) {
+                    let storedName = attachment.storedName
+                    if let thumb = await Self.generateThumbnail(url: url) {
+                        ChatTableView.Coordinator.setVideoThumbnail(thumb, for: storedName)
+                        await MainActor.run { videoThumbnail = thumb }
+                    }
+                }
             }
         }
     }

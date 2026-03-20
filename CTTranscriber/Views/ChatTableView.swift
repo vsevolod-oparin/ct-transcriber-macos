@@ -464,24 +464,37 @@ struct ChatTableView: NSViewRepresentable {
             return max(size.height, 30)
         }
 
-        // MARK: - Video Aspect Ratio (synchronous)
+        // MARK: - Video Caches
 
-        /// Cache of video aspect ratios keyed by storedName.
-        nonisolated(unsafe) private static var videoAspectRatioCache: [String: CGFloat] = [:]
+        /// NSCache for video aspect ratios — auto-evicts under memory pressure.
+        nonisolated(unsafe) private static let aspectRatioCache = NSCache<NSString, NSNumber>()
+
+        /// NSCache for video thumbnails — auto-evicts under memory pressure.
+        nonisolated(unsafe) static let thumbnailCache = NSCache<NSString, NSImage>()
 
         /// Returns the cached aspect ratio. Returns 16:9 fallback if not yet computed.
-        /// Call `precomputeVideoAspectRatio` on a background thread to populate the cache.
         nonisolated static func videoAspectRatio(url: URL) -> CGFloat {
-            let key = url.lastPathComponent
-            return videoAspectRatioCache[key] ?? (16.0 / 9.0)
+            let key = url.lastPathComponent as NSString
+            if let cached = aspectRatioCache.object(forKey: key) {
+                return CGFloat(cached.doubleValue)
+            }
+            return 16.0 / 9.0
         }
 
-        /// Writes a known aspect ratio into the static cache. Called from VideoPlayerView
-        /// when it discovers the real ratio from the converted MP4 (WebM/MKV originals
-        /// can't be read by AVAsset, so precomputeVideoAspectRatio fails for them).
+        /// Writes a known aspect ratio into the cache.
         nonisolated static func setVideoAspectRatio(_ ratio: CGFloat, for url: URL) {
-            let key = url.lastPathComponent
-            videoAspectRatioCache[key] = ratio
+            let key = url.lastPathComponent as NSString
+            aspectRatioCache.setObject(NSNumber(value: Double(ratio)), forKey: key)
+        }
+
+        /// Returns a cached thumbnail, or nil if not yet generated.
+        nonisolated static func videoThumbnail(for storedName: String) -> NSImage? {
+            thumbnailCache.object(forKey: storedName as NSString)
+        }
+
+        /// Stores a thumbnail in the cache.
+        nonisolated static func setVideoThumbnail(_ image: NSImage, for storedName: String) {
+            thumbnailCache.setObject(image, forKey: storedName as NSString)
         }
 
         /// Pre-computes and caches the aspect ratio. Call from a background thread.
@@ -496,7 +509,7 @@ struct ChatTableView: NSViewRepresentable {
                 if w > 0 && h > 0 {
                     let ratio = w / h
                     DispatchQueue.main.async {
-                        videoAspectRatioCache[key] = ratio
+                        aspectRatioCache.setObject(NSNumber(value: Double(ratio)), forKey: key as NSString)
                     }
                 }
             }
