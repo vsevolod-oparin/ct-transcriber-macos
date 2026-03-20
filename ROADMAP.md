@@ -506,7 +506,7 @@ Telegram's chat is built on a heavily customized NSTableView with:
 - [x] `layerContentsRedrawPolicy = .never` from TelegramSwift research
 - [x] Streaming scroll throttle (200ms) via coordinator
 - [x] `isExpanded` state managed in coordinator's `expandedMessages: Set<UUID>` (survives cell reuse)
-- [ ] `isDynamicContentLocked` — disable LargeTextView layout recalculation during rapid scroll (future optimization)
+- [x] ~~`isDynamicContentLocked`~~ — Rejected: placeholder cells during rapid scroll caused visible flashing. Height caching already keeps per-message operations sub-millisecond (0.004ms hash, 0.080ms sort per stress test). Not needed.
 
 ### Test Criteria
 - [x] Cmd+Down reliably scrolls to bottom
