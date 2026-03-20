@@ -24,6 +24,7 @@
 		501EB8429B9A650E2AB402EA /* default-settings.json in Resources */ = {isa = PBXBuildFile; fileRef = 5C90903B672DF2C7EAA2A33E /* default-settings.json */; };
 		51FAC89F42DB2D7594C988E9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0A60525B5D36D873BC9B3A3C /* Assets.xcassets */; };
 		57B70598411440A489335212 /* VideoConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7762C803FAF07C9D5686AA62 /* VideoConverter.swift */; };
+		CC0003010000000000000001 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0004010000000000000001 /* SyntaxHighlighter.swift */; };
 		63B8E73BEB59C8509E59135C /* ConversationRenameUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065F61E10EAF48287850AAE /* ConversationRenameUITests.swift */; };
 		691D1E5A263BD0AFD24C50D6 /* TaskManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68E0F677BDB9DCE279A10C7F /* TaskManagerView.swift */; };
 		6E87E47B0A4CD1BDB3EEBBE4 /* convert_model.py in Resources */ = {isa = PBXBuildFile; fileRef = 147A7E41F2723AA3463AF58E /* convert_model.py */; };
@@ -123,6 +124,7 @@
 		CA572A35AFF6E28E3AE33DEA /* AppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsTests.swift; sourceTree = "<group>"; };
 		D119DFE232B9232CBA667516 /* FileStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStorageTests.swift; sourceTree = "<group>"; };
 		D6DCE79BC5B3122843750F3D /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		CC0004010000000000000001 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStorage.swift; sourceTree = "<group>"; };
 		E1D58D5273AC60B12DA14C6C /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		FF7A27F7EC2A302BBF0DB51A /* transcribe.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = transcribe.py; sourceTree = "<group>"; };
@@ -235,6 +237,7 @@
 				29AF36BE09F983DF2B4D426D /* ModelManager.swift */,
 				3991630EC7DFA457EBB7CAD5 /* PythonEnvironment.swift */,
 				DFE4FD2BBF9CE4A25AD56D1C /* SettingsStorage.swift */,
+				CC0004010000000000000001 /* SyntaxHighlighter.swift */,
 				39A15CB2114DD69C3DDE6BBF /* TaskManager.swift */,
 				2326917778ED8DB96533DDAC /* TranscriptionService.swift */,
 				7762C803FAF07C9D5686AA62 /* VideoConverter.swift */,
@@ -456,6 +459,7 @@
 				FAA9D555A4F88EA8389597B6 /* SchemaVersioning.swift in Sources */,
 				3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */,
 				B8F1E1CE6A8614F8D6D4DD9E /* SettingsStorage.swift in Sources */,
+				CC0003010000000000000001 /* SyntaxHighlighter.swift in Sources */,
 				34F36C5862E02B79DE6D5657 /* SettingsView.swift in Sources */,
 				B49014C1B036F3886E105AA6 /* TaskManager.swift in Sources */,
 				691D1E5A263BD0AFD24C50D6 /* TaskManagerView.swift in Sources */,

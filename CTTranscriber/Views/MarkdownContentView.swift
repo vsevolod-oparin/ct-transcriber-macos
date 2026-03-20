@@ -324,8 +324,19 @@ struct CodeBlockView: View {
     let code: String
     let language: String?
     let fontSize: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering = false
     @State private var showCopied = false
+
+    /// Syntax-highlighted attributed string for the code content.
+    private var highlightedCode: AttributedString {
+        SyntaxHighlighter.highlight(
+            code,
+            language: language,
+            fontSize: fontSize * 0.9,
+            isDark: colorScheme == .dark
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -343,9 +354,8 @@ struct CodeBlockView: View {
                 .background(codeHeaderBackground)
             }
 
-            // Code content
-            Text(code)
-                .font(.system(size: fontSize * 0.9, design: .monospaced))
+            // Code content with syntax highlighting
+            Text(highlightedCode)
                 .textSelection(.enabled)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
