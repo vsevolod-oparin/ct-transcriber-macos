@@ -137,7 +137,7 @@ enum SyntaxHighlighter {
 
     /// Lightweight cache keyed on (code hash, fontSize, isDark).
     /// Avoids recomputing highlights on every SwiftUI body evaluation.
-    private static var cache: [CacheKey: AttributedString] = [:]
+    nonisolated(unsafe) private static var cache: [CacheKey: AttributedString] = [:]
     private static let cacheLimit = 64
 
     private struct CacheKey: Hashable {

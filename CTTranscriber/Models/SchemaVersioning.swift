@@ -5,7 +5,7 @@ import SwiftData
 /// When adding new required fields or changing model structure,
 /// create a new schema version and a migration plan.
 enum SchemaV1: VersionedSchema {
-    static var versionIdentifier = Schema.Version(1, 0, 0)
+    static let versionIdentifier = Schema.Version(1, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [Conversation.self, Message.self, Attachment.self, BackgroundTask.self]

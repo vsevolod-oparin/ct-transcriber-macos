@@ -50,9 +50,9 @@ final class ModelManager {
                     modelStatuses[model.id] = .ready(path: modelPath, sizeMB: 0)
                 }
                 let modelID = model.id
-                Task.detached(priority: .utility) { [weak self] in
-                    let size = Self.directorySize(path: modelPath)
-                    await MainActor.run {
+                Task.detached(priority: .utility) {
+                    let size = ModelManager.directorySize(path: modelPath)
+                    await MainActor.run { [weak self] in
                         // Only update if still in ready state (not downloading/deleted)
                         if case .ready(let p, _) = self?.modelStatuses[modelID] {
                             self?.modelStatuses[modelID] = .ready(path: p, sizeMB: size)
@@ -156,9 +156,7 @@ final class ModelManager {
                 }
             }
 
-            await MainActor.run {
-                self.activeTasks.removeValue(forKey: model.id)
-            }
+            self.activeTasks.removeValue(forKey: model.id)
         }
     }
 

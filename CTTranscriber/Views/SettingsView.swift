@@ -537,7 +537,6 @@ private struct ProviderConfigEditor: View {
         let messages = [ChatMessageDTO(role: "user", content: "Hi")]
 
         Task {
-            var gotToken = false
             do {
                 let stream = service.streamCompletion(
                     messages: messages,
@@ -550,7 +549,6 @@ private struct ProviderConfigEditor: View {
                     extraHeaders: config.extraHeaders
                 )
                 for try await _ in stream {
-                    gotToken = true
                     break // one token is enough
                 }
                 await MainActor.run {

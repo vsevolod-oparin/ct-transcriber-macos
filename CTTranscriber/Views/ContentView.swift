@@ -105,7 +105,14 @@ struct ContentView: View {
     }
 
     private func handleEmptyStateDrop(providers: [NSItemProvider]) {
-        var urls: [URL] = []
+        // Use a class-based container to avoid "mutation of captured var" in concurrent closures.
+        final class URLCollector: @unchecked Sendable {
+            private let lock = NSLock()
+            private var storage: [URL] = []
+            func append(_ url: URL) { lock.lock(); storage.append(url); lock.unlock() }
+            var urls: [URL] { lock.lock(); defer { lock.unlock() }; return storage }
+        }
+        let collector = URLCollector()
         let group = DispatchGroup()
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -113,13 +120,14 @@ struct ContentView: View {
                 provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
                     if let data = data as? Data,
                        let url = URL(dataRepresentation: data, relativeTo: nil) {
-                        urls.append(url)
+                        collector.append(url)
                     }
                     group.leave()
                 }
             }
         }
         group.notify(queue: .main) {
+            let urls = collector.urls
             guard let viewModel, !urls.isEmpty else { return }
             viewModel.openFiles(urls: urls)
         }

@@ -107,8 +107,10 @@ final class AudioPlaybackManager {
     private func startMiniPlayerTimer() {
         stopMiniPlayerTimer()
         miniPlayerTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            guard let self, self.isPlaying, let getTime = self.getCurrentTimeCallback else { return }
-            self.currentTime = getTime()
+            MainActor.assumeIsolated {
+                guard let self, self.isPlaying, let getTime = self.getCurrentTimeCallback else { return }
+                self.currentTime = getTime()
+            }
         }
     }
 

@@ -1,8 +1,9 @@
 import Foundation
-import SwiftData
+@preconcurrency import SwiftData
 import SwiftUI
 
 /// Protocol for task management — enables mock injection for testing.
+@MainActor
 protocol TaskManagerProtocol: AnyObject {
     var tasks: [BackgroundTask] { get }
     var activeCount: Int { get }
@@ -61,45 +62,41 @@ final class TaskManager: TaskManagerProtocol {
 
     // MARK: - Task Lifecycle
 
-    func startTask(_ task: BackgroundTask, work: @escaping (BackgroundTask, @escaping (Double) -> Void) async throws -> Void) {
+    func startTask(_ task: BackgroundTask, work: @escaping (BackgroundTask, @escaping @Sendable (Double) -> Void) async throws -> Void) {
         task.status = .running
         task.progress = 0
         task.errorMessage = nil
         task.updatedAt = Date()
         saveAndRefresh()
 
-        activeTasks[task.id] = Task { [weak self] in
+        let taskID = task.id
+        let wrappedTask = UncheckedSendableBox(value: task)
+        activeTasks[taskID] = Task { [weak self] in
             do {
-                try await work(task) { progress in
+                try await work(wrappedTask.value) { progress in
                     Task { @MainActor in
-                        task.progress = progress
-                        task.updatedAt = Date()
+                        wrappedTask.value.progress = progress
+                        wrappedTask.value.updatedAt = Date()
                         self?.saveAndRefresh()
                     }
                 }
 
-                await MainActor.run {
-                    task.status = .completed
-                    task.progress = 1.0
-                    task.updatedAt = Date()
-                    self?.activeTasks.removeValue(forKey: task.id)
-                    self?.saveAndRefresh()
-                }
+                wrappedTask.value.status = .completed
+                wrappedTask.value.progress = 1.0
+                wrappedTask.value.updatedAt = Date()
+                self?.activeTasks.removeValue(forKey: taskID)
+                self?.saveAndRefresh()
             } catch is CancellationError {
-                await MainActor.run {
-                    task.status = .cancelled
-                    task.updatedAt = Date()
-                    self?.activeTasks.removeValue(forKey: task.id)
-                    self?.saveAndRefresh()
-                }
+                wrappedTask.value.status = .cancelled
+                wrappedTask.value.updatedAt = Date()
+                self?.activeTasks.removeValue(forKey: taskID)
+                self?.saveAndRefresh()
             } catch {
-                await MainActor.run {
-                    task.status = .failed
-                    task.errorMessage = error.localizedDescription
-                    task.updatedAt = Date()
-                    self?.activeTasks.removeValue(forKey: task.id)
-                    self?.saveAndRefresh()
-                }
+                wrappedTask.value.status = .failed
+                wrappedTask.value.errorMessage = error.localizedDescription
+                wrappedTask.value.updatedAt = Date()
+                self?.activeTasks.removeValue(forKey: taskID)
+                self?.saveAndRefresh()
             }
         }
     }
@@ -114,7 +111,7 @@ final class TaskManager: TaskManagerProtocol {
         }
     }
 
-    func retryTask(_ task: BackgroundTask, work: @escaping (BackgroundTask, @escaping (Double) -> Void) async throws -> Void) {
+    func retryTask(_ task: BackgroundTask, work: @escaping (BackgroundTask, @escaping @Sendable (Double) -> Void) async throws -> Void) {
         task.status = .pending
         task.errorMessage = nil
         task.progress = 0

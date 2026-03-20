@@ -24,8 +24,8 @@ enum PythonEnvironment {
 
     /// Cached result of the last successful environment check.
     /// Cleared when settings change via `invalidateCache()`.
-    private static var cachedStatus: Status?
-    private static var cachedSettingsKey: String?
+    nonisolated(unsafe) private static var cachedStatus: Status?
+    nonisolated(unsafe) private static var cachedSettingsKey: String?
 
     /// Invalidates the cached environment check. Call when transcription settings change.
     static func invalidateCache() {

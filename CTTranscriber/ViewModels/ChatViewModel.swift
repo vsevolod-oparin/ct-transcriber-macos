@@ -4,6 +4,12 @@ import SwiftData
 import AVFoundation
 import UniformTypeIdentifiers
 
+/// Wrapper that opts a value out of Sendable checking. Use only when you can guarantee
+/// the wrapped value is accessed safely (e.g., only within MainActor.run blocks).
+struct UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+}
+
 enum ConversationActivity {
     case streaming(task: Task<Void, Never>)
     case generatingTitle(task: Task<Void, Never>)
@@ -411,7 +417,7 @@ final class ChatViewModel {
                 let updateThreshold = 50 // characters before flushing to UI
 
                 for try await token in stream {
-                    guard let self, !Task.isCancelled else { break }
+                    guard let _ = self, !Task.isCancelled else { break }
                     pendingTokens += token
                     if pendingTokens.count >= updateThreshold {
                         accumulatedText += pendingTokens
@@ -618,7 +624,7 @@ final class ChatViewModel {
                 message.attachments.append(attachment)
                 conversation.messages.append(message)
                 conversation.updatedAt = Date()
-                saveContext()
+                self.saveContext()
 
                 self.postAttachActions(kind: kind, storedName: storedName, originalName: originalName,
                                        attachment: attachment, conversation: conversation,
@@ -633,9 +639,9 @@ final class ChatViewModel {
         // Pre-compute video aspect ratio on background thread (avoids blocking scroll)
         if kind == .video {
             let videoURL = FileStorage.url(for: storedName)
-            Task.detached(priority: .utility) { [weak self] in
+            Task.detached(priority: .utility) {
                 ChatTableView.Coordinator.precomputeVideoAspectRatio(url: videoURL)
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     self?.videoUpdateTrigger += 1
                 }
             }
@@ -720,6 +726,11 @@ final class ChatViewModel {
         let taskID = UUID()
         let convoID = conversation.id
 
+        // These SwiftData model objects are only accessed inside MainActor.run blocks within
+        // the detached task, so crossing the isolation boundary is safe.
+        let wrappedMessage = UncheckedSendableBox(value: transcriptMessage)
+        let wrappedBgTask = UncheckedSendableBox(value: bgTask)
+
         let task = Task.detached { [weak self] in
             // Check audio track off MainActor — AVAsset.tracks is synchronous I/O
             let audioURL = URL(fileURLWithPath: audioPath)
@@ -727,11 +738,10 @@ final class ChatViewModel {
             let avUnsupportedFormats: Set<String> = ["webm", "mkv", "flv", "wmv", "ogg", "opus"]
             if !avUnsupportedFormats.contains(ext) {
                 let asset = AVAsset(url: audioURL)
-                let audioTracks = asset.tracks(withMediaType: .audio)
-                if audioTracks.isEmpty {
+                if asset.tracks(withMediaType: .audio).isEmpty {
                     await MainActor.run { [weak self] in
-                        transcriptMessage.content = "\(ChatViewModel.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
-                        transcriptMessage.lifecycle = .errorTranscription
+                        wrappedMessage.value.content = "\(ChatViewModel.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
+                        wrappedMessage.value.lifecycle = .errorTranscription
                         self?.finishTranscription(taskID: taskID, conversationID: convoID)
                     }
                     return
@@ -745,7 +755,7 @@ final class ChatViewModel {
             )
 
             do {
-                var result: TranscriptionService.TranscriptionResult?
+                var finalResult: TranscriptionService.TranscriptionResult?
                 var lastUIUpdate = Date.distantPast
                 let uiUpdateInterval: TimeInterval = 0.3
 
@@ -754,10 +764,9 @@ final class ChatViewModel {
 
                     switch progress {
                     case .started(let language, let duration):
-                        await MainActor.run { [weak self] in
-                            transcriptMessage.content = "Transcribing... (detected: \(language), \(ChatViewModel.formatDuration(duration)))"
-                            bgTask?.status = .running
-                            _ = self  // silence unused warning
+                        await MainActor.run {
+                            wrappedMessage.value.content = "Transcribing... (detected: \(language), \(ChatViewModel.formatDuration(duration)))"
+                            wrappedBgTask.value?.status = .running
                         }
                     case .segment(_, let text, let prog):
                         let now = Date()
@@ -765,11 +774,11 @@ final class ChatViewModel {
                         lastUIUpdate = now
                         await MainActor.run { [weak self] in
                             self?.transcriptionProgress = prog
-                            bgTask?.progress = prog
-                            transcriptMessage.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                            wrappedBgTask.value?.progress = prog
+                            wrappedMessage.value.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
                         }
                     case .completed(let res):
-                        result = res
+                        finalResult = res
                     case .error(let msg):
                         await MainActor.run { [weak self] in
                             self?.lastError = msg
@@ -777,31 +786,32 @@ final class ChatViewModel {
                     }
                 }
 
+                let completedResult = finalResult
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let result {
-                        transcriptMessage.content = self.formatTranscriptionResult(result)
-                        transcriptMessage.lifecycle = .complete
-                        bgTask?.status = .completed
-                        bgTask?.progress = 1.0
+                    if let completedResult {
+                        wrappedMessage.value.content = self.formatTranscriptionResult(completedResult)
+                        wrappedMessage.value.lifecycle = .complete
+                        wrappedBgTask.value?.status = .completed
+                        wrappedBgTask.value?.progress = 1.0
                     }
                     self.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch let error as TranscriptionError where error.isCancelled {
                 await MainActor.run { [weak self] in
-                    transcriptMessage.content = "Transcription cancelled."
-                    transcriptMessage.lifecycle = .cancelled
-                    bgTask?.status = .cancelled
+                    wrappedMessage.value.content = "Transcription cancelled."
+                    wrappedMessage.value.lifecycle = .cancelled
+                    wrappedBgTask.value?.status = .cancelled
                     self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch {
                 let errorDesc = error.localizedDescription
                 await MainActor.run { [weak self] in
                     self?.lastError = errorDesc
-                    transcriptMessage.content = "\(ChatViewModel.transcriptionErrorPrefix)\(errorDesc)"
-                    transcriptMessage.lifecycle = .errorTranscription
-                    bgTask?.status = .failed
-                    bgTask?.errorMessage = errorDesc
+                    wrappedMessage.value.content = "\(ChatViewModel.transcriptionErrorPrefix)\(errorDesc)"
+                    wrappedMessage.value.lifecycle = .errorTranscription
+                    wrappedBgTask.value?.status = .failed
+                    wrappedBgTask.value?.errorMessage = errorDesc
                     self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             }

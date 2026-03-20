@@ -174,14 +174,16 @@ struct AudioPlayerView: View {
 
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: Self.progressUpdateInterval, repeats: true) { _ in
-            guard let player, !isDragging else { return }
-            currentTime = player.currentTime
-            AudioPlaybackManager.shared.currentTime = currentTime
-            if !player.isPlaying {
-                isPlaying = false
-                persistPosition()
-                stopTimer()
-                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+            MainActor.assumeIsolated {
+                guard let player, !isDragging else { return }
+                currentTime = player.currentTime
+                AudioPlaybackManager.shared.currentTime = currentTime
+                if !player.isPlaying {
+                    isPlaying = false
+                    persistPosition()
+                    stopTimer()
+                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+                }
             }
         }
     }
@@ -361,18 +363,20 @@ struct VideoPlayerView: View {
         // Periodic time observer
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
-            guard !isDragging else { return }
-            let seconds = CMTimeGetSeconds(time)
-            if seconds.isFinite {
-                currentTime = seconds
-                AudioPlaybackManager.shared.currentTime = seconds
-            }
-            // Detect end of playback
-            if let item = player.currentItem,
-               CMTimeGetSeconds(item.duration).isFinite,
-               seconds >= CMTimeGetSeconds(item.duration) - 0.1 {
-                isPlaying = false
-                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+            MainActor.assumeIsolated {
+                guard !isDragging else { return }
+                let seconds = CMTimeGetSeconds(time)
+                if seconds.isFinite {
+                    currentTime = seconds
+                    AudioPlaybackManager.shared.currentTime = seconds
+                }
+                // Detect end of playback
+                if let item = player.currentItem,
+                   CMTimeGetSeconds(item.duration).isFinite,
+                   seconds >= CMTimeGetSeconds(item.duration) - 0.1 {
+                    isPlaying = false
+                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+                }
             }
         }
     }

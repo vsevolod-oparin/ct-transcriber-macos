@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 
 enum AppUninstaller {
+    @MainActor
     static func run() {
         let home = NSHomeDirectory()
         let appPath = Bundle.main.bundlePath

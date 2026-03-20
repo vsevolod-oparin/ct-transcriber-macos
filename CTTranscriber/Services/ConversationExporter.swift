@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import AppKit
 
+@MainActor
 enum ConversationExporter {
 
     // MARK: - Codable Transfer Types

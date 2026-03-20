@@ -323,6 +323,7 @@ struct ChatTableView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     class Coordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource {
         var messages: [Message] = []
         var isStreaming: Bool = false
@@ -466,11 +467,11 @@ struct ChatTableView: NSViewRepresentable {
         // MARK: - Video Aspect Ratio (synchronous)
 
         /// Cache of video aspect ratios keyed by storedName.
-        private static var videoAspectRatioCache: [String: CGFloat] = [:]
+        nonisolated(unsafe) private static var videoAspectRatioCache: [String: CGFloat] = [:]
 
         /// Returns the cached aspect ratio. Returns 16:9 fallback if not yet computed.
         /// Call `precomputeVideoAspectRatio` on a background thread to populate the cache.
-        static func videoAspectRatio(url: URL) -> CGFloat {
+        nonisolated static func videoAspectRatio(url: URL) -> CGFloat {
             let key = url.lastPathComponent
             return videoAspectRatioCache[key] ?? (16.0 / 9.0)
         }
@@ -478,14 +479,14 @@ struct ChatTableView: NSViewRepresentable {
         /// Writes a known aspect ratio into the static cache. Called from VideoPlayerView
         /// when it discovers the real ratio from the converted MP4 (WebM/MKV originals
         /// can't be read by AVAsset, so precomputeVideoAspectRatio fails for them).
-        static func setVideoAspectRatio(_ ratio: CGFloat, for url: URL) {
+        nonisolated static func setVideoAspectRatio(_ ratio: CGFloat, for url: URL) {
             let key = url.lastPathComponent
             videoAspectRatioCache[key] = ratio
         }
 
         /// Pre-computes and caches the aspect ratio. Call from a background thread.
         /// The cache write is dispatched to MainActor to avoid data races.
-        static func precomputeVideoAspectRatio(url: URL) {
+        nonisolated static func precomputeVideoAspectRatio(url: URL) {
             let key = url.lastPathComponent
             let asset = AVAsset(url: url)
             if let track = asset.tracks(withMediaType: .video).first {
@@ -505,7 +506,7 @@ struct ChatTableView: NSViewRepresentable {
 
         /// Measures the rendered height of a text string at a given width using NSTextStorage.
         /// More reliable than NSHostingView measurement for large text blocks.
-        static func measureTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat = NSFont.systemFontSize) -> CGFloat {
+        nonisolated static func measureTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat = NSFont.systemFontSize) -> CGFloat {
             let textStorage = NSTextStorage(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: fontSize)
             ])
