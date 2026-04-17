@@ -2,6 +2,27 @@
 
 ---
 
+## v0.5.2 (2026-04-17)
+
+### Python-Free Transcription (M15 Complete)
+- Transcription now runs **in-process** via the native [metal-faster-whisper](https://github.com/vsevolod-oparin/metal-faster-whisper) framework (v0.2.2) — no more Python, no more Miniconda, no more subprocesses.
+- **First launch is instant** — no ~60 MB Miniconda download, no `ct-transcriber-metal-env` environment setup. Just download a model and start transcribing.
+- Native `MWModelManager` replaces the Python conversion scripts — models download directly from HuggingFace (pre-converted CTranslate2 repos).
+- Removed ~970 lines of Python infrastructure: `PythonEnvironment.swift`, `EnvironmentSetupView.swift`, `transcribe.py`, `convert_model.py`, `setup_env.sh`.
+- WebM files are decoded via `ffmpeg` (install via `brew install ffmpeg`); all other formats go through the framework directly.
+
+### Signed & Notarized Distribution (M15d)
+- App bundle and all embedded frameworks are now signed with **Developer ID Application** and **Hardened Runtime**.
+- DMG is **notarized and stapled** — no more Gatekeeper warnings or `xattr -cr` workarounds on first launch.
+- New `./scripts/create-dmg.sh --notarize` command handles codesign + notarytool submission + stapling in one step.
+- Entitlements are minimal and explicit: network client (for HuggingFace + LLM APIs), user-selected file access.
+
+### Internal
+- Swift Package Manager binary targets for all three embedded frameworks (MetalWhisper, CTranslate2, OnnxRuntime) — no local paths, reproducible builds.
+- Fixed several build-time issues: `Task` closure type-checker timeout in `ModelManager`, `AVAudioFile` rejecting video containers (fallback to `AVAssetReader`), `AVURLAsset` rejecting webm (fallback to `ffmpeg`).
+
+---
+
 ## v0.5.1 (2026-03-20)
 
 ### Timestamp Click-to-Seek

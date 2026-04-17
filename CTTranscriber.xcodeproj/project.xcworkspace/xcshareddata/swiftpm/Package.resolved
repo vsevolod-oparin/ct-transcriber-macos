@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vsevolod-oparin/metal-faster-whisper",
       "state" : {
-        "revision" : "a2e65340907c6fa484d80fbf767231ec203a68a2",
-        "version" : "0.2.0"
+        "revision" : "d29430a4cc156e25b8a2e2c9166e1bcd67ba3b84",
+        "version" : "0.2.2"
       }
     }
   ],

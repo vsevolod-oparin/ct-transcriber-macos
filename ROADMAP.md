@@ -8,15 +8,15 @@ A native macOS audio transcription app with LLM chat capabilities, powered by CT
 
 ## Current Status (2026-04-17)
 
-**Current release:** v0.5.1 · **Dependency:** `metal-faster-whisper` v0.2.0 (SPM)
+**Current release:** v0.5.2 · **Dependency:** `metal-faster-whisper` v0.2.2 (SPM)
 
 | Phase | Status |
 |-------|--------|
 | M0–M13 (core app, distribution v0.2.0, export/markdown v0.4.0) | ✅ Done |
 | v0.5.0/0.5.1 polish (syntax highlighting, strict concurrency, timestamp seek, Services) | ✅ Done |
-| **M15a-c** — Native MetalWhisper framework via SPM; Python/conda fully removed | ✅ Done |
-| **M15d** — Code-sign framework + notarize DMG | Next (Apple Developer ID now available) |
-| **M12a** — MCP infrastructure | Queued (research complete, no code) |
+| **M15a-c** — Native MetalWhisper framework via SPM; Python/conda fully removed (v0.5.2) | ✅ Done |
+| **M15d** — Code-signed + notarized + stapled DMG (v0.5.2) | ✅ Done |
+| **M12a** — MCP infrastructure | Next (research complete, no code) |
 | M14 — VLM / image-in-chat | Future |
 
 ---
@@ -1138,18 +1138,18 @@ Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance
 
 ---
 
-### M15d: Distribution Update
+### M15d: Distribution Update ✅
 
-**Status:** Unblocked (2026-04-17) — Apple Developer ID now available; code-signing and notarization pending implementation.
+**Status:** Complete (2026-04-17, v0.5.2) — app is signed, notarized, stapled.
 **Goal:** Update app bundle and DMG for native-only, code-signed, notarized distribution.
 
-- [ ] Set `DEVELOPMENT_TEAM` in `project.pbxproj` and enable "Hardened Runtime" on the app target
-- [ ] Code-sign `MetalWhisper.framework`, `CTranslate2.framework`, `OnnxRuntime.framework` (inner frameworks from SPM binary targets) with the Developer ID Application certificate
-- [ ] Code-sign the app bundle with Hardened Runtime + entitlements (microphone, file access)
-- [ ] Update `scripts/create-dmg.sh` (or successor) to run `codesign --deep --verify` and `notarytool submit --wait` after DMG creation
-- [ ] Add Info.plist usage-description strings if any are missing (microphone, file access, network for HuggingFace + LLM APIs)
-- [x] DMG builder script produces DMG with embedded xcframeworks (`CT-Transcriber-0.5.1.dmg` — currently unsigned)
-- [x] Basic release notes maintained per version (`RELEASE_NOTES.md`)
+- [x] `DEVELOPMENT_TEAM = 7ADYWA7W8T`, `CODE_SIGN_STYLE = Manual`, `CODE_SIGN_IDENTITY = "Developer ID Application"`, `ENABLE_HARDENED_RUNTIME = YES`, `OTHER_CODE_SIGN_FLAGS = --timestamp` set on the app target (both Debug and Release)
+- [x] Minimal entitlements in `CTTranscriber/Resources/CTTranscriber.entitlements` — network client, user-selected files, `get-task-allow = false` (explicitly disabled for notarization)
+- [x] All three embedded frameworks (MetalWhisper/CTranslate2/OnnxRuntime) get re-signed with Developer ID on embed — `codesign --deep --strict` passes cleanly
+- [x] `scripts/create-dmg.sh --notarize` invokes `codesign` on the DMG + `xcrun notarytool submit --wait` + `xcrun stapler staple`
+- [x] Required `metal-faster-whisper` v0.2.2 upstream fix: add `CFBundleExecutable` to inner framework Info.plists so codesign can locate the Mach-O binaries
+- [x] DMG passes `spctl --assess` as **Notarized Developer ID**; `stapler validate` confirms offline Gatekeeper works
+- [x] Release notes updated (`RELEASE_NOTES.md`)
 
 ### Impact
 
@@ -1263,8 +1263,8 @@ M0 (Skeleton)
 | **Phase L++** | v0.5.1 polish | ✅ Done | Timestamp click-to-seek, mini-player video fix, macOS Services, NSCache thumbnails |
 | **Phase M** | M15a-b | ✅ Done | Native MetalWhisper via SPM binary targets (v0.2.0 dependency); native MWModelManager |
 | **Phase M+** | M15c | ✅ Done | Python removed entirely: 5 files deleted, pbxproj cleaned, README updated, build green |
-| **Phase M++** | M15d | Next | Code-sign + notarize (Developer ID acquired 2026-04-17) |
-| **Phase N** | M12a | Queued | MCP infrastructure: Swift SDK, client manager, tool-call UI, server config |
+| **Phase M++** | M15d | ✅ Done | Signed + notarized + stapled DMG (v0.5.2) |
+| **Phase N** | M12a | Next | MCP infrastructure: Swift SDK, client manager, tool-call UI, server config |
 | **Phase N+** | M12b | Future | macOS native: Apple Calendar, Reminders, Notes |
 | **Phase O** | M12c | Future | Ecosystem: Notion, Todoist, Obsidian, Slack, Web Search |
 | **Phase O+** | M12d | Future | Advanced: Memory, multi-step workflows, social media |

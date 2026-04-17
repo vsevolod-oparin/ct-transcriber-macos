@@ -109,6 +109,7 @@
 		91C8EE9995C8D45EE953E7A4 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		94890C099DFFDB85FAE02626 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		98FE61B098A09D4B15469B40 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		ENT0000010000000000000001 /* CTTranscriber.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CTTranscriber.entitlements; sourceTree = "<group>"; };
 		9C53EC5F4CBCBD931E4559F5 /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
 		A07E16694A09D0B59035EA77 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
@@ -177,6 +178,7 @@
 			isa = PBXGroup;
 			children = (
 				128C815950849E516D0EC30F /* .gitkeep */,
+				ENT0000010000000000000001 /* CTTranscriber.entitlements */,
 				5C90903B672DF2C7EAA2A33E /* default-settings.json */,
 				98FE61B098A09D4B15469B40 /* Info.plist */,
 			);
@@ -498,7 +500,7 @@
 			repositoryURL = "https://github.com/vsevolod-oparin/metal-faster-whisper";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.2.0;
+				minimumVersion = 0.2.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -534,8 +536,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CTTranscriber/Resources/CTTranscriber.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7ADYWA7W8T;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CTTranscriber/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "CT Transcriber";
@@ -544,7 +551,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.5.2;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;
@@ -573,8 +581,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CTTranscriber/Resources/CTTranscriber.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7ADYWA7W8T;
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CTTranscriber/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "CT Transcriber";
@@ -583,7 +596,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.5.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.branch.ct-transcriber";
 				PRODUCT_NAME = "CT Transcriber";
 				SDKROOT = macosx;
