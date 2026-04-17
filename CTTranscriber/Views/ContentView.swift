@@ -12,9 +12,7 @@ struct ContentView: View {
     @State private var viewModel: ChatViewModel?
     @State private var taskManager: TaskManager?
     @State private var columnVisibility = NavigationSplitViewVisibility.automatic
-    @State private var showSetupSheet = false
     @State private var showTaskManager = false
-    @State private var setupReason = ""
 
     var body: some View {
         mainContent
@@ -23,9 +21,7 @@ struct ContentView: View {
                 taskManager: $taskManager,
                 modelManager: $modelManager,
                 appDelegate: appDelegate,
-                showSetupSheet: $showSetupSheet,
                 showTaskManager: $showTaskManager,
-                setupReason: $setupReason,
                 settingsManager: settingsManager,
                 modelContext: modelContext,
                 conversations: conversations
@@ -163,9 +159,7 @@ private struct ContentViewModifiers: ViewModifier {
     @Binding var taskManager: TaskManager?
     @Binding var modelManager: ModelManager?
     @ObservedObject var appDelegate: AppDelegate
-    @Binding var showSetupSheet: Bool
     @Binding var showTaskManager: Bool
-    @Binding var setupReason: String
     let settingsManager: SettingsManager
     let modelContext: ModelContext
     let conversations: [Conversation]
@@ -203,9 +197,6 @@ private struct ContentViewModifiers: ViewModifier {
                     viewModel = vm
                     AppLogger.info("ViewModel created", category: "app")
                 }
-
-                await checkEnvironmentAsync()
-                AppLogger.info("Environment check done", category: "app")
             }
             .onChange(of: appDelegate.pendingOpenURLs) { _, urls in
                 if !urls.isEmpty {
@@ -219,13 +210,6 @@ private struct ContentViewModifiers: ViewModifier {
                 viewModel?.refreshAfterVideoChange()
             }
             .modifier(ExportImportNotifications(viewModel: $viewModel))
-            .sheet(isPresented: $showSetupSheet) {
-                EnvironmentSetupView(settingsManager: settingsManager, reason: setupReason) {
-                    showSetupSheet = false
-                    PythonEnvironment.invalidateCache()
-                    modelManager?.refreshStatuses()
-                }
-            }
             .sheet(isPresented: $showTaskManager) {
                 if let taskManager {
                     TaskManagerView(taskManager: taskManager)
@@ -239,22 +223,6 @@ private struct ContentViewModifiers: ViewModifier {
         appDelegate.pendingOpenURLs.removeAll()
         viewModel.openFiles(urls: urls)
         AppLogger.info("Processed \(urls.count) file(s) from Finder/Dock", category: "app")
-    }
-
-    private func checkEnvironmentAsync() async {
-        let settings = settingsManager.settings.transcription
-        let status = await Task.detached(priority: .userInitiated) {
-            PythonEnvironment.check(settings: settings)
-        }.value
-        await MainActor.run {
-            switch status {
-            case .missing(let reason):
-                setupReason = reason
-                showSetupSheet = true
-            case .ready, .notChecked:
-                break
-            }
-        }
     }
 }
 

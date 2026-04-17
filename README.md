@@ -1,6 +1,6 @@
 # CT Transcriber
 
-A native macOS app for audio and video transcription with LLM chat capabilities, powered by CTranslate2 Metal backend on Apple Silicon.
+A native macOS app for audio and video transcription with LLM chat capabilities, powered by the CTranslate2 Metal backend (via the bundled [metal-faster-whisper](https://github.com/vsevolod-oparin/metal-faster-whisper) framework) on Apple Silicon.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)
@@ -9,13 +9,12 @@ A native macOS app for audio and video transcription with LLM chat capabilities,
 ## Features
 
 ### Transcription
-- **Whisper models** via faster-whisper with CTranslate2 Metal GPU acceleration
+- **Whisper models** via the native MetalWhisper framework (in-process ObjC/C++, no Python)
 - **Multiple models**: Large V3 Turbo, Large V3, Base (configurable)
 - **Audio formats**: MP3, M4A, WAV, FLAC, AIFF, CAF, OGG, Opus
-- **Video formats**: MP4, MOV, AVI, WebM, MKV (audio extracted automatically)
-- **WebM/MKV support**: auto-converts to MP4 for playback via bundled ffmpeg
-- **Timestamps**: optional `[start → end]` per segment
-- **VAD filter**: skip silence, reduce hallucinations
+- **Video formats**: MP4, MOV, AVI, WebM, MKV (audio extracted automatically via ffmpeg fallback for WebM)
+- **Timestamps**: optional `[start → end]` per segment with click-to-seek
+- **VAD filter**: Silero VAD via ONNX Runtime, bundled in-framework
 - **Background queue**: configurable parallel transcriptions (1–4)
 
 ### LLM Chat
@@ -44,9 +43,9 @@ A native macOS app for audio and video transcription with LLM chat capabilities,
 
 - **macOS 14.0+** (Sonoma)
 - **Apple Silicon** (M1/M2/M3/M4)
-- Internet connection for first setup and LLM features
-- ~60 MB download for Miniconda on first launch
-- 1.6–3.1 GB for Whisper models
+- Internet connection to download models and for LLM features
+- 1.6–3.1 GB disk space for Whisper models
+- `ffmpeg` in PATH is optional — only needed to transcribe WebM files (`brew install ffmpeg`)
 
 ## Installation
 
@@ -54,8 +53,8 @@ A native macOS app for audio and video transcription with LLM chat capabilities,
 
 1. Download the latest `.dmg` from [Releases](https://github.com/vsevolod-oparin/ct-transcriber-macos/releases)
 2. Drag **CT Transcriber** to Applications
-3. Right-click → Open (or run `xattr -cr /Applications/CT\ Transcriber.app` to bypass Gatekeeper)
-4. First launch automatically sets up the Python environment
+3. On first launch: right-click → Open (or run `xattr -cr /Applications/CT\ Transcriber.app` to bypass Gatekeeper if the build is unsigned)
+4. Open Settings → Transcription → Manage Models and download a model — the app is ready to transcribe immediately (no environment setup)
 
 ### Build from Source
 
@@ -75,14 +74,9 @@ xcodebuild -scheme CTTranscriber -destination 'platform=macOS' build
 
 ## First Launch
 
-On first launch, the app automatically:
-1. Downloads and installs Miniconda to `~/.ct-transcriber/miniconda/`
-2. Creates the `ct-transcriber-metal-env` conda environment
-3. Installs faster-whisper, CTranslate2 Metal backend, and ffmpeg
-4. No terminal interaction required
+Transcription runs in-process via the bundled MetalWhisper framework — no Python, conda, or background installers.
 
-Then:
-1. Go to **Settings → Transcription → Manage Models** and download a Whisper model
+1. Go to **Settings → Transcription → Manage Models** and download a Whisper model (Turbo recommended for speed, Large V3 for best accuracy)
 2. Go to **Settings → LLM** and configure an API key for your preferred provider
 3. Create a conversation and start chatting or attach audio/video files
 
@@ -126,17 +120,15 @@ CTTranscriber/
   Models/       — SwiftData models (Conversation, Message, Attachment, BackgroundTask)
   Views/        — SwiftUI views + NSTableView chat (ChatView, ConversationListView, Settings)
   ViewModels/   — @Observable view models (ChatViewModel, SettingsManager)
-  Services/     — LLM, Transcription, TaskManager, AudioPlayback, VideoConverter
-  Python/       — Bundled scripts (transcribe.py, convert_model.py, setup_env.sh)
+  Services/     — LLM, Transcription, TaskManager, AudioPlayback, VideoConverter, ModelManager
   Resources/    — Info.plist, default-settings.json, Assets.xcassets
 ```
 
 **Key technologies:**
 - SwiftUI + NSViewRepresentable (NSTableView for chat, AVPlayerView for video)
 - SwiftData for persistence
-- Python subprocess for Whisper transcription (faster-whisper + CTranslate2 Metal)
+- [metal-faster-whisper](https://github.com/vsevolod-oparin/metal-faster-whisper) (SPM binary xcframework) for in-process Whisper transcription on Apple Silicon Metal GPU — no Python, no subprocess
 - SSE streaming for LLM APIs (OpenAI-compatible + Anthropic)
-- Bundled Miniconda for zero-setup Python environment
 
 ## License
 

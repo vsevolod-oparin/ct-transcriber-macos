@@ -2,7 +2,22 @@
 
 A native macOS audio transcription app with LLM chat capabilities, powered by CTranslate2 Metal backend on Apple Silicon.
 
-**CTranslate2 source:** Local build at `/Users/smileijp/projects/branch/CTranslate2` (metal-backend branch). See `METAL_QUICKSTART.md` there for build instructions.
+**CTranslate2 source:** Used indirectly via [metal-faster-whisper](https://github.com/vsevolod-oparin/metal-faster-whisper) (SPM binary xcframeworks). Local CTranslate2 source at `/Users/smileijp/projects/branch/CTranslate2` is kept for upstream work on the library.
+
+---
+
+## Current Status (2026-04-17)
+
+**Current release:** v0.5.1 · **Dependency:** `metal-faster-whisper` v0.2.0 (SPM)
+
+| Phase | Status |
+|-------|--------|
+| M0–M13 (core app, distribution v0.2.0, export/markdown v0.4.0) | ✅ Done |
+| v0.5.0/0.5.1 polish (syntax highlighting, strict concurrency, timestamp seek, Services) | ✅ Done |
+| **M15a-c** — Native MetalWhisper framework via SPM; Python/conda fully removed | ✅ Done |
+| **M15d** — Code-sign framework + notarize DMG | Next (Apple Developer ID now available) |
+| **M12a** — MCP infrastructure | Queued (research complete, no code) |
+| M14 — VLM / image-in-chat | Future |
 
 ---
 
@@ -11,8 +26,8 @@ A native macOS audio transcription app with LLM chat capabilities, powered by CT
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | UI Framework | SwiftUI (NavigationSplitView) | Modern, native macOS sidebar+detail pattern; Xcode 16+ |
-| Whisper Integration | Python subprocess (faster-whisper via conda env) | faster-whisper provides VAD, chunking, temperature retries, and segment timestamps out of the box; direct CT2 API lacks VAD (causes hallucinations on silence) and requires ~200 extra lines of manual pipeline code for comparable results; see `reports/planning-whisper-integration-strategy.md` for full analysis |
-| Python Environment | Auto-managed conda env with pre-built wheel | Miniconda auto-installed if missing; pre-built CT2 Metal package (1.3 MB) eliminates compilation; zero terminal interaction for end users |
+| Whisper Integration | MetalWhisper.framework (in-process ObjC/C++) | Native Swift/ObjC framework built on CTranslate2 Metal backend; zero Python/conda dependency; streaming via segmentHandler callback; VAD via bundled ONNX Runtime + Silero VAD model; replaces Python subprocess approach |
+| Python Environment | **REMOVED** — MetalWhisper.framework is bundled | No Miniconda, no conda env, no Python scripts; models downloaded directly from HuggingFace pre-converted CTranslate2 repos via MWModelManager |
 | Persistent Storage | SwiftData | Native to Swift, backed by SQLite, first-class Xcode support, sufficient for chat dialogues |
 | File Storage | App Support directory (`~/Library/Application Support/CTTranscriber/files/`) | Unified storage for audio, images, and text files; referenced by UUID filename in SwiftData `Attachment` model |
 | Settings Storage | JSON file at `~/Library/Application Support/CTTranscriber/settings.json` | Defaults bundled in app as `default-settings.json`; copied to user config on first launch; all provider configs, API keys, and paths are user-editable |
@@ -1040,6 +1055,115 @@ Architecture refactors (M1 TranscriptionOrchestrator, M2 protocols), performance
 
 ---
 
+## Milestone 15: Native Transcription — Eliminate Python/Conda
+
+**Goal:** Replace the Python/conda subprocess pipeline with the native MetalWhisper framework, eliminating the 500MB Miniconda dependency and all Python infrastructure.
+**Library:** [metal-faster-whisper](https://github.com/vsevolod-oparin/metal-faster-whisper) — Objective-C++ port of faster-whisper using CTranslate2 Metal backend directly. Distributed via Swift Package Manager binary targets (xcframework zips on GitHub Releases).
+**Research:** See `reports/research-metal-faster-whisper-migration.md`
+**Model compatibility:** Same CTranslate2 format — existing downloaded models work without re-conversion.
+**Current dependency:** `metal-faster-whisper` v0.2.0 (SPM)
+
+### M15a: Framework Integration ✅
+
+**Status:** Complete (2026-04-17) — direct migration (no parallel feature-flagged service).
+**Goal:** Migrate transcription to MetalWhisper.framework.
+
+- [x] Build MetalWhisper.framework from metal-faster-whisper repo (via SPM binary xcframework)
+- [x] Add framework + dylibs (libctranslate2, libonnxruntime) via SPM `.binaryTarget`
+- [x] `TranscriptionService.swift` rewritten to use `MWTranscriber` directly (no separate `NativeTranscriptionService` — chose direct replacement over parallel service)
+- [~] Feature flag deferred — direct replacement was cleaner; no legacy path to toggle to
+- [x] Quality comparison via CLI — output matches Python pipeline (verified on Russian webm)
+- [~] Formal benchmark deferred — ad-hoc validation sufficient for 0.5.x release
+
+### Test Criteria (M15a)
+- [x] Native backend transcribes audio (mp3, wav, m4a, mp4, mov) — confirmed in 0.5.1
+- [x] Streaming segment callbacks work via `segmentHandler` + `AsyncThrowingStream`
+- [x] VAD filter works — bundled `silero_vad_v6.onnx` resolved via `Bundle(for: MWTranscriber.self)`
+- [x] Temperature fallback works (via `MWTranscriptionOptions.temperatures`)
+- [x] webm support via ffmpeg fallback in `MWAudioDecoder` (upstream, 0.1.4+)
+- [x] Versioned macOS framework layout (`Versions/A/`) for Xcode 15+ validation (upstream, 0.1.2+)
+
+---
+
+### M15b: Native Model Management ✅
+
+**Status:** Complete (2026-04-17) — `ModelManager.swift` now wraps `MWModelManager`.
+**Goal:** Download and manage Whisper models natively without Python conversion scripts.
+
+- [x] `ModelManager.swift` uses `MWModelManager.shared().resolveModel(...)` with progress callback
+- [x] Native download progress callbacks → existing ModelManagerView UI (MB/percent)
+- [x] HuggingFace repo IDs supported (e.g. `Systran/faster-whisper-large-v3`, `mobiuslabsgmbh/faster-whisper-large-v3-turbo`)
+- [x] Backward compatible with existing models directory (same CTranslate2 format)
+- [x] Cache management: list via `listCachedModels`, delete via `deleteCachedModel`
+
+### Test Criteria (M15b)
+- [x] Download a model via native manager → appears in model list → transcription works
+- [x] Existing user models (downloaded via Python) continue to work — same CT2 format
+- [x] Download progress shows in UI
+
+---
+
+### M15c: Remove Python Infrastructure ✅
+
+**Status:** Complete (2026-04-17) — all Python source files and Xcode references deleted, build verified green, README updated.
+**Goal:** Delete all Python/conda code. Native-only transcription.
+
+**Active code paths removed (verified by grep — zero callers):**
+- [x] `PythonEnvironment.check()` — no longer called from `ContentView.swift` or `ChatViewModel.swift`
+- [x] Environment tab removed from `SettingsView.swift`
+- [x] `condaEnvName`, `ctranslate2SourcePath`, `ct2PackageURL`, `device` fields removed from `AppSettings.swift`
+- [x] Miniconda paths removed from `AppUninstaller.swift` active cleanup
+- [x] Python-related fields removed from `default-settings.json`
+
+**Files deleted from source tree and Xcode target (2026-04-17):**
+- [x] `CTTranscriber/Services/PythonEnvironment.swift`
+- [x] `CTTranscriber/Views/EnvironmentSetupView.swift`
+- [x] `CTTranscriber/Python/transcribe.py`
+- [x] `CTTranscriber/Python/convert_model.py`
+- [x] `CTTranscriber/Python/setup_env.sh`
+- [x] `CTTranscriber/Python/` directory removed
+- [x] All 5 `PBXFileReference` + 5 orphan `PBXBuildFile` entries removed from `project.pbxproj`
+- [x] `Python` `PBXGroup` removed from Xcode navigator
+
+**Documentation:**
+- [x] `README.md` updated — removed Miniconda first-launch text, Python subprocess references, bundled-scripts directory listing; references metal-faster-whisper SPM dependency instead
+
+### Test Criteria (M15c)
+- [x] App launches and transcribes without Python/conda installed
+- [x] No 500MB first-launch download — native framework bundled in-app (~50 MB added by xcframeworks)
+- [x] Settings UI has no Python/environment section
+- [x] Uninstaller still cleans up legacy `~/.ct-transcriber` for existing installs
+- [x] `plutil -lint` passes on `project.pbxproj`
+- [x] Debug build green after all deletions
+
+---
+
+### M15d: Distribution Update
+
+**Status:** Unblocked (2026-04-17) — Apple Developer ID now available; code-signing and notarization pending implementation.
+**Goal:** Update app bundle and DMG for native-only, code-signed, notarized distribution.
+
+- [ ] Set `DEVELOPMENT_TEAM` in `project.pbxproj` and enable "Hardened Runtime" on the app target
+- [ ] Code-sign `MetalWhisper.framework`, `CTranslate2.framework`, `OnnxRuntime.framework` (inner frameworks from SPM binary targets) with the Developer ID Application certificate
+- [ ] Code-sign the app bundle with Hardened Runtime + entitlements (microphone, file access)
+- [ ] Update `scripts/create-dmg.sh` (or successor) to run `codesign --deep --verify` and `notarytool submit --wait` after DMG creation
+- [ ] Add Info.plist usage-description strings if any are missing (microphone, file access, network for HuggingFace + LLM APIs)
+- [x] DMG builder script produces DMG with embedded xcframeworks (`CT-Transcriber-0.5.1.dmg` — currently unsigned)
+- [x] Basic release notes maintained per version (`RELEASE_NOTES.md`)
+
+### Impact
+
+| Aspect | Before (Python) | After (Native) |
+|--------|-----------------|----------------|
+| First-launch experience | 500MB download + minutes of setup | Works immediately |
+| App bundle size | ~3.4MB + 500MB runtime | ~50-100MB (all-inclusive) |
+| Settings fields | 6+ Python-related | Model selection only |
+| Code removed | — | ~970+ lines |
+| Error surface | conda, pip, Python imports, subprocess I/O | Single framework load |
+| Transcription start | 1.1s env check + subprocess spawn | Direct API call |
+
+---
+
 ## Milestone 13: Content Export & Markdown ✅
 
 **Goal:** Make media downloadable, render markdown in chat, import/export conversations.
@@ -1102,16 +1226,20 @@ M0 (Skeleton)
            └── M11b (Audit Fixes) ✅
                 └── FSM + Anti-Pattern Audit (v0.3.x) ✅
                      └── M13 (Export & Markdown) ✅ (v0.4.0)
-                          └── M12a (MCP Infrastructure) [next]
-                               ├── M12b (macOS Native: Calendar, Reminders, Notes)
-                               ├── M12c (Ecosystem: Notion, Todoist, Slack, Web Search)
-                               ├── M12d (Advanced: Memory, Multi-step, Social Media)
-                               ├── M12e (Rich Media: Maps, Wikipedia, Images, Generation)
-                               └── M12f (Rich PDF: LLM-designed docs with WebKit rendering) ← M12e
-                                    └── M14c (PDF Quality Review) ← VLM
-                          M14a (Image-in-Chat VLM) [can start independently]
-                               ├── M14b (Lecture Video Visual Extraction)
-                               └── M14d (Local VLM via LM Studio/MLX)
+                          └── v0.5.x polish ✅ (syntax highlighting, strict concurrency, drag-to-Finder, timestamp seek, Services)
+                               └── M15a-b (Native MetalWhisper via SPM) ✅ (supersedes M5/M5b Python pipeline)
+                                    └── M15c (Remove Python) ⚠️ mostly done
+                                         └── M15d (Code-signed distribution) [pending Developer ID]
+                               M12a (MCP Infrastructure) [next — research complete]
+                                    ├── M12b (macOS Native: Calendar, Reminders, Notes)
+                                    ├── M12c (Ecosystem: Notion, Todoist, Slack, Web Search)
+                                    ├── M12d (Advanced: Memory, Multi-step, Social Media)
+                                    ├── M12e (Rich Media: Maps, Wikipedia, Images, Generation)
+                                    └── M12f (Rich PDF: LLM-designed docs with WebKit rendering) ← M12e
+                                         └── M14c (PDF Quality Review) ← VLM
+                               M14a (Image-in-Chat VLM) [can start independently]
+                                    ├── M14b (Lecture Video Visual Extraction)
+                                    └── M14d (Local VLM via LM Studio/MLX)
 ```
 
 ## Suggested Implementation Order
@@ -1120,7 +1248,7 @@ M0 (Skeleton)
 |-------|-----------|--------|-------|
 | **Phase A** | M0 → M1 → M2 → M3 | ✅ Done | Core UI + persistence |
 | **Phase B** | M4 | ✅ Done | LLM integration (Z.ai, OpenAI, Anthropic, DeepSeek, Qwen) |
-| **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX |
+| **Phase C** | M5 → M5b | ✅ Done | Python env + zero-setup UX (superseded by M15) |
 | **Phase D** | M6 → M7 | ✅ Done | Model management + transcription pipeline |
 | **Phase E** | M7b → M8 → M8b → M8c | ✅ Done | Chat UX + task manager + performance + NSTableView migration |
 | **Phase F** | M9 | ✅ Done | macOS integration (Finder, drag-and-drop) |
@@ -1131,16 +1259,20 @@ M0 (Skeleton)
 | **Phase J+** | M11b | ✅ Done | 6-agent audit: 22 fixes (security, data races, threading, performance) |
 | **Phase K** | FSM + audit | ✅ Done | FSM refactoring, anti-pattern audit, crash fixes, video sizing, PythonEnv caching (v0.3.x) |
 | **Phase L** | M13 | ✅ Done | Markdown rendering, PDF/JSON/MD export, import, media save (v0.4.0) |
-| **Phase L+** | Post-M13 | ✅ Done | Syntax highlighting, @Query migration, Swift strict concurrency, drag-to-Finder |
-| **Phase M** | M12a | Next | MCP infrastructure: Swift SDK, client manager, tool-call UI, server config |
-| **Phase M+** | M12b | Future | macOS native: Apple Calendar, Reminders, Notes |
-| **Phase N** | M12c | Future | Ecosystem: Notion, Todoist, Obsidian, Slack, Web Search |
-| **Phase N+** | M12d | Future | Advanced: Memory, multi-step workflows, social media |
-| **Phase O** | M12e | Future | Rich Media: Maps, Wikipedia, images, generation (podcast companion) |
-| **Phase O+** | M12f | Future | Rich PDF: LLM-designed documents with WebKit rendering |
-| **Phase P** | M14a | Future | VLM: Image-in-chat understanding (~200 lines, prerequisite) |
-| **Phase P+** | M14b | Future | VLM: Lecture video visual extraction (slides, whiteboard, diagrams) |
-| **Phase Q** | M14c-d | Future | VLM: PDF quality review loop + local VLM via LM Studio |
+| **Phase L+** | v0.5.0 polish | ✅ Done | Syntax highlighting, @Query migration, Swift strict concurrency, drag-to-Finder |
+| **Phase L++** | v0.5.1 polish | ✅ Done | Timestamp click-to-seek, mini-player video fix, macOS Services, NSCache thumbnails |
+| **Phase M** | M15a-b | ✅ Done | Native MetalWhisper via SPM binary targets (v0.2.0 dependency); native MWModelManager |
+| **Phase M+** | M15c | ✅ Done | Python removed entirely: 5 files deleted, pbxproj cleaned, README updated, build green |
+| **Phase M++** | M15d | Next | Code-sign + notarize (Developer ID acquired 2026-04-17) |
+| **Phase N** | M12a | Queued | MCP infrastructure: Swift SDK, client manager, tool-call UI, server config |
+| **Phase N+** | M12b | Future | macOS native: Apple Calendar, Reminders, Notes |
+| **Phase O** | M12c | Future | Ecosystem: Notion, Todoist, Obsidian, Slack, Web Search |
+| **Phase O+** | M12d | Future | Advanced: Memory, multi-step workflows, social media |
+| **Phase P** | M12e | Future | Rich Media: Maps, Wikipedia, images, generation (podcast companion) |
+| **Phase P+** | M12f | Future | Rich PDF: LLM-designed documents with WebKit rendering |
+| **Phase Q** | M14a | Future | VLM: Image-in-chat understanding (~200 lines, prerequisite) |
+| **Phase Q+** | M14b | Future | VLM: Lecture video visual extraction (slides, whiteboard, diagrams) |
+| **Phase R** | M14c-d | Future | VLM: PDF quality review loop + local VLM via LM Studio |
 
 ---
 

@@ -16,9 +16,6 @@ struct SettingsView: View {
 
             LLMSettingsTab(settings: $settingsManager.settings.llm)
                 .tabItem { Label("LLM", systemImage: "brain") }
-
-            EnvironmentSettingsTab(settings: $settingsManager.settings.transcription, settingsManager: settingsManager, modelManager: modelManager)
-                .tabItem { Label("Environment", systemImage: "terminal") }
         }
         .frame(width: 520 * s, height: 480 * s)
     }
@@ -109,11 +106,6 @@ private struct TranscriptionSettingsTab: View {
             }
 
             Section("Inference") {
-                Picker("Device", selection: $settings.device) {
-                    Text("Metal GPU (mps)").tag("mps")
-                    Text("CPU").tag("cpu")
-                }
-
                 HStack {
                     Text("Beam Size")
                     Spacer()
@@ -149,8 +141,6 @@ private struct TranscriptionSettingsTab: View {
 
                 Toggle("Condition on Previous Text", isOn: $settings.conditionOnPreviousText)
 
-                Toggle("Flash Attention", isOn: $settings.flashAttention)
-
                 Toggle("Skip Timestamps (faster)", isOn: $settings.skipTimestamps)
 
                 HStack {
@@ -161,42 +151,6 @@ private struct TranscriptionSettingsTab: View {
                         .multilineTextAlignment(.trailing)
                     Stepper("", value: $settings.maxParallelTranscriptions, in: 1...4)
                         .labelsHidden()
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .padding()
-    }
-}
-
-// MARK: - LLM Tab
-
-// MARK: - Environment Tab
-
-private struct EnvironmentSettingsTab: View {
-    @Binding var settings: TranscriptionSettings
-    var settingsManager: SettingsManager
-    var modelManager: ModelManager
-    @Environment(\.fontScale) private var fontScale
-    @State private var showSetupSheet = false
-
-    var body: some View {
-        Form {
-            Section("Python Environment") {
-                TextField("Conda Env Name", text: $settings.condaEnvName)
-                TextField("CTranslate2 Package URL (pre-built)", text: $settings.ct2PackageURL)
-                    .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(fontScale), design: .monospaced))
-                HStack {
-                    TextField("CTranslate2 Source Path (fallback)", text: $settings.ctranslate2SourcePath)
-                    Button("Browse...") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseDirectories = true
-                        panel.canChooseFiles = false
-                        panel.allowsMultipleSelection = false
-                        if panel.runModal() == .OK, let url = panel.url {
-                            settings.ctranslate2SourcePath = url.path
-                        }
-                    }
                 }
             }
 
@@ -219,21 +173,9 @@ private struct EnvironmentSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
-
-            Section {
-                Button("Re-run Environment Setup...") {
-                    showSetupSheet = true
-                }
-            }
         }
         .formStyle(.grouped)
         .padding()
-        .sheet(isPresented: $showSetupSheet) {
-            EnvironmentSetupView(settingsManager: settingsManager, reason: "Manual re-run from Settings.") {
-                showSetupSheet = false
-                modelManager.refreshStatuses()
-            }
-        }
     }
 }
 

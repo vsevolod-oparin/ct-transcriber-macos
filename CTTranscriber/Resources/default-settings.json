@@ -4,29 +4,26 @@
     "fontScale": 1.0
   },
   "transcription": {
-    "condaEnvName": "ct-transcriber-metal-env",
-    "ctranslate2SourcePath": "",
-    "ct2PackageURL": "https://github.com/vsevolod-oparin/ct-transcriber-macos/releases/download/dev/ctranslate2-4.7.1-cp312-cp312-macosx_14_0_arm64.whl.tar.gz",
     "modelsDirectory": "",
     "selectedModelID": "whisper-large-v3-turbo",
     "models": [
       {
         "id": "whisper-large-v3-turbo",
-        "huggingFaceID": "openai/whisper-large-v3-turbo",
+        "huggingFaceID": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
         "displayName": "Large V3 Turbo",
         "sizeEstimate": "~1.6 GB",
         "quantization": "float16"
       },
       {
         "id": "whisper-large-v3",
-        "huggingFaceID": "openai/whisper-large-v3",
+        "huggingFaceID": "Systran/faster-whisper-large-v3",
         "displayName": "Large V3",
         "sizeEstimate": "~3.1 GB",
         "quantization": "float16"
       },
       {
         "id": "whisper-base",
-        "huggingFaceID": "openai/whisper-base",
+        "huggingFaceID": "Systran/faster-whisper-base",
         "displayName": "Base",
         "sizeEstimate": "~150 MB",
         "quantization": "float16"
@@ -37,10 +34,8 @@
     "language": "",
     "vadFilter": true,
     "conditionOnPreviousText": false,
-    "flashAttention": false,
     "skipTimestamps": false,
-    "maxParallelTranscriptions": 1,
-    "device": "mps"
+    "maxParallelTranscriptions": 1
   },
   "llm": {
     "activeProviderID": "00000000-0000-0000-0000-000000000006",

@@ -700,14 +700,6 @@ final class ChatViewModel {
     private func startTranscription(audioPath: String, displayName: String, conversation: Conversation, transcriptMessage: Message) {
         let transSettings = settingsManager.settings.transcription
 
-        let envStatus = PythonEnvironment.check(settings: transSettings)
-        guard case .ready = envStatus else {
-            transcriptMessage.content = "\(Self.transcriptionErrorPrefix)Python environment not ready. Set up from Settings → Environment."
-            transcriptMessage.lifecycle = .errorTranscription
-            saveContext()
-            return
-        }
-
         let selectedID = transSettings.selectedModelID
         guard let modelPath = modelManager.modelPath(for: selectedID) else {
             transcriptMessage.content = "\(Self.transcriptionErrorPrefix)\(TranscriptionError.modelNotDownloaded.localizedDescription)"

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Manages Whisper model downloads, conversions, and local storage.
+/// Manages Whisper model downloads and local storage via MWModelManager.
 @Observable
 @MainActor
 final class ModelManager {
@@ -13,13 +13,6 @@ final class ModelManager {
         case downloading(step: String)
         case ready(path: String, sizeMB: Int)
         case error(String)
-    }
-
-    struct ConvertStep: Decodable {
-        let type: String
-        let step: String?
-        let message: String?
-        let output_dir: String?
     }
 
     let settingsManager: SettingsManager
@@ -36,128 +29,103 @@ final class ModelManager {
     // MARK: - Public
 
     /// Rescans the models directory and updates statuses.
+    /// Checks both the legacy path ({modelsDir}/{id}) and the MWModelManager path
+    /// ({modelsDir}/{sanitizedHFID}) so existing models continue to work.
     func refreshStatuses() {
         let settings = settingsManager.settings.transcription
         let modelsDir = resolvedModelsDirectory(settings: settings)
 
         for model in settings.models {
-            let modelPath = (modelsDir as NSString).appendingPathComponent(model.id)
-            if isValidModel(at: modelPath) {
-                // Mark ready immediately with 0 size, compute size in background
-                if case .ready = modelStatuses[model.id] {
-                    // Already ready — keep existing size
-                } else {
-                    modelStatuses[model.id] = .ready(path: modelPath, sizeMB: 0)
-                }
-                let modelID = model.id
-                Task.detached(priority: .utility) {
-                    let size = ModelManager.directorySize(path: modelPath)
-                    await MainActor.run { [weak self] in
-                        // Only update if still in ready state (not downloading/deleted)
-                        if case .ready(let p, _) = self?.modelStatuses[modelID] {
-                            self?.modelStatuses[modelID] = .ready(path: p, sizeMB: size)
+            guard case .downloading = modelStatuses[model.id] else {
+                let modelPath = resolveLocalPath(for: model, in: modelsDir)
+                if let path = modelPath {
+                    if case .ready = modelStatuses[model.id] {
+                        // Already ready — keep existing size
+                    } else {
+                        modelStatuses[model.id] = .ready(path: path, sizeMB: 0)
+                    }
+                    let modelID = model.id
+                    Task.detached(priority: .utility) {
+                        let size = ModelManager.directorySize(path: path)
+                        await MainActor.run { [weak self] in
+                            if case .ready(let p, _) = self?.modelStatuses[modelID] {
+                                self?.modelStatuses[modelID] = .ready(path: p, sizeMB: size)
+                            }
                         }
                     }
+                } else {
+                    modelStatuses[model.id] = .notDownloaded
                 }
-            } else if case .downloading = modelStatuses[model.id] {
-                // Keep downloading status
-            } else {
-                modelStatuses[model.id] = .notDownloaded
+                continue
             }
+            // Keep in-progress downloading status.
         }
     }
 
-    /// Downloads and converts a model. Progress updates via modelStatuses.
+    /// Downloads a model from HuggingFace via MWModelManager. Progress updates via modelStatuses.
+    /// The huggingFaceID in WhisperModelConfig must point to a pre-converted CTranslate2 repo
+    /// (e.g. "Systran/faster-whisper-large-v3", not the original PyTorch "openai/whisper-*" repo).
     func downloadModel(_ model: WhisperModelConfig) {
         guard activeTasks[model.id] == nil else { return }
 
         modelStatuses[model.id] = .downloading(step: "Starting...")
 
-        activeTasks[model.id] = Task { [weak self] in
-            guard let self else { return }
-
-            let settings = settingsManager.settings.transcription
-            let modelsDir = resolvedModelsDirectory(settings: settings)
-            let outputDir = (modelsDir as NSString).appendingPathComponent(model.id)
-
-            // Ensure models directory exists
-            try? FileManager.default.createDirectory(
-                atPath: modelsDir, withIntermediateDirectories: true)
-
-            guard let pythonPath = PythonEnvironment.pythonPath(settings: settings) else {
-                await MainActor.run {
-                    self.modelStatuses[model.id] = .error("Python environment not ready")
-                    self.activeTasks.removeValue(forKey: model.id)
-                }
-                return
-            }
-
-            guard let scriptPath = Bundle.main.path(forResource: "convert_model", ofType: "py") else {
-                await MainActor.run {
-                    self.modelStatuses[model.id] = .error("convert_model.py not found in app bundle")
-                    self.activeTasks.removeValue(forKey: model.id)
-                }
-                return
-            }
-
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: pythonPath)
-            process.arguments = [
-                scriptPath,
-                "--hf-model", model.huggingFaceID,
-                "--output-dir", outputDir,
-                "--quantization", model.quantization,
-            ]
-
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-
-            do {
-                try process.run()
-
-                let decoder = JSONDecoder()
-                for try await line in pipe.fileHandleForReading.bytes.lines {
-                    guard !Task.isCancelled else { break }
-                    guard let data = line.data(using: .utf8),
-                          let step = try? decoder.decode(ConvertStep.self, from: data) else {
-                        continue
-                    }
-
-                    await MainActor.run {
-                        switch step.type {
-                        case "progress":
-                            self.modelStatuses[model.id] = .downloading(step: step.message ?? "Working...")
-                        case "done":
-                            let size = Self.directorySize(path: outputDir)
-                            self.modelStatuses[model.id] = .ready(path: outputDir, sizeMB: size)
-                        case "error":
-                            self.modelStatuses[model.id] = .error(step.message ?? "Unknown error")
-                        default:
-                            break
-                        }
-                    }
-                }
-
-                process.waitUntilExit()
-
-                if process.terminationStatus != 0 {
-                    await MainActor.run {
-                        if case .ready = self.modelStatuses[model.id] {
-                            // Already marked ready by the script
-                        } else {
-                            self.modelStatuses[model.id] = .error("Conversion exited with code \(process.terminationStatus)")
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.modelStatuses[model.id] = .error(error.localizedDescription)
-                }
-            }
-
-            self.activeTasks.removeValue(forKey: model.id)
+        let modelID = model.id
+        let hfID = model.huggingFaceID
+        activeTasks[modelID] = Task { [weak self] in
+            await self?.performDownload(modelID: modelID, hfID: hfID)
         }
+    }
+
+    private func performDownload(modelID: String, hfID: String) async {
+        let settings = settingsManager.settings.transcription
+        let modelsDir = resolvedModelsDirectory(settings: settings)
+
+        try? FileManager.default.createDirectory(
+            atPath: modelsDir, withIntermediateDirectories: true)
+
+        MWModelManager.shared().cacheDirectory = modelsDir
+
+        let result = await fetchModelPath(hfID: hfID, modelID: modelID)
+
+        await MainActor.run {
+            switch result {
+            case .success(let path):
+                let size = Self.directorySize(path: path)
+                self.modelStatuses[modelID] = .ready(path: path, sizeMB: size)
+            case .failure(let error):
+                self.modelStatuses[modelID] = .error(error.localizedDescription)
+            }
+            self.activeTasks.removeValue(forKey: modelID)
+        }
+    }
+
+    private func fetchModelPath(hfID: String, modelID: String) async -> Result<String, Error> {
+        return await Task.detached(priority: .userInitiated) { [weak self] () -> Result<String, Error> in
+            do {
+                let path = try MWModelManager.shared().resolveModel(
+                    hfID,
+                    progress: { bytesDownloaded, totalBytes, fileName in
+                        let step: String
+                        if totalBytes > 0 {
+                            let pct = Int(Double(bytesDownloaded) / Double(totalBytes) * 100)
+                            step = "Downloading \(fileName) (\(pct)%)"
+                        } else {
+                            let mb = bytesDownloaded / 1_048_576
+                            step = "Downloading \(fileName) (\(mb) MB)"
+                        }
+                        Task { @MainActor [weak self] in
+                            if case .downloading = self?.modelStatuses[modelID] {
+                                self?.modelStatuses[modelID] = .downloading(step: step)
+                            }
+                        }
+                    }
+                )
+                return Result<String, Error>.success(path)
+            } catch {
+                return Result<String, Error>.failure(error)
+            }
+        }.value
     }
 
     /// Cancels an in-progress download/conversion.
@@ -171,11 +139,18 @@ final class ModelManager {
     func deleteModel(_ model: WhisperModelConfig) {
         let settings = settingsManager.settings.transcription
         let modelsDir = resolvedModelsDirectory(settings: settings)
-        let modelPath = (modelsDir as NSString).appendingPathComponent(model.id)
 
         modelStatuses[model.id] = .notDownloaded
+
+        // Delete whichever path exists (legacy id-based or MWModelManager sanitized path).
+        let pathsToTry = [
+            (modelsDir as NSString).appendingPathComponent(model.id),
+            (modelsDir as NSString).appendingPathComponent(model.huggingFaceID.replacingOccurrences(of: "/", with: "--")),
+        ]
         Task.detached {
-            try? FileManager.default.removeItem(atPath: modelPath)
+            for path in pathsToTry {
+                try? FileManager.default.removeItem(atPath: path)
+            }
         }
     }
 
@@ -188,6 +163,19 @@ final class ModelManager {
     }
 
     // MARK: - Private
+
+    /// Returns the local path for a model if it exists on disk, nil otherwise.
+    /// Checks the MWModelManager sanitized path first, then the legacy id-based path.
+    private func resolveLocalPath(for model: WhisperModelConfig, in modelsDir: String) -> String? {
+        let candidates = [
+            // MWModelManager stores as {sanitizedRepoID} e.g. "Systran--faster-whisper-large-v3"
+            (modelsDir as NSString).appendingPathComponent(
+                model.huggingFaceID.replacingOccurrences(of: "/", with: "--")),
+            // Legacy path used by the old Python conversion flow
+            (modelsDir as NSString).appendingPathComponent(model.id),
+        ]
+        return candidates.first { isValidModel(at: $0) }
+    }
 
     private func resolvedModelsDirectory(settings: TranscriptionSettings) -> String {
         if !settings.modelsDirectory.isEmpty {

@@ -70,20 +70,21 @@ enum VideoConverter {
         }
     }
 
-    /// Finds ffmpeg in the bundled conda environment ONLY. Never uses system installs.
+    /// Finds ffmpeg. Checks common system locations; returns nil if not found.
     private static func findFFmpeg(settings: TranscriptionSettings) -> String? {
         let fm = FileManager.default
-        let condaBase = NSHomeDirectory() + "/.ct-transcriber/miniconda"
 
-        // Check the transcription conda env first
-        let envBin = "\(condaBase)/envs/\(settings.condaEnvName)/bin/ffmpeg"
-        if fm.isExecutableFile(atPath: envBin) { return envBin }
+        // Check standard system and Homebrew locations.
+        let candidates = [
+            "/usr/local/bin/ffmpeg",
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+        ]
+        if let path = candidates.first(where: { fm.isExecutableFile(atPath: $0) }) {
+            return path
+        }
 
-        // Check conda base bin (ffmpeg might be installed at the base level)
-        let baseBin = "\(condaBase)/bin/ffmpeg"
-        if fm.isExecutableFile(atPath: baseBin) { return baseBin }
-
-        AppLogger.error("ffmpeg not found in bundled conda env. Run: conda install -n \(settings.condaEnvName) ffmpeg", category: "video")
+        AppLogger.error("ffmpeg not found. Install with: brew install ffmpeg", category: "video")
         return nil
     }
 }

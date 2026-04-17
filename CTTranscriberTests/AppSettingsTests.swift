@@ -11,24 +11,21 @@ final class AppSettingsTests: XCTestCase {
         let data = try! Data(contentsOf: url)
         let settings = try! JSONDecoder().decode(AppSettings.self, from: data)
 
-        XCTAssertEqual(settings.transcription.condaEnvName, "ct-transcriber-metal-env")
         XCTAssertEqual(settings.transcription.beamSize, 4)
         XCTAssertEqual(settings.transcription.temperature, 1.0)
-        XCTAssertEqual(settings.transcription.device, "mps")
         XCTAssertTrue(settings.transcription.vadFilter)
         XCTAssertFalse(settings.llm.providers.isEmpty)
     }
 
     func testSettingsRoundTrip() {
         let json = """
-        {"general":{"theme":"dark","fontScale":1.5},"transcription":{"condaEnvName":"test-env","ctranslate2SourcePath":"","ct2PackageURL":"","modelsDirectory":"","selectedModelID":"test","models":[],"beamSize":3,"temperature":0.5,"language":"en","vadFilter":false,"conditionOnPreviousText":true,"flashAttention":false,"skipTimestamps":true,"maxParallelTranscriptions":2,"device":"cpu"},"llm":{"activeProviderID":"00000000-0000-0000-0000-000000000000","providers":[]}}
+        {"general":{"theme":"dark","fontScale":1.5},"transcription":{"modelsDirectory":"","selectedModelID":"test","models":[],"beamSize":3,"temperature":0.5,"language":"en","vadFilter":false,"conditionOnPreviousText":true,"skipTimestamps":true,"maxParallelTranscriptions":2},"llm":{"activeProviderID":"00000000-0000-0000-0000-000000000000","providers":[]}}
         """
         let data = Data(json.utf8)
         let settings = try! JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertEqual(settings.general.theme, .dark)
         XCTAssertEqual(settings.general.fontScale, 1.5)
-        XCTAssertEqual(settings.transcription.condaEnvName, "test-env")
         XCTAssertEqual(settings.transcription.beamSize, 3)
         XCTAssertEqual(settings.transcription.temperature, 0.5)
         XCTAssertEqual(settings.transcription.language, "en")
@@ -36,7 +33,6 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.transcription.conditionOnPreviousText)
         XCTAssertTrue(settings.transcription.skipTimestamps)
         XCTAssertEqual(settings.transcription.maxParallelTranscriptions, 2)
-        XCTAssertEqual(settings.transcription.device, "cpu")
 
         // Encode and decode again
         let encoder = JSONEncoder()

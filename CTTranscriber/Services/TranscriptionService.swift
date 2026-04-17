@@ -1,21 +1,8 @@
 import Foundation
+import AVFoundation
 
-/// Runs whisper transcription via the bundled transcribe.py subprocess.
+/// Runs whisper transcription via the MetalWhisper framework (in-process, no subprocess).
 enum TranscriptionService {
-
-    /// A single event from transcribe.py stdout.
-    struct TranscribeEvent: Decodable {
-        let type: String        // "info", "segment", "done", "error"
-        let language: String?
-        let language_probability: Double?
-        let duration: Double?
-        let start: Double?
-        let end: Double?
-        let text: String?
-        let num_segments: Int?
-        let elapsed: Double?
-        let message: String?
-    }
 
     /// Result of a completed transcription.
     struct TranscriptionResult {
@@ -59,137 +46,101 @@ enum TranscriptionService {
         case error(String)
     }
 
-    /// Transcribes an audio file. Yields progress updates, returns result on completion.
+    /// Transcribes an audio file using the MetalWhisper framework.
+    /// Yields progress updates; finishes with `.completed` then closes the stream.
     static func transcribe(
         audioPath: String,
         modelPath: String,
         settings: TranscriptionSettings
     ) -> AsyncThrowingStream<Progress, Error> {
         AsyncThrowingStream { continuation in
-            // Shared reference so onTermination can kill the subprocess
-            class ProcessBox: @unchecked Sendable { var process: Process? }
-            let box = ProcessBox()
+            // Shared stop flag checked from the ObjC segmentHandler (background GCD queue).
+            class StopBox: @unchecked Sendable { var value = false }
+            let stopBox = StopBox()
 
-            let task = Task {
+            let task = Task.detached(priority: .userInitiated) {
                 do {
-                    guard let pythonPath = PythonEnvironment.pythonPath(settings: settings) else {
-                        throw TranscriptionError.environmentNotReady
-                    }
+                    let audioURL = URL(fileURLWithPath: audioPath)
 
-                    guard let scriptPath = PythonEnvironment.transcribeScriptPath else {
-                        throw TranscriptionError.scriptNotFound
-                    }
+                    // Probe audio duration before starting so progress % is meaningful.
+                    let duration: Double = await {
+                        let asset = AVURLAsset(url: audioURL)
+                        guard let d = try? await asset.load(.duration) else { return 0 }
+                        let s = d.seconds
+                        return (s.isNaN || s.isInfinite) ? 0 : s
+                    }()
 
-                    let process = Process()
-                    box.process = process
-                    process.executableURL = URL(fileURLWithPath: pythonPath)
+                    continuation.yield(.started(language: "detecting...", duration: duration))
 
-                    var args = [
-                        scriptPath,
-                        "--model", modelPath,
-                        "--audio", audioPath,
-                        "--device", settings.device,
-                        "--beam-size", String(settings.beamSize),
-                        "--temperature", String(settings.temperature),
-                    ]
+                    // Load model into GPU memory (blocks until ready).
+                    let transcriber = try MWTranscriber(modelPath: modelPath)
 
-                    if !settings.language.isEmpty {
-                        args += ["--language", settings.language]
-                    }
+                    let options = MWTranscriptionOptions()
+                    options.beamSize = UInt(max(1, settings.beamSize))
+                    options.temperatures = [NSNumber(value: settings.temperature)]
+                    options.conditionOnPreviousText = settings.conditionOnPreviousText
+                    options.withoutTimestamps = settings.skipTimestamps
 
                     if settings.vadFilter {
-                        args.append("--vad-filter")
-                    } else {
-                        args.append("--no-vad-filter")
+                        options.vadFilter = true
+                        // silero_vad_v6.onnx is bundled inside MetalWhisper.framework/Resources.
+                        // Bundle(for:) resolves to the framework bundle, not the app bundle.
+                        if let vadPath = Bundle(for: MWTranscriber.self)
+                                .path(forResource: "silero_vad_v6", ofType: "onnx") {
+                            options.vadModelPath = vadPath
+                        }
                     }
 
-                    if settings.conditionOnPreviousText {
-                        args.append("--condition-on-previous-text")
-                    }
+                    let language: String? = settings.language.isEmpty ? nil : settings.language
 
-                    if settings.flashAttention {
-                        args.append("--flash-attention")
-                    } else {
-                        args.append("--no-flash-attention")
-                    }
-
-                    if settings.skipTimestamps {
-                        args.append("--skip-timestamps")
-                    }
-
-                    process.arguments = args
-
-                    AppLogger.info("Transcription command: \(pythonPath) \(args.joined(separator: " "))", category: "transcription")
-
-                    let stdoutPipe = Pipe()
-                    let stderrPipe = Pipe()
-                    process.standardOutput = stdoutPipe
-                    process.standardError = stderrPipe
-
-                    try process.run()
-
-                    let decoder = JSONDecoder()
                     var segments: [TranscriptionResult.Segment] = []
-                    var language = ""
-                    var duration = 0.0
                     var segmentIndex = 0
+                    var outInfo: MWTranscriptionInfo? = nil
+                    let t0 = Date()
 
-                    for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
-                        try Task.checkCancellation()
-
-                        guard let data = line.data(using: .utf8),
-                              let event = try? decoder.decode(TranscribeEvent.self, from: data) else {
-                            continue
-                        }
-
-                        switch event.type {
-                        case "info":
-                            language = event.language ?? ""
-                            duration = event.duration ?? 0
-                            continuation.yield(.started(language: language, duration: duration))
-
-                        case "segment":
-                            if let start = event.start, let end = event.end, let text = event.text {
-                                segments.append(.init(start: start, end: end, text: text))
-                                segmentIndex += 1
-                                let progress = duration > 0 ? min(1.0, end / duration) : 0
-                                continuation.yield(.segment(index: segmentIndex, text: text, progress: progress))
+                    // Synchronous call; segmentHandler fires on the transcriber's background queue.
+                    let _ = try transcriber.transcribeURL(
+                        audioURL,
+                        language: language,
+                        task: "transcribe",
+                        typedOptions: options,
+                        segmentHandler: { segment, stop in
+                            if stopBox.value || Task.isCancelled {
+                                stop.pointee = true
+                                return
                             }
+                            let text = segment.text.trimmingCharacters(in: .whitespaces)
+                            guard !text.isEmpty else { return }
 
-                        case "done":
-                            let result = TranscriptionResult(
-                                language: language,
-                                duration: duration,
-                                segments: segments,
-                                elapsed: event.elapsed ?? 0
-                            )
-                            continuation.yield(.completed(result))
+                            let start = Double(segment.start)
+                            let end = Double(segment.end)
+                            segments.append(.init(start: start, end: end, text: text))
+                            segmentIndex += 1
 
-                        case "error":
-                            throw TranscriptionError.transcriptionFailed(event.message ?? "Unknown error")
+                            let progress = duration > 0 ? min(1.0, end / duration) : 0
+                            continuation.yield(.segment(index: segmentIndex, text: text, progress: progress))
+                        },
+                        info: &outInfo
+                    )
 
-                        default:
-                            break
-                        }
+                    if stopBox.value || Task.isCancelled {
+                        continuation.finish(throwing: TranscriptionError.cancelled)
+                        return
                     }
 
-                    process.waitUntilExit()
+                    let elapsed = Date().timeIntervalSince(t0)
+                    let lang = outInfo?.language ?? "unknown"
+                    let actualDuration = outInfo.map { Double($0.duration) } ?? duration
 
-                    if process.terminationStatus != 0 && segments.isEmpty {
-                        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                        let stderrText = String(data: stderrData, encoding: .utf8)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-                        let lastLines = stderrText.split(separator: "\n").suffix(5).joined(separator: "\n")
-                        AppLogger.error("transcribe.py exited with code \(process.terminationStatus). Stderr:\n\(stderrText)", category: "transcription")
-
-                        let errorDetail = lastLines.isEmpty
-                            ? "exit code \(process.terminationStatus)"
-                            : lastLines
-                        throw TranscriptionError.transcriptionFailed(errorDetail)
-                    }
-
+                    let result = TranscriptionResult(
+                        language: lang,
+                        duration: actualDuration,
+                        segments: segments,
+                        elapsed: elapsed
+                    )
+                    continuation.yield(.completed(result))
                     continuation.finish()
+
                 } catch is CancellationError {
                     continuation.finish(throwing: TranscriptionError.cancelled)
                 } catch {
@@ -198,10 +149,8 @@ enum TranscriptionService {
             }
 
             continuation.onTermination = { _ in
+                stopBox.value = true
                 task.cancel()
-                if let p = box.process, p.isRunning {
-                    p.terminate()
-                }
             }
         }
     }
@@ -210,8 +159,6 @@ enum TranscriptionService {
 // MARK: - Errors
 
 enum TranscriptionError: LocalizedError {
-    case environmentNotReady
-    case scriptNotFound
     case modelNotDownloaded
     case transcriptionFailed(String)
     case cancelled
@@ -223,10 +170,6 @@ enum TranscriptionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .environmentNotReady:
-            "Python environment not ready. Run setup from Settings → Environment."
-        case .scriptNotFound:
-            "transcribe.py not found in app bundle."
         case .modelNotDownloaded:
             "Whisper model not downloaded. Open Settings → Transcription → Manage Models."
         case .transcriptionFailed(let msg):

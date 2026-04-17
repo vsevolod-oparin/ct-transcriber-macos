@@ -79,7 +79,7 @@ enum SettingsStorage {
     }
 
     private static let minimalDefaultsJSON = """
-    {"general":{"theme":"system","fontScale":1.0},"transcription":{"condaEnvName":"ct-transcriber-metal-env","ctranslate2SourcePath":"","ct2PackageURL":"","modelsDirectory":"","selectedModelID":"","models":[],"beamSize":4,"temperature":1.0,"language":"","vadFilter":true,"conditionOnPreviousText":false,"flashAttention":false,"skipTimestamps":false,"maxParallelTranscriptions":1,"device":"mps"},"llm":{"activeProviderID":"00000000-0000-0000-0000-000000000000","providers":[]}}
+    {"general":{"theme":"system","fontScale":1.0},"transcription":{"modelsDirectory":"","selectedModelID":"","models":[],"beamSize":4,"temperature":1.0,"language":"","vadFilter":true,"conditionOnPreviousText":false,"skipTimestamps":false,"maxParallelTranscriptions":1},"llm":{"activeProviderID":"00000000-0000-0000-0000-000000000000","providers":[]}}
     """
 
     private static func decode(from url: URL) -> AppSettings? {

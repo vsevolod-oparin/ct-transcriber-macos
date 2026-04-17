@@ -1,0 +1,15 @@
+{
+  "originHash" : "06df0fe1be64bfec8e9d0f3654404b5cd7d3994c4865cadda4308ec482074316",
+  "pins" : [
+    {
+      "identity" : "metal-faster-whisper",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vsevolod-oparin/metal-faster-whisper",
+      "state" : {
+        "revision" : "a2e65340907c6fa484d80fbf767231ec203a68a2",
+        "version" : "0.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}

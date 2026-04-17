@@ -18,7 +18,19 @@
       "WebFetch(domain:getstream.io)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:swiftwithmajid.com)",
-      "WebFetch(domain:asciiwwdc.com)"
+      "WebFetch(domain:asciiwwdc.com)",
+      "WebFetch(domain:snyk.io)",
+      "WebFetch(domain:swiftpackageindex.com)",
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:lambda.ai)",
+      "WebFetch(domain:www.runpod.io)",
+      "WebFetch(domain:instances.vantage.sh)",
+      "WebFetch(domain:computeprices.com)",
+      "WebFetch(domain:gcloud-compute.com)",
+      "WebFetch(domain:vast.ai)",
+      "WebFetch(domain:cloudprice.net)"
     ]
   }
 }
