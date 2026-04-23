@@ -64,12 +64,13 @@ struct OpenAICompatibleService: LLMService {
                         guard let data = payload.data(using: .utf8),
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                               let choices = json["choices"] as? [[String: Any]],
-                              let delta = choices.first?["delta"] as? [String: Any],
-                              let content = delta["content"] as? String else {
+                              let delta = choices.first?["delta"] as? [String: Any] else {
                             continue
                         }
 
-                        continuation.yield(content)
+                        if let content = delta["content"] as? String, !content.isEmpty {
+                            continuation.yield(content)
+                        }
                     }
 
                     continuation.finish()

@@ -34,6 +34,8 @@ final class AudioPlaybackManager {
     /// Timer for updating currentTime when the cell's own timer is stopped (scrolled out).
     private var miniPlayerTimer: Timer?
 
+    var lastPositions: [String: TimeInterval] = [:]
+
     private init() {}
 
     /// Called when an audio starts playing. Pauses any other playing audio first.
@@ -68,6 +70,8 @@ final class AudioPlaybackManager {
     /// Called when an audio is paused or stopped.
     func didStopPlaying(storedName: String) {
         if currentlyPlayingID == storedName {
+            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? currentTime
+            if pos > 0 { lastPositions[storedName] = pos }
             isPlaying = false
             stopMiniPlayerTimer()
         }
@@ -93,6 +97,10 @@ final class AudioPlaybackManager {
 
     /// Stops all playback and clears state (e.g., on conversation switch).
     func stopAll() {
+        if let id = currentlyPlayingID {
+            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? currentTime
+            if pos > 0 { lastPositions[id] = pos }
+        }
         pauseCallback?()
         stopMiniPlayerTimer()
         currentlyPlayingID = nil
@@ -140,5 +148,6 @@ final class AudioPlaybackManager {
     func seek(to time: TimeInterval) {
         seekCallback?(time)
         currentTime = time
+        if let id = currentlyPlayingID { lastPositions[id] = time }
     }
 }

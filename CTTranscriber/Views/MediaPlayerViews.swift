@@ -10,6 +10,9 @@ struct AudioPlayerView: View {
     /// this gets set with (storedName, time) so the matching player can seek.
     @Binding var seekRequest: (id: UUID, storedName: String, time: TimeInterval)?
     @State private var player: AVAudioPlayer?
+    /// AVPlayer used for OGG files where AVAudioPlayer's seek is broken.
+    @State private var avPlayer: AVPlayer?
+    @State private var avTimeObserver: Any?
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
@@ -17,6 +20,10 @@ struct AudioPlayerView: View {
     @State private var videoThumbnail: NSImage?
     @State private var loadError: String?
     @Environment(\.fontScale) private var fontScale
+
+    private var isOGG: Bool {
+        FileStorage.url(for: attachment.storedName).pathExtension.lowercased() == "ogg"
+    }
 
     /// Update interval for the seek bar position (seconds).
     private static let progressUpdateInterval: TimeInterval = 0.1
@@ -60,8 +67,7 @@ struct AudioPlayerView: View {
                     }
                 ), in: 0...1) { editing in
                     if !editing {
-                        // Drag ended — seek to position
-                        player?.currentTime = currentTime
+                        seekPlayer(to: currentTime)
                         isDragging = false
                         persistPosition()
                     }
@@ -89,19 +95,34 @@ struct AudioPlayerView: View {
         .onAppear { loadMetadata() }
         .onDisappear { cleanup() }
         .onReceive(Timer.publish(every: Self.progressUpdateInterval, on: .main, in: .common).autoconnect()) { _ in
-            guard isPlaying, let player, !isDragging else { return }
-            currentTime = player.currentTime
-            AudioPlaybackManager.shared.currentTime = currentTime
-            if !player.isPlaying {
-                isPlaying = false
-                persistPosition()
-                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+            guard isPlaying, !isDragging else { return }
+            if let avPlayer {
+                let t = CMTimeGetSeconds(avPlayer.currentTime())
+                if t.isFinite { currentTime = t }
+                AudioPlaybackManager.shared.currentTime = currentTime
+                if avPlayer.rate == 0 && isPlaying {
+                    if let item = avPlayer.currentItem,
+                       CMTimeGetSeconds(item.duration).isFinite,
+                       t >= CMTimeGetSeconds(item.duration) - 0.1 {
+                        isPlaying = false
+                        persistPosition()
+                        AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+                    }
+                }
+            } else if let player {
+                currentTime = player.currentTime
+                AudioPlaybackManager.shared.currentTime = currentTime
+                if !player.isPlaying {
+                    isPlaying = false
+                    persistPosition()
+                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+                }
             }
         }
         .onChange(of: seekRequest?.id) { _, _ in
             guard let req = seekRequest, req.storedName == attachment.storedName else { return }
             if player == nil { loadMetadata() }
-            player?.currentTime = req.time
+            seekPlayer(to: req.time)
             currentTime = req.time
             if !isPlaying {
                 startPlayback()
@@ -111,13 +132,62 @@ struct AudioPlayerView: View {
     }
 
     private func loadMetadata() {
+        let manager = AudioPlaybackManager.shared
         let url = FileStorage.url(for: attachment.storedName)
+
+        if isOGG {
+            if manager.currentlyPlayingID == attachment.storedName,
+               let existing = manager.activePlayer as? AVPlayer {
+                avPlayer = existing
+                isPlaying = manager.isPlaying
+                let t = CMTimeGetSeconds(existing.currentTime())
+                if t.isFinite { currentTime = t }
+                if let item = existing.currentItem, CMTimeGetSeconds(item.duration).isFinite {
+                    duration = CMTimeGetSeconds(item.duration)
+                }
+                reregisterCallbacks()
+                return
+            }
+            let ap = AVPlayer(url: url)
+            avPlayer = ap
+            Task {
+                if let d = try? await ap.currentItem?.asset.load(.duration) {
+                    let seconds = CMTimeGetSeconds(d)
+                    if seconds.isFinite {
+                        await MainActor.run { duration = seconds }
+                    }
+                }
+                // Fallback: get duration from AVAudioPlayer if AVPlayer reports NaN
+                if duration == 0 {
+                    if let probe = try? AVAudioPlayer(contentsOf: url) {
+                        await MainActor.run { duration = probe.duration }
+                    }
+                }
+                let saved = manager.lastPositions[attachment.storedName] ?? attachment.playbackPosition
+                if saved > 0 && (duration == 0 || saved < duration) {
+                    let target = CMTime(seconds: saved, preferredTimescale: 600)
+                    await ap.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+                    await MainActor.run { currentTime = saved }
+                }
+            }
+            return
+        }
+
+        if manager.currentlyPlayingID == attachment.storedName,
+           let existing = manager.activePlayer as? AVAudioPlayer {
+            player = existing
+            duration = existing.duration
+            currentTime = existing.currentTime
+            isPlaying = existing.isPlaying
+            reregisterCallbacks()
+            return
+        }
+
         do {
             let p = try AVAudioPlayer(contentsOf: url)
             duration = p.duration
             player = p
-            // Restore persisted playback position
-            let saved = attachment.playbackPosition
+            let saved = manager.lastPositions[attachment.storedName] ?? attachment.playbackPosition
             if saved > 0 && saved < p.duration {
                 p.currentTime = saved
                 currentTime = saved
@@ -143,6 +213,32 @@ struct AudioPlayerView: View {
         }
     }
 
+    private func seekPlayer(to time: TimeInterval) {
+        if let avPlayer {
+            let target = CMTime(seconds: time, preferredTimescale: 600)
+            avPlayer.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+            return
+        }
+        guard let player else { return }
+        let wasPlaying = player.isPlaying
+        player.stop()
+
+        let url = FileStorage.url(for: attachment.storedName)
+        guard let fresh = try? AVAudioPlayer(contentsOf: url) else {
+            player.currentTime = time
+            if wasPlaying { player.play() }
+            return
+        }
+        fresh.currentTime = time
+        fresh.prepareToPlay()
+        self.player = fresh
+        duration = fresh.duration
+        if wasPlaying { fresh.play() }
+        if AudioPlaybackManager.shared.currentlyPlayingID == attachment.storedName {
+            AudioPlaybackManager.shared.activePlayer = fresh
+        }
+    }
+
     private func togglePlayback() {
         if isPlaying {
             pausePlayback()
@@ -151,8 +247,97 @@ struct AudioPlayerView: View {
         }
     }
 
+    private func reregisterCallbacks() {
+        let manager = AudioPlaybackManager.shared
+        guard manager.currentlyPlayingID == attachment.storedName else { return }
+
+        if let avPlayer {
+            manager.didStartPlaying(
+                storedName: attachment.storedName,
+                displayName: attachment.originalName,
+                conversationID: attachment.message?.conversation?.id,
+                duration: duration,
+                player: avPlayer,
+                onPause: { [self] in pausePlayback() },
+                onResume: { [self] in
+                    self.avPlayer?.play()
+                    isPlaying = true
+                },
+                onSeek: { [self] time in
+                    seekPlayer(to: time)
+                    currentTime = time
+                    if !isPlaying {
+                        self.avPlayer?.play()
+                        isPlaying = true
+                    }
+                },
+                onGetCurrentTime: {
+                    guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return 0 }
+                    let t = CMTimeGetSeconds(p.currentTime())
+                    return t.isFinite ? t : 0
+                }
+            )
+            return
+        }
+
+        manager.didStartPlaying(
+            storedName: attachment.storedName,
+            displayName: attachment.originalName,
+            conversationID: attachment.message?.conversation?.id,
+            duration: duration,
+            player: player,
+            onPause: { [self] in pausePlayback() },
+            onResume: { [self] in
+                player?.play()
+                isPlaying = true
+            },
+            onSeek: { [self] time in
+                seekPlayer(to: time)
+                currentTime = time
+                if !isPlaying {
+                    player?.play()
+                    isPlaying = true
+                }
+            },
+            onGetCurrentTime: {
+                (AudioPlaybackManager.shared.activePlayer as? AVAudioPlayer)?.currentTime ?? 0
+            }
+        )
+    }
+
     private func startPlayback() {
-        if player == nil { loadMetadata() }
+        if player == nil && avPlayer == nil { loadMetadata() }
+
+        if let avPlayer {
+            AudioPlaybackManager.shared.didStartPlaying(
+                storedName: attachment.storedName,
+                displayName: attachment.originalName,
+                conversationID: attachment.message?.conversation?.id,
+                duration: duration,
+                player: avPlayer,
+                onPause: { [self] in pausePlayback() },
+                onResume: { [self] in
+                    self.avPlayer?.play()
+                    isPlaying = true
+                },
+                onSeek: { [self] time in
+                    seekPlayer(to: time)
+                    currentTime = time
+                    if !isPlaying {
+                        self.avPlayer?.play()
+                        isPlaying = true
+                    }
+                },
+                onGetCurrentTime: {
+                    guard let p = AudioPlaybackManager.shared.activePlayer as? AVPlayer else { return 0 }
+                    let t = CMTimeGetSeconds(p.currentTime())
+                    return t.isFinite ? t : 0
+                }
+            )
+            avPlayer.play()
+            isPlaying = true
+            return
+        }
 
         AudioPlaybackManager.shared.didStartPlaying(
             storedName: attachment.storedName,
@@ -166,7 +351,7 @@ struct AudioPlayerView: View {
                 isPlaying = true
             },
             onSeek: { [self] time in
-                player?.currentTime = time
+                seekPlayer(to: time)
                 currentTime = time
                 if !isPlaying {
                     player?.play()
@@ -183,28 +368,39 @@ struct AudioPlayerView: View {
     }
 
     private func pausePlayback() {
-        player?.pause()
+        if avPlayer != nil {
+            avPlayer?.pause()
+        } else {
+            player?.pause()
+        }
         isPlaying = false
         persistPosition()
         AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
     }
 
-
     private func cleanup() {
         persistPosition()
-        // Don't stop playback when scrolling out — the mini-player takes over.
-        // The .onReceive timer auto-stops when the view disappears.
         if !isPlaying {
-            player?.stop()
+            if avPlayer != nil {
+                avPlayer?.pause()
+            } else {
+                player?.stop()
+            }
             AudioPlaybackManager.shared.didStopPlaying(storedName: attachment.storedName)
         }
     }
 
-    /// Saves current playback position to the SwiftData Attachment model.
     private func persistPosition() {
-        let pos = player?.currentTime ?? currentTime
+        var pos = currentTime
+        if let avPlayer {
+            let t = CMTimeGetSeconds(avPlayer.currentTime())
+            if t.isFinite { pos = t }
+        } else if let player {
+            pos = player.currentTime
+        }
         if pos > 0 {
             attachment.playbackPosition = pos
+            AudioPlaybackManager.shared.lastPositions[attachment.storedName] = pos
         }
     }
 

@@ -538,7 +538,14 @@ final class ChatViewModel {
 
         let service = LLMServiceFactory.service(for: provider)
 
-        var namingMessages = buildMessageDTOs(for: conversation)
+        let maxCharsPerMessage = 500
+        var namingMessages = buildMessageDTOs(for: conversation).map { dto in
+            if dto.content.count > maxCharsPerMessage {
+                let truncated = String(dto.content.prefix(maxCharsPerMessage))
+                return ChatMessageDTO(role: dto.role, content: truncated + "…[truncated]")
+            }
+            return dto
+        }
         namingMessages.append(ChatMessageDTO(role: "user", content: Self.autoNamePrompt))
 
         AppLogger.debug("Auto-naming with \(namingMessages.count - 1) messages via \(provider.name)", category: "auto-title")
@@ -551,7 +558,7 @@ final class ChatViewModel {
                 messages: namingMessages,
                 model: provider.defaultModel,
                 temperature: 0.3,
-                maxTokens: 30,
+                maxTokens: 4096,
                 baseURL: provider.baseURL,
                 completionsPath: provider.completionsPath,
                 apiKey: apiKey,
@@ -565,10 +572,16 @@ final class ChatViewModel {
             } catch {
                 AppLogger.error("Auto-name failed: \(error.localizedDescription)", category: "auto-title")
                 self.activities.removeValue(forKey: convoID)
+                if !silent {
+                    self.lastError = "Auto-title failed: \(error.localizedDescription)"
+                }
                 return
             }
 
-            let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
+            let quoteSet = CharacterSet(charactersIn: "\"")
+            let firstLine = title.components(separatedBy: .newlines)
+                .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? title
+            let cleaned = firstLine.trimmingCharacters(in: .whitespacesAndNewlines.union(quoteSet))
             self.activities.removeValue(forKey: convoID)
             guard !cleaned.isEmpty else {
                 AppLogger.debug("Auto-name returned empty title", category: "auto-title")

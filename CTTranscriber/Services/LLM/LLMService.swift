@@ -45,7 +45,7 @@ enum LLMError: LocalizedError {
 /// URLSession with timeouts configured for LLM streaming.
 let llmURLSession: URLSession = {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 30
+    config.timeoutIntervalForRequest = 120
     config.timeoutIntervalForResource = 600 // 10 min max for long responses
     return URLSession(configuration: config)
 }()
