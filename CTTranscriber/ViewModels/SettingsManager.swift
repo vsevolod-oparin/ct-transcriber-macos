@@ -21,6 +21,7 @@ struct ScaledFont {
     private static let base = CGFloat(NSFont.systemFontSize)
 
     var body: Font      { .system(size: Self.base * s) }
+    var subheadline: Font { .system(size: (Self.base - 1) * s) }
     var headline: Font  { .system(size: Self.base * s, weight: .semibold) }
     var caption: Font   { .system(size: (Self.base - 2) * s) }
     var caption2: Font  { .system(size: (Self.base - 4) * s) }

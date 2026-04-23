@@ -134,7 +134,7 @@ struct MessageBubble: View {
 
         HStack(alignment: .top, spacing: sp(4)) {
             if isUser {
-                Spacer(minLength: sp(60))
+                Spacer(minLength: sp(100))
                 actionButtons(info: info)
             }
 
@@ -171,7 +171,7 @@ struct MessageBubble: View {
 
             if !isUser {
                 actionButtons(info: info)
-                Spacer(minLength: sp(60))
+                Spacer(minLength: sp(100))
             }
         }
         .onHover { isHovering = $0 }
@@ -282,11 +282,12 @@ struct MessageBubble: View {
                 .foregroundStyle(isUser ? .white.opacity(0.8) : Color.accentColor)
             }
         }
-        .padding(.horizontal, sp(12))
-        .padding(.vertical, sp(8))
+        .padding(.horizontal, sp(14))
+        .padding(.vertical, sp(10))
         .background(bubbleBackground(info: info))
         .foregroundStyle(isUser ? .white : .primary)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: isUser ? .clear : .black.opacity(0.06), radius: 3, x: 0, y: 1)
     }
 
     private func bubbleBackground(info: MessageAnalysis) -> some ShapeStyle {

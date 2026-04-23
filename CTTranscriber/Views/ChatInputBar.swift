@@ -50,6 +50,10 @@ struct ChatInputBar: View {
                 .frame(minHeight: 20, maxHeight: 90)
                 .fixedSize(horizontal: false, vertical: true)
                 .scrollContentBackground(.hidden)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .focused(isInputFocused)
                 .disabled(viewModel.isStreamingCurrentConversation)
                 .overlay(alignment: .topLeading) {
@@ -58,8 +62,8 @@ struct ChatInputBar: View {
                             .font(sf.body)
                             .foregroundStyle(.placeholder)
                             .allowsHitTesting(false)
-                            .padding(.leading, 5)
-                            .padding(.top, 0)
+                            .padding(.leading, 13)
+                            .padding(.top, 6)
                     }
                 }
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -126,6 +130,8 @@ struct ChatInputBar: View {
                 .keyboardShortcut(.return, modifiers: [])
             }
         }
-        .padding(12)
+        .padding(.init(top: 10, leading: 14, bottom: 12, trailing: 14))
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .top) { Divider() }
     }
 }

@@ -204,7 +204,7 @@ struct ConversationListView: View {
             } else if isHighlighted {
                 Color.accentColor.opacity(0.15)
             } else if isActive {
-                Color.accentColor.opacity(0.1)
+                Color.accentColor.opacity(0.08)
             } else {
                 Color.clear
             }
@@ -271,27 +271,22 @@ private struct ConversationRow: View {
         VStack(alignment: .leading, spacing: 4) {
             if isEditing {
                 SelectAllTextField(text: $editingTitle, onCommit: onCommitRename, onCancel: onCancelRename)
-                    .font(sf.headline)
+                    .font(sf.subheadline.weight(.semibold))
                     .accessibilityIdentifier("renameTextField")
             } else {
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     Text(conversation.title)
-                        .font(sf.headline)
+                        .font(sf.subheadline.weight(.semibold))
                         .lineLimit(1)
-                    if isActive {
-                        Image(systemName: "chevron.right")
-                            .font(sf.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
                 }
                 .accessibilityIdentifier("conversationTitle_\(conversation.title)")
             }
 
             Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
                 .font(sf.caption)
-                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
         .accessibilityIdentifier("conversationRow_\(conversation.title)")
     }
 }
