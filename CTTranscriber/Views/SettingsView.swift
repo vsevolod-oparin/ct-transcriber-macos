@@ -218,7 +218,8 @@ private struct LLMSettingsTab: View {
             temperature: 0.7,
             maxTokens: 4096,
             apiKey: "",
-            extraHeaders: [:]
+            extraHeaders: [:],
+            autoTitleModel: nil
         )
         settings.providers.append(newProvider)
         settings.activeProviderID = newProvider.id
@@ -376,6 +377,29 @@ private struct ProviderConfigEditor: View {
                             .map { $0.trimmingCharacters(in: .whitespaces) }
                             .filter { !$0.isEmpty }
                     }
+
+                HStack {
+                    let autoTitleBinding = Binding<String>(
+                        get: { config.autoTitleModel ?? "" },
+                        set: { config.autoTitleModel = $0.isEmpty ? nil : $0 }
+                    )
+                    if availableModels.isEmpty {
+                        TextField("Auto-Title Model (optional)", text: autoTitleBinding)
+                    } else {
+                        Picker("Auto-Title Model", selection: autoTitleBinding) {
+                            Text("Same as default").tag("")
+                            ForEach(availableModels, id: \.self) { model in
+                                Text(model).tag(model)
+                            }
+                            if let m = config.autoTitleModel, !m.isEmpty, !availableModels.contains(m) {
+                                Text(m).tag(m)
+                            }
+                        }
+                    }
+                }
+                Text("Fast non-thinking model recommended. Falls back to default model if empty.")
+                    .font(ScaledFont(scale: fontScale).caption2)
+                    .foregroundStyle(.tertiary)
             }
 
             Section("Defaults") {

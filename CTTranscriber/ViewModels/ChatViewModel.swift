@@ -538,8 +538,10 @@ final class ChatViewModel {
 
         let service = LLMServiceFactory.service(for: provider)
 
-        let maxCharsPerMessage = 500
-        var namingMessages = buildMessageDTOs(for: conversation).map { dto in
+        let maxCharsPerMessage = 300
+        let maxMessages = 6
+        let allDTOs = buildMessageDTOs(for: conversation)
+        var namingMessages = Array(allDTOs.prefix(maxMessages)).map { dto in
             if dto.content.count > maxCharsPerMessage {
                 let truncated = String(dto.content.prefix(maxCharsPerMessage))
                 return ChatMessageDTO(role: dto.role, content: truncated + "…[truncated]")
@@ -548,49 +550,79 @@ final class ChatViewModel {
         }
         namingMessages.append(ChatMessageDTO(role: "user", content: Self.autoNamePrompt))
 
-        AppLogger.debug("Auto-naming with \(namingMessages.count - 1) messages via \(provider.name)", category: "auto-title")
+        let totalChars = namingMessages.reduce(0) { $0 + $1.content.count }
+        let logModel = provider.autoTitleModel?.isEmpty == false
+            ? provider.autoTitleModel! : provider.defaultModel
+        AppLogger.debug("Auto-naming: \(namingMessages.count - 1) msgs (\(totalChars) chars) via \(provider.name) model=\(logModel)", category: "auto-title")
 
         let convoID = conversation.id
         let titleTask = Task { [weak self] in
             guard let self else { return }
-            var title = ""
-            let stream = service.streamCompletion(
-                messages: namingMessages,
-                model: provider.defaultModel,
-                temperature: 0.3,
-                maxTokens: 4096,
-                baseURL: provider.baseURL,
-                completionsPath: provider.completionsPath,
-                apiKey: apiKey,
-                extraHeaders: provider.extraHeaders
-            )
 
-            do {
-                for try await token in stream {
-                    title += token
+            let titleModel = provider.autoTitleModel?.isEmpty == false
+                ? provider.autoTitleModel! : provider.defaultModel
+
+            // Try with autoTitleModel first (1024 tokens), retry with more budget if empty
+            let attempts: [(model: String, maxTokens: Int)] = [
+                (titleModel, 1024),
+                (titleModel, 4096),
+            ]
+
+            for (i, attempt) in attempts.enumerated() {
+                let t0 = CFAbsoluteTimeGetCurrent()
+                AppLogger.debug("Auto-title attempt \(i + 1): model=\(attempt.model) maxTokens=\(attempt.maxTokens)", category: "auto-title")
+
+                let stream = service.streamCompletion(
+                    messages: namingMessages,
+                    model: attempt.model,
+                    temperature: 0.3,
+                    maxTokens: attempt.maxTokens,
+                    baseURL: provider.baseURL,
+                    completionsPath: provider.completionsPath,
+                    apiKey: apiKey,
+                    extraHeaders: provider.extraHeaders
+                )
+
+                var title = ""
+                do {
+                    var tokenCount = 0
+                    for try await token in stream {
+                        if tokenCount == 0 {
+                            AppLogger.debug("Auto-title TTFT: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s", category: "auto-title")
+                        }
+                        tokenCount += 1
+                        title += token
+                    }
+                    let elapsed = CFAbsoluteTimeGetCurrent() - t0
+                    AppLogger.debug("Auto-title done: \(String(format: "%.2f", elapsed))s total, \(tokenCount) tokens, title=\"\(title.prefix(80))\"", category: "auto-title")
+                } catch {
+                    let elapsed = CFAbsoluteTimeGetCurrent() - t0
+                    AppLogger.error("Auto-name failed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)", category: "auto-title")
+                    self.activities.removeValue(forKey: convoID)
+                    if !silent {
+                        self.lastError = "Auto-title failed: \(error.localizedDescription)"
+                    }
+                    return
                 }
-            } catch {
-                AppLogger.error("Auto-name failed: \(error.localizedDescription)", category: "auto-title")
-                self.activities.removeValue(forKey: convoID)
-                if !silent {
-                    self.lastError = "Auto-title failed: \(error.localizedDescription)"
+
+                let quoteSet = CharacterSet(charactersIn: "\"")
+                let firstLine = title.components(separatedBy: .newlines)
+                    .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? title
+                let cleaned = firstLine.trimmingCharacters(in: .whitespacesAndNewlines.union(quoteSet))
+
+                if !cleaned.isEmpty {
+                    AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
+                    conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
+                    conversation.updatedAt = Date()
+                    self.saveContext()
+                    self.activities.removeValue(forKey: convoID)
+                    return
                 }
-                return
+
+                AppLogger.debug("Auto-title attempt \(i + 1) returned empty, \(i + 1 < attempts.count ? "retrying with more tokens" : "giving up")", category: "auto-title")
             }
 
-            let quoteSet = CharacterSet(charactersIn: "\"")
-            let firstLine = title.components(separatedBy: .newlines)
-                .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? title
-            let cleaned = firstLine.trimmingCharacters(in: .whitespacesAndNewlines.union(quoteSet))
             self.activities.removeValue(forKey: convoID)
-            guard !cleaned.isEmpty else {
-                AppLogger.debug("Auto-name returned empty title", category: "auto-title")
-                return
-            }
-            AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
-            conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
-            conversation.updatedAt = Date()
-            self.saveContext()
         }
         activities[convoID] = .generatingTitle(task: titleTask)
     }

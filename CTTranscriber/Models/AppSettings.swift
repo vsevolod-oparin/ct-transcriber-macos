@@ -86,6 +86,9 @@ struct ProviderConfig: Codable, Equatable, Identifiable {
     var extraHeaders: [String: String]
     /// System prompt prepended to every conversation with this provider.
     var systemPrompt: String?
+    /// Optional fast model used for auto-titling conversations.
+    /// When empty/nil, falls back to `defaultModel`.
+    var autoTitleModel: String?
 
     var isValid: Bool {
         !name.isEmpty && !baseURL.isEmpty && !completionsPath.isEmpty && !defaultModel.isEmpty

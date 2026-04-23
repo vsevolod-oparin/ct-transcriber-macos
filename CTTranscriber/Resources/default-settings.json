@@ -48,13 +48,18 @@
         "completionsPath": "api/coding/paas/v4/chat/completions",
         "modelsPath": "api/coding/paas/v4/models",
         "defaultModel": "glm-4.7",
-        "fallbackModels": ["glm-5", "glm-4.7", "glm-4-flash"],
+        "fallbackModels": [
+          "glm-5",
+          "glm-4.7",
+          "glm-4-flash"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
         "extraHeaders": {
           "Accept-Language": "en-US,en"
-        }
+        },
+        "autoTitleModel": "glm-5-turbo"
       },
       {
         "id": "00000000-0000-0000-0000-000000000001",
@@ -64,13 +69,18 @@
         "completionsPath": "api/paas/v4/chat/completions",
         "modelsPath": "api/paas/v4/models",
         "defaultModel": "glm-4.7",
-        "fallbackModels": ["glm-5", "glm-4.7", "glm-4-flash"],
+        "fallbackModels": [
+          "glm-5",
+          "glm-4.7",
+          "glm-4-flash"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
         "extraHeaders": {
           "Accept-Language": "en-US,en"
-        }
+        },
+        "autoTitleModel": "glm-5-turbo"
       },
       {
         "id": "00000000-0000-0000-0000-000000000002",
@@ -80,11 +90,16 @@
         "completionsPath": "v1/chat/completions",
         "modelsPath": "v1/models",
         "defaultModel": "gpt-4o-mini",
-        "fallbackModels": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+        "fallbackModels": [
+          "gpt-4o",
+          "gpt-4o-mini",
+          "gpt-4-turbo"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
-        "extraHeaders": {}
+        "extraHeaders": {},
+        "autoTitleModel": "gpt-4o-mini"
       },
       {
         "id": "00000000-0000-0000-0000-000000000003",
@@ -94,13 +109,18 @@
         "completionsPath": "v1/messages",
         "modelsPath": "",
         "defaultModel": "claude-sonnet-4-20250514",
-        "fallbackModels": ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001", "claude-opus-4-20250514"],
+        "fallbackModels": [
+          "claude-sonnet-4-20250514",
+          "claude-haiku-4-5-20251001",
+          "claude-opus-4-20250514"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
         "extraHeaders": {
           "anthropic-version": "2023-06-01"
-        }
+        },
+        "autoTitleModel": "claude-haiku-4-5-20251001"
       },
       {
         "id": "00000000-0000-0000-0000-000000000004",
@@ -110,11 +130,16 @@
         "completionsPath": "v1/chat/completions",
         "modelsPath": "v1/models",
         "defaultModel": "deepseek-chat",
-        "fallbackModels": ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"],
+        "fallbackModels": [
+          "deepseek-chat",
+          "deepseek-coder",
+          "deepseek-reasoner"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
-        "extraHeaders": {}
+        "extraHeaders": {},
+        "autoTitleModel": null
       },
       {
         "id": "00000000-0000-0000-0000-000000000005",
@@ -124,11 +149,16 @@
         "completionsPath": "v1/chat/completions",
         "modelsPath": "v1/models",
         "defaultModel": "qwen-plus",
-        "fallbackModels": ["qwen-turbo", "qwen-plus", "qwen-max"],
+        "fallbackModels": [
+          "qwen-turbo",
+          "qwen-plus",
+          "qwen-max"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "",
-        "extraHeaders": {}
+        "extraHeaders": {},
+        "autoTitleModel": "qwen-turbo"
       },
       {
         "id": "00000000-0000-0000-0000-000000000007",
@@ -138,11 +168,18 @@
         "completionsPath": "v1/chat/completions",
         "modelsPath": "v1/models",
         "defaultModel": "llama3.2",
-        "fallbackModels": ["llama3.2", "llama3.1", "mistral", "gemma2", "qwen2.5"],
+        "fallbackModels": [
+          "llama3.2",
+          "llama3.1",
+          "mistral",
+          "gemma2",
+          "qwen2.5"
+        ],
         "temperature": 0.7,
         "maxTokens": 4096,
         "apiKey": "ollama",
-        "extraHeaders": {}
+        "extraHeaders": {},
+        "autoTitleModel": null
       }
     ]
   }

@@ -29,14 +29,58 @@ enum SettingsStorage {
     static func load() -> AppSettings {
         let url = settingsFileURL
 
+        var settings: AppSettings
         if FileManager.default.fileExists(atPath: url.path) {
-            return decode(from: url) ?? loadBundledDefaults()
+            settings = decode(from: url) ?? loadBundledDefaults()
+        } else {
+            settings = loadBundledDefaults()
         }
 
-        // First launch — copy bundled defaults to user config
-        let defaults = loadBundledDefaults()
-        save(defaults)
-        return defaults
+        if migrateAutoTitleModels(&settings) {
+            save(settings)
+        }
+        return settings
+    }
+
+    /// Sets autoTitleModel for providers that don't have one yet,
+    /// picking a known fast non-thinking model from their fallback list or base URL.
+    @discardableResult
+    private static func migrateAutoTitleModels(_ settings: inout AppSettings) -> Bool {
+        var changed = false
+        for i in settings.llm.providers.indices {
+            guard settings.llm.providers[i].autoTitleModel == nil else { continue }
+            if let fast = suggestAutoTitleModel(for: settings.llm.providers[i]) {
+                settings.llm.providers[i].autoTitleModel = fast
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    private static func suggestAutoTitleModel(for provider: ProviderConfig) -> String? {
+        let url = provider.baseURL.lowercased()
+        let fallbacks = provider.fallbackModels
+        let model = provider.defaultModel.lowercased()
+
+        if url.contains("z.ai") || url.contains("bigmodel.cn") {
+            return fallbacks.first { $0.lowercased().contains("turbo") } ?? "glm-5-turbo"
+        }
+        if url.contains("openai.com") {
+            return fallbacks.first { $0.lowercased().contains("mini") } ?? "gpt-4o-mini"
+        }
+        if url.contains("anthropic.com") {
+            return fallbacks.first { $0.lowercased().contains("haiku") } ?? "claude-haiku-4-5-20251001"
+        }
+        if url.contains("deepseek.com") {
+            if model == "deepseek-reasoner" {
+                return "deepseek-chat"
+            }
+            return nil
+        }
+        if url.contains("dashscope.aliyuncs.com") {
+            return fallbacks.first { $0.lowercased().contains("turbo") } ?? "qwen-turbo"
+        }
+        return nil
     }
 
     static func save(_ settings: AppSettings) {

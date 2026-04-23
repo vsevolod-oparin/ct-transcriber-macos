@@ -53,6 +53,8 @@ struct OpenAICompatibleService: LLMService {
                         throw LLMError.httpError(statusCode: httpResponse.statusCode, body: errorBody)
                     }
 
+                    var debugTokenCount = 0
+                    var debugReasoningCount = 0
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
 
@@ -68,9 +70,17 @@ struct OpenAICompatibleService: LLMService {
                             continue
                         }
 
+                        if delta["reasoning_content"] is String {
+                            debugReasoningCount += 1
+                        }
+
                         if let content = delta["content"] as? String, !content.isEmpty {
+                            debugTokenCount += 1
                             continuation.yield(content)
                         }
+                    }
+                    if debugReasoningCount > 0 || debugTokenCount == 0 {
+                        AppLogger.debug("SSE stream: \(debugTokenCount) content chunks, \(debugReasoningCount) reasoning chunks", category: "llm")
                     }
 
                     continuation.finish()
