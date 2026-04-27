@@ -36,8 +36,11 @@ final class ChatViewModel {
         guard !searchText.isEmpty else { return conversations }
         let query = searchText.lowercased()
         return conversations.filter { conversation in
-            conversation.title.lowercased().contains(query) ||
-            conversation.messages.contains { $0.content.lowercased().contains(query) }
+            guard !conversation.isDeleted, conversation.modelContext != nil else { return false }
+            if conversation.title.lowercased().contains(query) { return true }
+            return conversation.messages.contains { msg in
+                !msg.isDeleted && msg.modelContext != nil && msg.content.lowercased().contains(query)
+            }
         }
     }
     /// Per-conversation message drafts, keyed by conversation ID. In-memory only.
@@ -692,31 +695,35 @@ final class ChatViewModel {
             }
         }
 
-        // Auto-transcribe audio and video files
-        if kind == .audio || kind == .video {
-            let audioURL = FileStorage.url(for: storedName)
-            transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation, skipSaveRefresh: skipSaveRefresh)
-        }
-
-        // Convert unsupported video formats (WebM, MKV) to MP4 for playback
+        // For videos needing conversion (WebM, MKV), convert to MP4 first, then
+        // transcribe from the MP4. This avoids two concurrent ffmpeg processes
+        // reading the same source file (which causes the first ~30s of audio to
+        // be lost), and lets AVAssetReader decode the MP4 audio natively.
         if kind == .video && VideoConverter.needsConversion(originalName) {
             Task {
                 let transSettings = settingsManager.settings.transcription
                 if let mp4Name = await VideoConverter.convertToMP4(
                     storedName: storedName, settings: transSettings) {
-                    // Precompute aspect ratio from the converted MP4 BEFORE updating UI.
-                    // The original file (WebM/MKV) can't be read by AVAsset, so
-                    // precomputeVideoAspectRatio fails for it. Computing from the MP4
-                    // ensures the first render after conversion uses the correct ratio.
                     let mp4URL = FileStorage.url(for: mp4Name)
                     ChatTableView.Coordinator.precomputeVideoAspectRatio(url: mp4URL)
 
                     await MainActor.run { [self] in
                         attachment.convertedName = mp4Name
                         saveContext()
+                        transcribeAudio(at: mp4URL.path, originalName: originalName,
+                                        in: conversation, skipSaveRefresh: skipSaveRefresh)
+                    }
+                } else {
+                    await MainActor.run { [self] in
+                        let audioURL = FileStorage.url(for: storedName)
+                        transcribeAudio(at: audioURL.path, originalName: originalName,
+                                        in: conversation, skipSaveRefresh: skipSaveRefresh)
                     }
                 }
             }
+        } else if kind == .audio || kind == .video {
+            let audioURL = FileStorage.url(for: storedName)
+            transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation, skipSaveRefresh: skipSaveRefresh)
         }
     }
 

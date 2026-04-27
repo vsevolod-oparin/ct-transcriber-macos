@@ -130,6 +130,15 @@ struct MessageBubble: View {
     }
 
     var body: some View {
+        if message.isDeleted || message.modelContext == nil {
+            EmptyView()
+        } else {
+            bodyContent
+        }
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
         let info = currentAnalysis
 
         HStack(alignment: .top, spacing: sp(4)) {
@@ -418,12 +427,14 @@ struct MessageBubble: View {
         // Derive SRT filename from the audio attachment's original name
         var srtName = "transcript.srt"
         if let _ = findAudioAttachment() {
-            // findAudioAttachment returns storedName; get originalName from prev message
-            if let conversation = message.conversation {
-                let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+            if let conversation = message.conversation,
+               !conversation.isDeleted, conversation.modelContext != nil {
+                let sorted = conversation.messages
+                    .filter { !$0.isDeleted && $0.modelContext != nil }
+                    .sorted { $0.timestamp < $1.timestamp }
                 if let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 {
                     let prev = sorted[myIndex - 1]
-                    if let att = prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video }) {
+                    if let att = prev.attachments.first(where: { !$0.isDeleted && $0.modelContext != nil && ($0.kind == .audio || $0.kind == .video) }) {
                         let baseName = (att.originalName as NSString).deletingPathExtension
                         srtName = "\(baseName).srt"
                     }
@@ -488,11 +499,14 @@ struct MessageBubble: View {
 
     /// Derives an export filename from the audio attachment's original name in the previous message.
     private func deriveExportFilename(extension ext: String) -> String {
-        if let conversation = message.conversation {
-            let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+        if let conversation = message.conversation,
+           !conversation.isDeleted, conversation.modelContext != nil {
+            let sorted = conversation.messages
+                .filter { !$0.isDeleted && $0.modelContext != nil }
+                .sorted { $0.timestamp < $1.timestamp }
             if let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 {
                 let prev = sorted[myIndex - 1]
-                if let att = prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video }) {
+                if let att = prev.attachments.first(where: { !$0.isDeleted && $0.modelContext != nil && ($0.kind == .audio || $0.kind == .video) }) {
                     let baseName = (att.originalName as NSString).deletingPathExtension
                     return "\(baseName).\(ext)"
                 }
@@ -539,12 +553,14 @@ struct MessageBubble: View {
 
     /// Finds the storedName of an audio/video attachment from the message before this one.
     private func findAudioAttachment() -> String? {
-        guard let conversation = message.conversation else { return nil }
-        let sorted = conversation.messages.sorted { $0.timestamp < $1.timestamp }
+        guard let conversation = message.conversation,
+              !conversation.isDeleted, conversation.modelContext != nil else { return nil }
+        let sorted = conversation.messages
+            .filter { !$0.isDeleted && $0.modelContext != nil }
+            .sorted { $0.timestamp < $1.timestamp }
         guard let myIndex = sorted.firstIndex(where: { $0.id == message.id }), myIndex > 0 else { return nil }
-        // Look at the message before this one for an audio/video attachment
         let prev = sorted[myIndex - 1]
-        return prev.attachments.first(where: { $0.kind == .audio || $0.kind == .video })?.storedName
+        return prev.attachments.first(where: { !$0.isDeleted && $0.modelContext != nil && ($0.kind == .audio || $0.kind == .video) })?.storedName
     }
 
     private func formatSeekTime(_ time: TimeInterval) -> String {

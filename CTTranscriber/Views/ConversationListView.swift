@@ -236,11 +236,16 @@ struct ConversationListView: View {
     // MARK: - Rename
 
     private func beginRename(_ conversation: Conversation) {
+        guard !conversation.isDeleted, conversation.modelContext != nil else { return }
         editingTitle = conversation.title
         editingConversationID = conversation.id
     }
 
     private func commitRename(_ conversation: Conversation) {
+        guard !conversation.isDeleted, conversation.modelContext != nil else {
+            editingConversationID = nil
+            return
+        }
         let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         AppLogger.info("commitRename: editingTitle='\(editingTitle)' trimmed='\(trimmed)' convo='\(conversation.title)'", category: "rename")
         if !trimmed.isEmpty {
@@ -268,26 +273,30 @@ private struct ConversationRow: View {
 
     var body: some View {
         let sf = ScaledFont(scale: fontScale)
-        VStack(alignment: .leading, spacing: 4) {
-            if isEditing {
-                SelectAllTextField(text: $editingTitle, onCommit: onCommitRename, onCancel: onCancelRename)
-                    .font(sf.subheadline.weight(.semibold))
-                    .accessibilityIdentifier("renameTextField")
-            } else {
-                HStack(spacing: 2) {
-                    Text(conversation.title)
+        if conversation.isDeleted || conversation.modelContext == nil {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if isEditing {
+                    SelectAllTextField(text: $editingTitle, onCommit: onCommitRename, onCancel: onCancelRename)
                         .font(sf.subheadline.weight(.semibold))
-                        .lineLimit(1)
+                        .accessibilityIdentifier("renameTextField")
+                } else {
+                    HStack(spacing: 2) {
+                        Text(conversation.title)
+                            .font(sf.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .accessibilityIdentifier("conversationTitle_\(conversation.title)")
                 }
-                .accessibilityIdentifier("conversationTitle_\(conversation.title)")
-            }
 
-            Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
-                .font(sf.caption)
-                .foregroundStyle(.tertiary)
+                Text(conversation.updatedAt.formatted(.relative(presentation: .named)))
+                    .font(sf.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("conversationRow_\(conversation.title)")
         }
-        .padding(.vertical, 6)
-        .accessibilityIdentifier("conversationRow_\(conversation.title)")
     }
 }
 

@@ -18,42 +18,46 @@ struct AttachmentView: View {
     }
 
     var body: some View {
-        Group {
-            switch attachment.kind {
-            case .audio:
-                AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
-            case .video:
-                if isUnsupportedVideo && attachment.convertedName == nil {
-                    UnsupportedVideoView(attachment: attachment, isConverting: true)
-                } else {
-                    let playName = attachment.convertedName ?? attachment.storedName
-                    let url = FileStorage.url(for: playName)
-                    let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
-                    VideoPlayerView(attachment: attachment,
-                                    playbackStoredName: attachment.convertedName,
-                                    initialAspectRatio: ratio,
-                                    seekRequest: $seekRequest
-                    )
+        if attachment.isDeleted || attachment.modelContext == nil {
+            EmptyView()
+        } else {
+            Group {
+                switch attachment.kind {
+                case .audio:
+                    AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
+                case .video:
+                    if isUnsupportedVideo && attachment.convertedName == nil {
+                        UnsupportedVideoView(attachment: attachment, isConverting: true)
+                    } else {
+                        let playName = attachment.convertedName ?? attachment.storedName
+                        let url = FileStorage.url(for: playName)
+                        let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
+                        VideoPlayerView(attachment: attachment,
+                                        playbackStoredName: attachment.convertedName,
+                                        initialAspectRatio: ratio,
+                                        seekRequest: $seekRequest
+                        )
+                    }
+                case .image:
+                    ImageAttachmentView(attachment: attachment)
+                case .text:
+                    FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
                 }
-            case .image:
-                ImageAttachmentView(attachment: attachment)
-            case .text:
-                FileAttachmentBadge(attachment: attachment, iconName: "doc.text")
             }
-        }
-        .onDrag {
-            let url = FileStorage.url(for: attachment.storedName)
-            let provider = NSItemProvider(item: url as NSURL, typeIdentifier: "public.file-url")
-            provider.suggestedName = attachment.originalName
-            return provider
-        }
-        .contextMenu {
-            Button("Save As...") {
-                saveAttachment(attachment)
-            }
-            Button("Reveal in Finder") {
+            .onDrag {
                 let url = FileStorage.url(for: attachment.storedName)
-                NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+                let provider = NSItemProvider(item: url as NSURL, typeIdentifier: "public.file-url")
+                provider.suggestedName = attachment.originalName
+                return provider
+            }
+            .contextMenu {
+                Button("Save As...") {
+                    saveAttachment(attachment)
+                }
+                Button("Reveal in Finder") {
+                    let url = FileStorage.url(for: attachment.storedName)
+                    NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+                }
             }
         }
     }

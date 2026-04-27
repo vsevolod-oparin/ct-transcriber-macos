@@ -11,6 +11,15 @@ struct ChatView: View {
     @State private var renameTitleText = ""
     @Environment(\.fontScale) private var fontScale
     var body: some View {
+        if conversation.isDeleted || conversation.modelContext == nil {
+            EmptyView()
+        } else {
+            chatContent
+        }
+    }
+
+    @ViewBuilder
+    private var chatContent: some View {
         VStack(spacing: 0) {
             ChatTableView(messages: viewModel.sortedMessages(for: conversation),
                           isStreaming: viewModel.isStreamingCurrentConversation,
