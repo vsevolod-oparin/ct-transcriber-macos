@@ -24,12 +24,10 @@ enum VideoConverter {
         let mp4Name = (storedName as NSString).deletingPathExtension + ".mp4"
         let destURL = FileStorage.url(for: mp4Name)
 
-        // Skip if already converted
         if FileManager.default.fileExists(atPath: destURL.path) {
             return mp4Name
         }
 
-        // Find ffmpeg in the conda environment
         guard let ffmpegPath = findFFmpeg(settings: settings) else {
             AppLogger.error("ffmpeg not found in conda env", category: "video")
             return nil
@@ -47,7 +45,7 @@ enum VideoConverter {
             "-c:a", "aac",
             "-b:a", "128k",
             "-movflags", "+faststart",
-            "-y",  // overwrite
+            "-y",
             destURL.path
         ]
         process.standardOutput = FileHandle.nullDevice
@@ -55,7 +53,14 @@ enum VideoConverter {
 
         do {
             try process.run()
-            process.waitUntilExit()
+            await Task.detached {
+                process.waitUntilExit()
+            }.value
+            guard !Task.isCancelled else {
+                if process.isRunning { process.terminate() }
+                try? FileManager.default.removeItem(at: destURL)
+                return nil
+            }
 
             if process.terminationStatus == 0 {
                 AppLogger.info("Converted to MP4: \(mp4Name)", category: "video")

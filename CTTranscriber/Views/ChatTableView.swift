@@ -34,7 +34,9 @@ struct ChatTableView: NSViewRepresentable {
             let playName = att.convertedName ?? att.storedName
             let url = FileStorage.url(for: playName)
             let ratio = Coordinator.videoAspectRatio(url: url)
-            parts.append("\(playName):\(ratio)")
+            let ratioStr: String
+            if let r = ratio { ratioStr = String(describing: r) } else { ratioStr = "nil" }
+            parts.append("\(playName):\(ratioStr)")
         }
         return parts.joined(separator: "|")
     }
@@ -47,7 +49,7 @@ struct ChatTableView: NSViewRepresentable {
             for att in msg.attachments where att.kind == .video && !att.isDeleted && att.modelContext != nil {
                 let playName = att.convertedName ?? att.storedName
                 let url = FileStorage.url(for: playName)
-                guard Coordinator.videoAspectRatio(url: url) == 16.0 / 9.0 else { continue }
+                guard Coordinator.videoAspectRatio(url: url) == nil else { continue }
                 let asset = AVAsset(url: url)
                 if let track = asset.tracks(withMediaType: .video).first {
                     let size = track.naturalSize.applying(track.preferredTransform)
@@ -338,20 +340,13 @@ struct ChatTableView: NSViewRepresentable {
         weak var tableView: NSTableView?
         weak var scrollView: NSScrollView?
 
-        /// Snapshot of content lengths per message ID — used to detect in-place content changes.
-        /// Needed because SwiftData Message objects are reference types: comparing old vs new
-        /// messages gives the same object, so content appears unchanged.
         var contentLengthSnapshot: [UUID: Int] = [:]
-        /// Cached row heights keyed by message ID. Invalidated on content change, expand/collapse, resize.
         var heightCache: [UUID: CGFloat] = [:]
-        /// Messages the user has expanded (for long/collapsible messages).
         var expandedMessages: Set<UUID> = []
 
         var lastTopTrigger: Int = 0
         var lastBottomTrigger: Int = 0
 
-        /// Tracks video layout state per message: aspect ratio + conversion status.
-        /// When this changes for a message, its row height must be invalidated.
         var videoLayoutSnapshot: [UUID: String] = [:]
 
         /// Throttle for scroll-during-streaming
@@ -473,12 +468,12 @@ struct ChatTableView: NSViewRepresentable {
         nonisolated(unsafe) static let thumbnailCache = NSCache<NSString, NSImage>()
 
         /// Returns the cached aspect ratio. Returns 16:9 fallback if not yet computed.
-        nonisolated static func videoAspectRatio(url: URL) -> CGFloat {
+        nonisolated static func videoAspectRatio(url: URL) -> CGFloat? {
             let key = url.lastPathComponent as NSString
             if let cached = aspectRatioCache.object(forKey: key) {
                 return CGFloat(cached.doubleValue)
             }
-            return 16.0 / 9.0
+            return nil
         }
 
         /// Writes a known aspect ratio into the cache.

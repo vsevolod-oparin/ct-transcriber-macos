@@ -114,6 +114,11 @@ enum ConversationExporter {
             let role = MessageRole(rawValue: msg.role) ?? .user
             let message = Message(role: role, content: msg.content)
             message.timestamp = msg.timestamp
+            for expAtt in msg.attachments {
+                let kind = AttachmentKind(rawValue: expAtt.kind) ?? .text
+                let att = Attachment(kind: kind, storedName: "", originalName: expAtt.originalName)
+                message.attachments.append(att)
+            }
             conversation.messages.append(message)
         }
 
@@ -305,7 +310,7 @@ enum ConversationExporter {
 
     // MARK: - Bulk Export (ZIP)
 
-    static func exportBulkZIP(conversations: [Conversation]) throws -> Data {
+    static func exportBulkZIP(conversations: [Conversation]) async throws -> Data {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -322,11 +327,18 @@ enum ConversationExporter {
 
         // Create ZIP using ditto (built-in macOS tool)
         let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).zip")
+        defer { try? FileManager.default.removeItem(at: zipURL) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = ["-c", "-k", "--sequesterRsrc", tempDir.path, zipURL.path]
         try process.run()
-        process.waitUntilExit()
+        await Task.detached {
+            process.waitUntilExit()
+        }.value
+        guard !Task.isCancelled else {
+            if process.isRunning { process.terminate() }
+            throw CancellationError()
+        }
 
         guard process.terminationStatus == 0 else {
             throw NSError(domain: "ConversationExporter", code: 1,
@@ -334,7 +346,6 @@ enum ConversationExporter {
         }
 
         let data = try Data(contentsOf: zipURL)
-        try? FileManager.default.removeItem(at: zipURL)
         return data
     }
 }

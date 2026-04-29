@@ -4,24 +4,18 @@ import SwiftData
 import AVFoundation
 import UniformTypeIdentifiers
 
-/// Wrapper that opts a value out of Sendable checking. Use only when you can guarantee
-/// the wrapped value is accessed safely (e.g., only within MainActor.run blocks).
-struct UncheckedSendableBox<T>: @unchecked Sendable {
-    let value: T
-}
-
 enum ConversationActivity {
     case streaming(task: Task<Void, Never>)
     case generatingTitle(task: Task<Void, Never>)
+    case convertingVideo(task: Task<Void, Never>)
 }
 
 @Observable
 @MainActor
 final class ChatViewModel {
-    /// Error prefixes — used to distinguish error source for retry logic.
     private static let llmErrorPrefix = "⚠ [LLM] "
     private static let transcriptionErrorPrefix = "⚠ [Transcription] "
-    /// The conversation currently shown in the detail view. Set on click or Enter.
+    private var userStoppedStreaming = false
     var selectedConversationID: UUID?
     /// Conversations highlighted in the sidebar (for multi-select and delete). Arrow keys move this.
     var highlightedIDs: Set<UUID> = []
@@ -31,7 +25,6 @@ final class ChatViewModel {
     var searchText: String = ""
     var conversations: [Conversation] = []
 
-    /// Conversations filtered by search text.
     var filteredConversations: [Conversation] {
         guard !searchText.isEmpty else { return conversations }
         let query = searchText.lowercased()
@@ -43,6 +36,7 @@ final class ChatViewModel {
             }
         }
     }
+
     /// Per-conversation message drafts, keyed by conversation ID. In-memory only.
     private var drafts: [UUID: String] = [:]
 
@@ -51,7 +45,7 @@ final class ChatViewModel {
         if let oldID {
             drafts[oldID] = messageText
         }
-        messageText = drafts[newID ?? UUID()] ?? ""
+        messageText = newID.flatMap { drafts[$0] } ?? ""
     }
     /// Incremented to force a ChatTableView re-evaluation after video aspect ratio changes.
     /// Video aspect ratios live in a static cache (not SwiftData), so @Query won't detect them.
@@ -109,7 +103,8 @@ final class ChatViewModel {
     private(set) var transcriptionProgress: Double = 0
 
     private var modelContext: ModelContext
-    private var transcriptionTasks: [UUID: Task<Void, Never>] = [:]
+    /// Active transcription tasks keyed by task UUID, with their owning conversation ID.
+    private var transcriptionTasks: [UUID: (task: Task<Void, Never>, conversationID: UUID)] = [:]
     private var pendingTranscriptions: [(audioPath: String, displayName: String, conversationID: UUID, messageID: UUID)] = []
     // Dependencies — constructor-injected for testability
     let settingsManager: SettingsManager
@@ -163,6 +158,7 @@ final class ChatViewModel {
             deleteConversation(conversation)
         }
         highlightedIDs.removeAll()
+        highlightCursor = min(highlightCursor, max(conversations.count - 1, 0))
     }
 
     /// Moves highlight up or down. If `extend` is true (Shift held), extends the selection.
@@ -226,7 +222,7 @@ final class ChatViewModel {
         // Cancel any streaming or title generation for this conversation
         if let activity = activities[conversation.id] {
             switch activity {
-            case .streaming(let task), .generatingTitle(let task):
+            case .streaming(let task), .generatingTitle(let task), .convertingVideo(let task):
                 task.cancel()
             }
             activities.removeValue(forKey: conversation.id)
@@ -238,7 +234,7 @@ final class ChatViewModel {
         saveContext()
 
         if wasSelected {
-            selectedConversationID = conversations.first?.id
+            selectedConversationID = conversations.first(where: { $0.id != conversation.id })?.id
         }
 
         // Delete files AFTER SwiftData deletion, off MainActor (file I/O)
@@ -251,28 +247,51 @@ final class ChatViewModel {
 
     /// Cancels transcription tasks whose message IDs match the given set.
     private func cancelTranscriptionTasks(for messageIDs: Set<UUID>) {
-        // transcriptionTasks is keyed by internal task UUID, not message UUID.
-        // We need to cancel all tasks and let finishTranscription handle cleanup.
-        // For now, cancel all if the conversation being deleted has active transcriptions.
-        // A more precise mapping would require tracking conversation ID per task.
-        if !messageIDs.isEmpty {
-            for (taskID, task) in transcriptionTasks {
-                task.cancel()
-                transcriptionTasks.removeValue(forKey: taskID)
-            }
-            activeTranscriptionCount = 0
-            transcribingConversationIDs.removeAll()
-            transcriptionProgress = 0
+        guard !messageIDs.isEmpty else { return }
+        let convoID = conversations.first(where: { conv in
+            conv.messages.contains(where: { messageIDs.contains($0.id) })
+        })?.id
 
-            // Mark running transcription BackgroundTask objects as cancelled so they
-            // don't linger in the task manager UI.  This is broad (all transcription
-            // tasks) but consistent with the Swift Task cancellation above.
+        let taskIDsToRemove: [UUID]
+        if let convoID {
+            taskIDsToRemove = transcriptionTasks
+                .filter { $0.value.conversationID == convoID }
+                .map(\.key)
+        } else {
+            taskIDsToRemove = Array(transcriptionTasks.keys)
+        }
+
+        for taskID in taskIDsToRemove {
+            transcriptionTasks[taskID]?.task.cancel()
+            transcriptionTasks.removeValue(forKey: taskID)
+        }
+
+        if let convoID {
+            transcribingConversationIDs.remove(convoID)
+        } else {
+            transcribingConversationIDs.removeAll()
+        }
+        activeTranscriptionCount = transcriptionTasks.count
+        transcriptionProgress = activeTranscriptionCount == 0 ? 0 : transcriptionProgress
+
+        if let convoID {
+            if let taskManager {
+                for bgTask in taskManager.tasks where bgTask.kind == .transcription && bgTask.status == .running {
+                    if let bgConvoTitle = bgTask.conversationTitle,
+                       conversations.first(where: { $0.id == convoID })?.title == bgConvoTitle {
+                        taskManager.cancelTask(bgTask)
+                    }
+                }
+            }
+        } else {
             if let taskManager {
                 for bgTask in taskManager.tasks where bgTask.kind == .transcription && bgTask.status == .running {
                     taskManager.cancelTask(bgTask)
                 }
             }
         }
+
+        pendingTranscriptions.removeAll { $0.conversationID == convoID }
     }
 
     // MARK: - Retry
@@ -368,6 +387,7 @@ final class ChatViewModel {
     func stopStreaming() {
         guard let convoID = selectedConversationID,
               case .streaming(let task) = activities[convoID] else { return }
+        userStoppedStreaming = true
         task.cancel()
         activities.removeValue(forKey: convoID)
         if let conversation = selectedConversation,
@@ -442,7 +462,10 @@ final class ChatViewModel {
                 await MainActor.run {
                     assistantMessage.lifecycle = .complete
                     self.finalizeStreaming(for: convoID)
-                    self.autoNameIfFirstResponse(conversation, provider: provider)
+                    if !self.userStoppedStreaming {
+                        self.autoNameIfFirstResponse(conversation, provider: provider)
+                    }
+                    self.userStoppedStreaming = false
                 }
             } catch is CancellationError {
                 guard let self else { return }
@@ -554,16 +577,16 @@ final class ChatViewModel {
         namingMessages.append(ChatMessageDTO(role: "user", content: Self.autoNamePrompt))
 
         let totalChars = namingMessages.reduce(0) { $0 + $1.content.count }
-        let logModel = provider.autoTitleModel?.isEmpty == false
-            ? provider.autoTitleModel! : provider.defaultModel
+        let logModel = (provider.autoTitleModel?.isEmpty == false)
+            ? provider.autoTitleModel ?? provider.defaultModel : provider.defaultModel
         AppLogger.debug("Auto-naming: \(namingMessages.count - 1) msgs (\(totalChars) chars) via \(provider.name) model=\(logModel)", category: "auto-title")
 
         let convoID = conversation.id
         let titleTask = Task { [weak self] in
             guard let self else { return }
 
-            let titleModel = provider.autoTitleModel?.isEmpty == false
-                ? provider.autoTitleModel! : provider.defaultModel
+            let titleModel = (provider.autoTitleModel?.isEmpty == false)
+                ? provider.autoTitleModel ?? provider.defaultModel : provider.defaultModel
 
             // Try with autoTitleModel first (1024 tokens), retry with more budget if empty
             let attempts: [(model: String, maxTokens: Int)] = [
@@ -590,6 +613,7 @@ final class ChatViewModel {
                 do {
                     var tokenCount = 0
                     for try await token in stream {
+                        try Task.checkCancellation()
                         if tokenCount == 0 {
                             AppLogger.debug("Auto-title TTFT: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s", category: "auto-title")
                         }
@@ -614,6 +638,7 @@ final class ChatViewModel {
                 let cleaned = firstLine.trimmingCharacters(in: .whitespacesAndNewlines.union(quoteSet))
 
                 if !cleaned.isEmpty {
+                    guard !conversation.isDeleted, conversation.modelContext != nil else { return }
                     AppLogger.debug("Auto-named: \(cleaned)", category: "auto-title")
                     conversation.title = String(cleaned.prefix(Self.autoTitleMaxLength))
                     conversation.updatedAt = Date()
@@ -664,8 +689,8 @@ final class ChatViewModel {
         Task.detached {
             guard let storedName = try? FileStorage.copyToStorage(from: url) else { return }
 
-            await MainActor.run { [self] in
-                guard let conversation = self.conversations.first(where: { $0.id == conversationID }) else { return }
+            await MainActor.run { [weak self] in
+                guard let self, let conversation = self.conversations.first(where: { $0.id == conversationID }) else { return }
                 let attachment = Attachment(kind: kind, storedName: storedName, originalName: originalName)
 
                 let message = Message(role: .user, content: "Attached \(kind.rawValue): \(originalName)")
@@ -700,27 +725,38 @@ final class ChatViewModel {
         // reading the same source file (which causes the first ~30s of audio to
         // be lost), and lets AVAssetReader decode the MP4 audio natively.
         if kind == .video && VideoConverter.needsConversion(originalName) {
-            Task {
+            let convoID = conversation.id
+            let convTask = Task {
+                defer {
+                    if case .convertingVideo = activities[convoID] {
+                        activities.removeValue(forKey: convoID)
+                    }
+                }
                 let transSettings = settingsManager.settings.transcription
                 if let mp4Name = await VideoConverter.convertToMP4(
                     storedName: storedName, settings: transSettings) {
+                    guard !Task.isCancelled else { return }
                     let mp4URL = FileStorage.url(for: mp4Name)
                     ChatTableView.Coordinator.precomputeVideoAspectRatio(url: mp4URL)
 
-                    await MainActor.run { [self] in
+                    await MainActor.run { [weak self] in
+                        guard !attachment.isDeleted, attachment.modelContext != nil else { return }
                         attachment.convertedName = mp4Name
-                        saveContext()
-                        transcribeAudio(at: mp4URL.path, originalName: originalName,
+                        self?.saveContext()
+                        self?.transcribeAudio(at: mp4URL.path, originalName: originalName,
                                         in: conversation, skipSaveRefresh: skipSaveRefresh)
                     }
                 } else {
-                    await MainActor.run { [self] in
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { [weak self] in
+                        guard !conversation.isDeleted, conversation.modelContext != nil else { return }
                         let audioURL = FileStorage.url(for: storedName)
-                        transcribeAudio(at: audioURL.path, originalName: originalName,
+                        self?.transcribeAudio(at: audioURL.path, originalName: originalName,
                                         in: conversation, skipSaveRefresh: skipSaveRefresh)
                     }
                 }
             }
+            activities[convoID] = .convertingVideo(task: convTask)
         } else if kind == .audio || kind == .video {
             let audioURL = FileStorage.url(for: storedName)
             transcribeAudio(at: audioURL.path, originalName: originalName, in: conversation, skipSaveRefresh: skipSaveRefresh)
@@ -769,14 +805,10 @@ final class ChatViewModel {
         let bgTask = taskManager?.createTask(kind: .transcription, title: displayName, conversationTitle: conversation.title)
         let taskID = UUID()
         let convoID = conversation.id
-
-        // These SwiftData model objects are only accessed inside MainActor.run blocks within
-        // the detached task, so crossing the isolation boundary is safe.
-        let wrappedMessage = UncheckedSendableBox(value: transcriptMessage)
-        let wrappedBgTask = UncheckedSendableBox(value: bgTask)
+        let messageID = transcriptMessage.id
+        let bgTaskID = bgTask?.id
 
         let task = Task.detached { [weak self] in
-            // Check audio track off MainActor — AVAsset.tracks is synchronous I/O
             let audioURL = URL(fileURLWithPath: audioPath)
             let ext = audioURL.pathExtension.lowercased()
             let avUnsupportedFormats: Set<String> = ["webm", "mkv", "flv", "wmv", "ogg", "opus"]
@@ -784,9 +816,12 @@ final class ChatViewModel {
                 let asset = AVAsset(url: audioURL)
                 if asset.tracks(withMediaType: .audio).isEmpty {
                     await MainActor.run { [weak self] in
-                        wrappedMessage.value.content = "\(ChatViewModel.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
-                        wrappedMessage.value.lifecycle = .errorTranscription
-                        self?.finishTranscription(taskID: taskID, conversationID: convoID)
+                        guard let self else { return }
+                        if let msg = self.findMessage(id: messageID, conversationID: convoID) {
+                            msg.content = "\(ChatViewModel.transcriptionErrorPrefix)No audio track found in this file. Cannot transcribe."
+                            msg.lifecycle = .errorTranscription
+                        }
+                        self.finishTranscription(taskID: taskID, conversationID: convoID)
                     }
                     return
                 }
@@ -809,8 +844,12 @@ final class ChatViewModel {
                     switch progress {
                     case .started(let language, let duration):
                         await MainActor.run {
-                            wrappedMessage.value.content = "Transcribing... (detected: \(language), \(ChatViewModel.formatDuration(duration)))"
-                            wrappedBgTask.value?.status = .running
+                            if let msg = self?.findMessage(id: messageID, conversationID: convoID) {
+                                msg.content = "Transcribing... (detected: \(language), \(ChatViewModel.formatDuration(duration)))"
+                            }
+                            if let bgTask = self?.taskManager?.tasks.first(where: { $0.id == bgTaskID }) {
+                                bgTask.status = .running
+                            }
                         }
                     case .segment(_, let text, let prog):
                         let now = Date()
@@ -818,8 +857,12 @@ final class ChatViewModel {
                         lastUIUpdate = now
                         await MainActor.run { [weak self] in
                             self?.transcriptionProgress = prog
-                            wrappedBgTask.value?.progress = prog
-                            wrappedMessage.value.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                            if let bgTask = self?.taskManager?.tasks.first(where: { $0.id == bgTaskID }) {
+                                bgTask.progress = prog
+                            }
+                            if let msg = self?.findMessage(id: messageID, conversationID: convoID) {
+                                msg.content = "Transcribing (\(Int(prog * 100))%)...\n\n\(text)"
+                            }
                         }
                     case .completed(let res):
                         finalResult = res
@@ -833,34 +876,44 @@ final class ChatViewModel {
                 let completedResult = finalResult
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let completedResult {
-                        wrappedMessage.value.content = self.formatTranscriptionResult(completedResult)
-                        wrappedMessage.value.lifecycle = .complete
-                        wrappedBgTask.value?.status = .completed
-                        wrappedBgTask.value?.progress = 1.0
+                    if let completedResult, let msg = self.findMessage(id: messageID, conversationID: convoID) {
+                        msg.content = self.formatTranscriptionResult(completedResult)
+                        msg.lifecycle = .complete
+                    }
+                    if let bgTask = self.taskManager?.tasks.first(where: { $0.id == bgTaskID }) {
+                        bgTask.status = .completed
+                        bgTask.progress = 1.0
                     }
                     self.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch let error as TranscriptionError where error.isCancelled {
                 await MainActor.run { [weak self] in
-                    wrappedMessage.value.content = "Transcription cancelled."
-                    wrappedMessage.value.lifecycle = .cancelled
-                    wrappedBgTask.value?.status = .cancelled
+                    if let msg = self?.findMessage(id: messageID, conversationID: convoID) {
+                        msg.content = "Transcription cancelled."
+                        msg.lifecycle = .cancelled
+                    }
+                    if let bgTask = self?.taskManager?.tasks.first(where: { $0.id == bgTaskID }) {
+                        bgTask.status = .cancelled
+                    }
                     self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             } catch {
                 let errorDesc = error.localizedDescription
                 await MainActor.run { [weak self] in
                     self?.lastError = errorDesc
-                    wrappedMessage.value.content = "\(ChatViewModel.transcriptionErrorPrefix)\(errorDesc)"
-                    wrappedMessage.value.lifecycle = .errorTranscription
-                    wrappedBgTask.value?.status = .failed
-                    wrappedBgTask.value?.errorMessage = errorDesc
+                    if let msg = self?.findMessage(id: messageID, conversationID: convoID) {
+                        msg.content = "\(ChatViewModel.transcriptionErrorPrefix)\(errorDesc)"
+                        msg.lifecycle = .errorTranscription
+                    }
+                    if let bgTask = self?.taskManager?.tasks.first(where: { $0.id == bgTaskID }) {
+                        bgTask.status = .failed
+                        bgTask.errorMessage = errorDesc
+                    }
                     self?.finishTranscription(taskID: taskID, conversationID: convoID)
                 }
             }
         }
-        transcriptionTasks[taskID] = task
+        transcriptionTasks[taskID] = (task: task, conversationID: convoID)
     }
 
     private func finishTranscription(taskID: UUID, conversationID: UUID) {
@@ -890,8 +943,8 @@ final class ChatViewModel {
     }
 
     func stopTranscription() {
-        for (_, task) in transcriptionTasks {
-            task.cancel()
+        for (_, entry) in transcriptionTasks {
+            entry.task.cancel()
         }
         transcriptionTasks.removeAll()
     }
@@ -926,7 +979,13 @@ final class ChatViewModel {
     // MARK: - Conversation Export / Import
 
     func exportConversationJSON(_ conversation: Conversation) {
-        guard let data = try? ConversationExporter.exportJSON(conversation: conversation) else { return }
+        let data: Data
+        do {
+            data = try ConversationExporter.exportJSON(conversation: conversation)
+        } catch {
+            lastError = "Export failed: \(error.localizedDescription)"
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         let safeName = conversation.title
@@ -960,7 +1019,10 @@ final class ChatViewModel {
     }
 
     func exportConversationPDF(_ conversation: Conversation) {
-        guard let data = ConversationExporter.exportPDF(conversation: conversation) else { return }
+        guard let data = ConversationExporter.exportPDF(conversation: conversation) else {
+            lastError = "PDF export failed: could not generate PDF"
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         let safeName = conversation.title
@@ -994,20 +1056,36 @@ final class ChatViewModel {
 
     func exportAllConversations() {
         guard !conversations.isEmpty else { return }
-        do {
-            let data = try ConversationExporter.exportBulkZIP(conversations: conversations)
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [UTType(filenameExtension: "zip") ?? .data]
-            panel.nameFieldStringValue = "conversations-export.zip"
-            if panel.runModal() == .OK, let url = panel.url {
-                try data.write(to: url)
+        Task {
+            do {
+                let data = try await ConversationExporter.exportBulkZIP(conversations: conversations)
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [UTType(filenameExtension: "zip") ?? .data]
+                panel.nameFieldStringValue = "conversations-export.zip"
+                if panel.runModal() == .OK, let url = panel.url {
+                    try data.write(to: url)
+                }
+            } catch {
+                lastError = "Export failed: \(error.localizedDescription)"
             }
-        } catch {
-            lastError = "Export failed: \(error.localizedDescription)"
         }
     }
 
     // MARK: - Private
+
+    private func findMessage(id: UUID, conversationID: UUID? = nil) -> Message? {
+        if let conversationID,
+           let conv = conversations.first(where: { $0.id == conversationID }),
+           !conv.isDeleted, conv.modelContext != nil {
+            return conv.messages.first(where: { $0.id == id && !$0.isDeleted && $0.modelContext != nil })
+        }
+        for conversation in conversations {
+            if let msg = conversation.messages.first(where: { $0.id == id && !$0.isDeleted && $0.modelContext != nil }) {
+                return msg
+            }
+        }
+        return nil
+    }
 
     private func saveContext() {
         do {

@@ -92,43 +92,27 @@ struct AudioPlayerView: View {
         .padding(.vertical, sp(6))
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: sp(6)))
-        .onAppear { loadMetadata() }
+        .onAppear {
+            loadMetadata()
+            handleSeekIfPending()
+        }
         .onDisappear { cleanup() }
         .onReceive(Timer.publish(every: Self.progressUpdateInterval, on: .main, in: .common).autoconnect()) { _ in
             guard isPlaying, !isDragging else { return }
-            if let avPlayer {
-                let t = CMTimeGetSeconds(avPlayer.currentTime())
-                if t.isFinite { currentTime = t }
-                AudioPlaybackManager.shared.currentTime = currentTime
-                if avPlayer.rate == 0 && isPlaying {
-                    if let item = avPlayer.currentItem,
-                       CMTimeGetSeconds(item.duration).isFinite,
-                       t >= CMTimeGetSeconds(item.duration) - 0.1 {
-                        isPlaying = false
-                        persistPosition()
-                        AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
-                    }
-                }
-            } else if let player {
-                currentTime = player.currentTime
-                AudioPlaybackManager.shared.currentTime = currentTime
-                if !player.isPlaying {
-                    isPlaying = false
-                    persistPosition()
-                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
-                }
-            }
+            updatePlaybackTime()
         }
         .onChange(of: seekRequest?.id) { _, _ in
-            guard let req = seekRequest, req.storedName == attachment.storedName else { return }
-            if player == nil { loadMetadata() }
-            seekPlayer(to: req.time)
-            currentTime = req.time
-            if !isPlaying {
-                startPlayback()
-            }
-            seekRequest = nil
+            handleSeekIfPending()
         }
+    }
+
+    private func handleSeekIfPending() {
+        guard let req = seekRequest, req.storedName == attachment.storedName else { return }
+        if player == nil && avPlayer == nil { loadMetadata() }
+        seekPlayer(to: req.time)
+        currentTime = req.time
+        if !isPlaying { startPlayback() }
+        seekRequest = nil
     }
 
     private func loadMetadata() {
@@ -404,6 +388,31 @@ struct AudioPlayerView: View {
         }
     }
 
+    private func updatePlaybackTime() {
+        if let avPlayer {
+            let t = CMTimeGetSeconds(avPlayer.currentTime())
+            if t.isFinite { currentTime = t }
+            AudioPlaybackManager.shared.currentTime = currentTime
+            if avPlayer.rate == 0 && isPlaying {
+                if let item = avPlayer.currentItem,
+                   CMTimeGetSeconds(item.duration).isFinite,
+                   t >= CMTimeGetSeconds(item.duration) - 0.1 {
+                    isPlaying = false
+                    persistPosition()
+                    AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+                }
+            }
+        } else if let player {
+            currentTime = player.currentTime
+            AudioPlaybackManager.shared.currentTime = currentTime
+            if !player.isPlaying {
+                isPlaying = false
+                persistPosition()
+                AudioPlaybackManager.shared.didFinishPlaying(storedName: attachment.storedName)
+            }
+        }
+    }
+
     private func formatTime(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -448,6 +457,8 @@ struct VideoPlayerView: View {
         videoAspectRatio ?? initialAspectRatio
     }
 
+    private static let defaultAspectRatio: CGFloat = 16.0 / 9.0
+
     /// Compute video display dimensions from aspect ratio.
     /// Portrait videos get more height since they're already narrow.
     private var videoSize: (width: CGFloat, height: CGFloat) {
@@ -487,15 +498,13 @@ struct VideoPlayerView: View {
         .frame(width: outerWidth, alignment: .leading)
         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: sp(6)))
-        .onAppear { loadVideo() }
+        .onAppear {
+            loadVideo()
+            handleSeekIfPending()
+        }
         .onDisappear { cleanup() }
         .onChange(of: seekRequest?.id) { _, _ in
-            guard let req = seekRequest, req.storedName == attachment.storedName else { return }
-            let target = CMTime(seconds: req.time, preferredTimescale: 600)
-            avPlayer?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-            currentTime = req.time
-            if !isPlaying { startPlayback() }
-            seekRequest = nil
+            handleSeekIfPending()
         }
     }
 
@@ -504,8 +513,8 @@ struct VideoPlayerView: View {
 
         // Use pre-computed aspect ratio from cache (populated on attach, non-blocking)
         let cachedRatio = ChatTableView.Coordinator.videoAspectRatio(url: url)
-        if cachedRatio != 16.0 / 9.0 {
-            videoAspectRatio = cachedRatio
+        if let cached = cachedRatio {
+            videoAspectRatio = cached
         }
 
         let player = AVPlayer(url: url)
@@ -580,6 +589,15 @@ struct VideoPlayerView: View {
                 }
             }
         }
+    }
+
+    private func handleSeekIfPending() {
+        guard let req = seekRequest, req.storedName == attachment.storedName else { return }
+        let target = CMTime(seconds: req.time, preferredTimescale: 600)
+        avPlayer?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        currentTime = req.time
+        if !isPlaying { startPlayback() }
+        seekRequest = nil
     }
 
     private func togglePlayback() {

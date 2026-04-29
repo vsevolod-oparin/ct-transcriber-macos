@@ -15,7 +15,8 @@ enum SettingsStorage {
             return xdgConfig.appendingPathComponent(configDirectoryName, isDirectory: true)
         }
 
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return appSupport.appendingPathComponent("CTTranscriber", isDirectory: true)
     }
 
@@ -96,7 +97,7 @@ enum SettingsStorage {
             let data = try encoder.encode(settings)
             try data.write(to: settingsFileURL, options: .atomic)
         } catch {
-            print("Failed to save settings: \(error)")
+            AppLogger.error("Failed to save settings: \(error)", category: "settings")
         }
     }
 
@@ -112,14 +113,30 @@ enum SettingsStorage {
     private static func loadBundledDefaults() -> AppSettings {
         guard let url = Bundle.main.url(forResource: bundledDefaultsFileName, withExtension: "json") else {
             AppLogger.error("Bundled \(bundledDefaultsFileName).json missing from app resources", category: "settings")
-            // Last resort: decode from inline minimal JSON
-            return try! JSONDecoder().decode(AppSettings.self, from: Data(minimalDefaultsJSON.utf8))
+            return decodeMinimalDefaults()
         }
         guard let settings = decode(from: url) else {
             AppLogger.error("Failed to decode bundled \(bundledDefaultsFileName).json", category: "settings")
-            return try! JSONDecoder().decode(AppSettings.self, from: Data(minimalDefaultsJSON.utf8))
+            return decodeMinimalDefaults()
         }
         return settings
+    }
+
+    private static func decodeMinimalDefaults() -> AppSettings {
+        if let settings = try? JSONDecoder().decode(AppSettings.self, from: Data(minimalDefaultsJSON.utf8)) {
+            return settings
+        }
+        AppLogger.error("Failed to decode minimal defaults JSON — using hardcoded fallback", category: "settings")
+        return AppSettings(
+            general: GeneralSettings(),
+            transcription: TranscriptionSettings(
+                modelsDirectory: "", selectedModelID: "", models: [],
+                beamSize: 4, temperature: 1.0, language: "",
+                vadFilter: true, conditionOnPreviousText: false,
+                skipTimestamps: false, maxParallelTranscriptions: 1
+            ),
+            llm: LLMSettings(activeProviderID: UUID(), providers: [])
+        )
     }
 
     private static let minimalDefaultsJSON = """
@@ -131,7 +148,7 @@ enum SettingsStorage {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(AppSettings.self, from: data)
         } catch {
-            print("Failed to decode settings from \(url.path): \(error)")
+            AppLogger.error("Failed to decode settings from \(url.path): \(error)", category: "settings")
             return nil
         }
     }

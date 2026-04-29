@@ -135,43 +135,45 @@ enum SyntaxHighlighter {
 
     // MARK: - Cache
 
-    /// Lightweight cache keyed on (code hash, fontSize, isDark).
-    /// Avoids recomputing highlights on every SwiftUI body evaluation.
-    nonisolated(unsafe) private static var cache: [CacheKey: AttributedString] = [:]
-    private static let cacheLimit = 64
+    private static let cache: NSCache<CacheKeyWrapper, CacheValueWrapper> = {
+        let c = NSCache<CacheKeyWrapper, CacheValueWrapper>()
+        c.countLimit = 64
+        return c
+    }()
 
-    private struct CacheKey: Hashable {
+    private final class CacheKeyWrapper: NSObject {
         let codeHash: Int
         let fontSize: CGFloat
         let isDark: Bool
+        init(codeHash: Int, fontSize: CGFloat, isDark: Bool) {
+            self.codeHash = codeHash
+            self.fontSize = fontSize
+            self.isDark = isDark
+            super.init()
+        }
+        override var hash: Int { codeHash ^ fontSize.hashValue ^ isDark.hashValue }
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? CacheKeyWrapper else { return false }
+            return codeHash == other.codeHash && fontSize == other.fontSize && isDark == other.isDark
+        }
+    }
+
+    private final class CacheValueWrapper: NSObject {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value; super.init() }
     }
 
     // MARK: - Public API
 
-    /// Returns an `AttributedString` with syntax-highlighted code suitable for
-    /// display in a SwiftUI `Text` view.
-    ///
-    /// - Parameters:
-    ///   - code: The raw source code string.
-    ///   - language: Optional language tag from the fenced code block (currently
-    ///     unused but reserved for future language-specific rules).
-    ///   - fontSize: Base font size for the monospaced font.
-    ///   - isDark: Whether the current appearance is dark mode.
-    /// - Returns: A syntax-highlighted `AttributedString`.
     static func highlight(_ code: String, language: String?, fontSize: CGFloat, isDark: Bool) -> AttributedString {
-        let key = CacheKey(codeHash: code.hashValue, fontSize: fontSize, isDark: isDark)
-        if let cached = cache[key] {
-            return cached
+        let key = CacheKeyWrapper(codeHash: code.hashValue, fontSize: fontSize, isDark: isDark)
+        if let cached = cache.object(forKey: key) {
+            return cached.value
         }
 
         let nsAttributed = buildHighlightedString(code, fontSize: fontSize)
         let result = AttributedString(nsAttributed)
-
-        // Evict oldest entries when cache grows too large.
-        if cache.count >= cacheLimit {
-            cache.removeAll(keepingCapacity: true)
-        }
-        cache[key] = result
+        cache.setObject(CacheValueWrapper(result), forKey: key)
         return result
     }
 

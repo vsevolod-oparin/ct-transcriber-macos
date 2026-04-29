@@ -217,7 +217,7 @@ struct ConversationListView: View {
         guard let targetIdx = viewModel.conversations.firstIndex(where: { $0.id == conversation.id }) else {
             return
         }
-        let anchorIdx = viewModel.highlightCursor
+        let anchorIdx = min(viewModel.highlightCursor, viewModel.conversations.count - 1)
         let range = min(anchorIdx, targetIdx)...max(anchorIdx, targetIdx)
         viewModel.highlightedIDs = Set(viewModel.conversations[range].map(\.id))
     }

@@ -31,7 +31,7 @@ struct AttachmentView: View {
                     } else {
                         let playName = attachment.convertedName ?? attachment.storedName
                         let url = FileStorage.url(for: playName)
-                        let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url)
+                        let ratio = ChatTableView.Coordinator.videoAspectRatio(url: url) ?? (16.0 / 9.0)
                         VideoPlayerView(attachment: attachment,
                                         playbackStoredName: attachment.convertedName,
                                         initialAspectRatio: ratio,
@@ -69,14 +69,25 @@ struct AttachmentView: View {
             let sourceURL = FileStorage.url(for: attachment.storedName)
             do {
                 try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            } catch let error as NSError where error.code == NSFileWriteFileExistsError {
+                do {
+                    try FileManager.default.removeItem(at: destURL)
+                    try FileManager.default.copyItem(at: sourceURL, to: destURL)
+                } catch {
+                    showSaveError(error)
+                }
             } catch {
-                let alert = NSAlert()
-                alert.messageText = "Save Failed"
-                alert.informativeText = error.localizedDescription
-                alert.alertStyle = .warning
-                alert.runModal()
+                showSaveError(error)
             }
         }
+    }
+
+    private func showSaveError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Save Failed"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 }
 

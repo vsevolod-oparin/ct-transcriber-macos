@@ -70,31 +70,38 @@ final class TaskManager: TaskManagerProtocol {
         saveAndRefresh()
 
         let taskID = task.id
-        let wrappedTask = UncheckedSendableBox(value: task)
         activeTasks[taskID] = Task { [weak self] in
+            guard let ref = self?.tasks.first(where: { $0.id == taskID && !$0.isDeleted && $0.modelContext != nil }) else { return }
             do {
-                try await work(wrappedTask.value) { progress in
-                    Task { @MainActor in
-                        wrappedTask.value.progress = progress
-                        wrappedTask.value.updatedAt = Date()
+                try await work(ref) { progress in
+                    Task { @MainActor [weak self] in
+                        guard let task = self?.tasks.first(where: { $0.id == taskID && !$0.isDeleted && $0.modelContext != nil }) else { return }
+                        task.progress = progress
+                        task.updatedAt = Date()
                         self?.saveAndRefresh()
                     }
                 }
 
-                wrappedTask.value.status = .completed
-                wrappedTask.value.progress = 1.0
-                wrappedTask.value.updatedAt = Date()
+                if let t = self?.tasks.first(where: { $0.id == taskID && !$0.isDeleted && $0.modelContext != nil }) {
+                    t.status = .completed
+                    t.progress = 1.0
+                    t.updatedAt = Date()
+                }
                 self?.activeTasks.removeValue(forKey: taskID)
                 self?.saveAndRefresh()
             } catch is CancellationError {
-                wrappedTask.value.status = .cancelled
-                wrappedTask.value.updatedAt = Date()
+                if let t = self?.tasks.first(where: { $0.id == taskID && !$0.isDeleted && $0.modelContext != nil }) {
+                    t.status = .cancelled
+                    t.updatedAt = Date()
+                }
                 self?.activeTasks.removeValue(forKey: taskID)
                 self?.saveAndRefresh()
             } catch {
-                wrappedTask.value.status = .failed
-                wrappedTask.value.errorMessage = error.localizedDescription
-                wrappedTask.value.updatedAt = Date()
+                if let t = self?.tasks.first(where: { $0.id == taskID && !$0.isDeleted && $0.modelContext != nil }) {
+                    t.status = .failed
+                    t.errorMessage = error.localizedDescription
+                    t.updatedAt = Date()
+                }
                 self?.activeTasks.removeValue(forKey: taskID)
                 self?.saveAndRefresh()
             }

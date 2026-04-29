@@ -89,6 +89,7 @@ final class ModelManager {
         let result = await fetchModelPath(hfID: hfID, modelID: modelID)
 
         await MainActor.run {
+            guard activeTasks[modelID] != nil else { return }
             switch result {
             case .success(let path):
                 let size = Self.directorySize(path: path)
@@ -181,7 +182,8 @@ final class ModelManager {
         if !settings.modelsDirectory.isEmpty {
             return settings.modelsDirectory
         }
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return appSupport
             .appendingPathComponent("CTTranscriber", isDirectory: true)
             .appendingPathComponent("models", isDirectory: true)

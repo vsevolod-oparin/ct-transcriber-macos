@@ -423,7 +423,7 @@ struct MessageBubble: View {
         guard !srt.isEmpty else { return }
 
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "srt")!]
+        panel.allowedContentTypes = [UTType(filenameExtension: "srt") ?? .plainText]
         // Derive SRT filename from the audio attachment's original name
         var srtName = "transcript.srt"
         if let _ = findAudioAttachment() {
@@ -605,8 +605,7 @@ struct TranscriptTextView: NSViewRepresentable {
     func updateNSView(_ textView: TranscriptNSTextView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.lineTimestamps = parseLineTimestamps()
-        let currentLen = textView.textStorage?.length ?? 0
-        if currentLen != content.count {
+        if textView.textStorage?.length ?? 0 != content.count {
             textView.textStorage?.setAttributedString(buildAttributedString())
         }
     }

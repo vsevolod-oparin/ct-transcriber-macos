@@ -30,6 +30,9 @@ struct AnthropicService: LLMService {
                     request.httpMethod = "POST"
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+                    if extraHeaders["anthropic-version"] == nil {
+                        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+                    }
                     for (key, value) in extraHeaders {
                         request.setValue(value, forHTTPHeaderField: key)
                     }

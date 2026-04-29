@@ -45,6 +45,7 @@ extension Font {
     }
 }
 
+@MainActor
 @Observable
 final class SettingsManager {
     var settings: AppSettings {

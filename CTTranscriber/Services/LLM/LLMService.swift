@@ -17,6 +17,12 @@ enum LLMError: LocalizedError {
     case networkError(Error)
     case cancelled
 
+    private static func redactSensitiveInfo(_ body: String) -> String {
+        body
+            .replacingOccurrences(of: "(?:Bearer|sk-|key)[\\s-]*[a-zA-Z0-9_-]{20,}", with: "[REDACTED]", options: .regularExpression)
+            .replacingOccurrences(of: "api[_-]?key[=:\"\\s]+[a-zA-Z0-9_-]{10,}", with: "api_key=[REDACTED]", options: .regularExpression)
+    }
+
     var isCancelled: Bool {
         if case .cancelled = self { return true }
         return false
@@ -29,7 +35,7 @@ enum LLMError: LocalizedError {
         case .invalidURL:
             "Invalid API base URL."
         case .httpError(let code, let body):
-            "API error (\(code)): \(body)"
+            "API error (\(code)): \(Self.redactSensitiveInfo(body))"
         case .decodingError(let detail):
             "Failed to parse response: \(detail)"
         case .networkError(let error):
