@@ -19,6 +19,7 @@
 		359C21BC78DCBD9EF78384F2 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C10344C58CAEC8D27DFE18E /* ModelManagerView.swift */; };
 		3A816DC62F98B09AA0EEF0FE /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B640B4BCCA2BF24F2A20CC8B /* SettingsManager.swift */; };
 		41D07F4E95400E950A46108D /* AppUninstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC3D113BC132595C3037512 /* AppUninstallerTests.swift */; };
+		3EC3AD6D3FF9492EA04A8287 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5038353DFFF24F2EA524524C /* AppPaths.swift */; };
 		452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB94D1FAAA6ED9F2B6BBE /* AppSettings.swift */; };
 		501EB8429B9A650E2AB402EA /* default-settings.json in Resources */ = {isa = PBXBuildFile; fileRef = 5C90903B672DF2C7EAA2A33E /* default-settings.json */; };
 		51FAC89F42DB2D7594C988E9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0A60525B5D36D873BC9B3A3C /* Assets.xcassets */; };
@@ -83,6 +84,7 @@
 		128C815950849E516D0EC30F /* .gitkeep */ = {isa = PBXFileReference; path = .gitkeep; sourceTree = "<group>"; };
 		1703CCB7714FBED5DEC72C62 /* CTTranscriberTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CTTranscriberTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
+		5038353DFFF24F2EA524524C /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
 		2326917778ED8DB96533DDAC /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		27ABE31824F927E9C4AAC145 /* CTTranscriber.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CTTranscriber.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		29AF36BE09F983DF2B4D426D /* ModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManager.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 			children = (
 				BH0001010000000000000001 /* CTTranscriber-Bridging-Header.h */,
 				20EA6A5D775BE9D21629F1F0 /* AppLogger.swift */,
+				5038353DFFF24F2EA524524C /* AppPaths.swift */,
 				4F65432DCDD2B9CC9C65C558 /* AppUninstaller.swift */,
 				FFEED07D528BF3C37528251F /* AudioPlaybackManager.swift */,
 				CC0002010000000000000001 /* ConversationExporter.swift */,
@@ -435,6 +438,7 @@
 				70EF0A3E614395B956C9EC6A /* AppLogger.swift in Sources */,
 				452BC2B8E93BB4944D672B81 /* AppSettings.swift in Sources */,
 				24030E39554301922AB7CF08 /* AppUninstaller.swift in Sources */,
+				3EC3AD6D3FF9492EA04A8287 /* AppPaths.swift in Sources */,
 				17D2DE8BA27288D04F267D64 /* Attachment.swift in Sources */,
 				992803DC943ED97DF62E8A4E /* AudioPlaybackManager.swift in Sources */,
 				F258F05501958AEAFF3BD59C /* BackgroundTask.swift in Sources */,

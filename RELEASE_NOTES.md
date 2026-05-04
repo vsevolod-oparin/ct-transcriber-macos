@@ -2,6 +2,47 @@
 
 ---
 
+## v0.5.3 (2026-04-29)
+
+### Crash Fix
+- Fixed `EXC_BREAKPOINT` crash in `Message.content.getter` when accessing deleted SwiftData objects during SwiftUI view updates. Root cause: cascade-deleted model objects accessed without `isDeleted` / `modelContext` guards.
+- Added deletion guards across all view-update paths: `MessageBubble`, `ConversationRow`, `AttachmentView`, `ChatView`, and `filteredConversations`.
+
+### Concurrency & Safety
+- **Removed `UncheckedSendableBox`** — SwiftData `@Model` objects are no longer smuggled across actor boundaries. All `Task.detached` closures now capture UUIDs and re-fetch from `ModelContext` on MainActor.
+- Added `@MainActor` to `SettingsManager` (required for `@Observable` classes read by SwiftUI).
+- `SyntaxHighlighter` cache: replaced `nonisolated(unsafe)` dictionary with thread-safe `NSCache`.
+- Video conversion tasks now tracked in `ConversationActivity` enum (`.convertingVideo`) — properly cancelled on conversation deletion.
+- Transcription cancellation scoped per-conversation instead of cancelling all active transcriptions.
+
+### OGG Audio Playback
+- Fixed broken seek on OGG files — `AVAudioPlayer` cannot seek OGG reliably, so OGG files now use `AVPlayer` with `CMTime`-based seeking.
+- Dual-backend `AudioPlayerView`: `AVPlayer` for OGG, `AVAudioPlayer` for everything else. Transparent to the user.
+
+### Auto-Title Improvements
+- Fixed auto-titler crash on force-unwrap of `autoTitleModel`.
+- Auto-title no longer triggers after user manually stops streaming.
+- Added `Task.checkCancellation()` in the streaming loop — cancelled title generation stops immediately.
+- Added `isDeleted` guard before writing the generated title.
+
+### Timestamp Seek
+- Fixed timestamp click-to-seek not working after switching conversations. Seek requests pending at view creation time are now handled on `onAppear`, not only on `onChange`.
+
+### LLM
+- Anthropic API: default `anthropic-version: 2023-06-01` header added when not explicitly set.
+- API key redaction: Bearer tokens, `sk-*`, and API key patterns are scrubbed from error messages shown to the user.
+
+### Other Fixes
+- `selectedConversationID` now picks the first remaining conversation after deletion (previously could point to the deleted one).
+- `highlightCursor` clamped after batch-delete to prevent out-of-bounds crash.
+- Export errors (JSON, PDF) now surface via the error banner instead of failing silently.
+- Bulk ZIP export: temp file cleanup via `defer`, `process.waitUntilExit()` moved off MainActor.
+- `SettingsStorage`: replaced `try!` / `print()` with safe decoding and `AppLogger.error()`.
+- Video aspect ratio API returns `Optional` instead of magic 16:9 sentinel value.
+- Conversation import now restores attachment metadata.
+
+---
+
 ## v0.5.2 (2026-04-17)
 
 ### Python-Free Transcription (M15 Complete)

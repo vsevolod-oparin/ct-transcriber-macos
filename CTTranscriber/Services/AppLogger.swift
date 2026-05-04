@@ -20,11 +20,9 @@ enum AppLogger {
     private static let fileQueue = DispatchQueue(label: "com.branch.ct-transcriber.logger")
 
     private static let logFileURL: URL = {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        let dir = appSupport.appendingPathComponent("CTTranscriber", isDirectory: true)
+        let dir = AppPaths.storageRoot
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("ct-transcriber.log")
+        return AppPaths.logFileURL
     }()
 
     private static let dateFormatter: DateFormatter = {

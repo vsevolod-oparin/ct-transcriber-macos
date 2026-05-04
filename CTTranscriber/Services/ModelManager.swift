@@ -19,6 +19,7 @@ final class ModelManager {
 
     init(settingsManager: SettingsManager) {
         self.settingsManager = settingsManager
+        MWModelManager.shared().cacheDirectory = AppPaths.modelsDirectory.path
         refreshStatuses()
     }
 
@@ -168,11 +169,9 @@ final class ModelManager {
     /// Returns the local path for a model if it exists on disk, nil otherwise.
     /// Checks the MWModelManager sanitized path first, then the legacy id-based path.
     private func resolveLocalPath(for model: WhisperModelConfig, in modelsDir: String) -> String? {
+        let sanitizedHFID = model.huggingFaceID.replacingOccurrences(of: "/", with: "--")
         let candidates = [
-            // MWModelManager stores as {sanitizedRepoID} e.g. "Systran--faster-whisper-large-v3"
-            (modelsDir as NSString).appendingPathComponent(
-                model.huggingFaceID.replacingOccurrences(of: "/", with: "--")),
-            // Legacy path used by the old Python conversion flow
+            (modelsDir as NSString).appendingPathComponent(sanitizedHFID),
             (modelsDir as NSString).appendingPathComponent(model.id),
         ]
         return candidates.first { isValidModel(at: $0) }
@@ -182,12 +181,7 @@ final class ModelManager {
         if !settings.modelsDirectory.isEmpty {
             return settings.modelsDirectory
         }
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return appSupport
-            .appendingPathComponent("CTTranscriber", isDirectory: true)
-            .appendingPathComponent("models", isDirectory: true)
-            .path
+        return AppPaths.modelsDirectory.path
     }
 
     private func isValidModel(at path: String) -> Bool {

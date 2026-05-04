@@ -16,6 +16,8 @@ struct CTTranscriberApp: App {
 
     init() {
         let inMemory = CommandLine.arguments.contains("--uitesting")
+        AppPaths.migrateIfNeeded()
+        AppPaths.ensureDirectories()
         self.modelContainer = Self.makeModelContainer(inMemory: inMemory)
     }
 
@@ -148,7 +150,12 @@ struct CTTranscriberApp: App {
     /// Creates a ``ModelContainer`` wired to the versioned schema and migration plan.
     /// Falls back to a plain container if the migration-plan initializer fails.
     static func makeModelContainer(inMemory: Bool) -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: inMemory)
+        let config: ModelConfiguration
+        if inMemory {
+            config = ModelConfiguration(isStoredInMemoryOnly: true)
+        } else {
+            config = ModelConfiguration(url: AppPaths.storeURL)
+        }
         do {
             return try ModelContainer(
                 for: Conversation.self, Message.self, Attachment.self, BackgroundTask.self,
@@ -156,7 +163,6 @@ struct CTTranscriberApp: App {
                 configurations: config
             )
         } catch {
-            // Fallback: create without explicit migration plan so the app can still launch.
             AppLogger.error("ModelContainer with migration plan failed: \(error). Falling back to plain container.", category: "app")
             do {
                 return try ModelContainer(

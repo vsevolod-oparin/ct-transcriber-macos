@@ -80,7 +80,31 @@ echo "Verifying app signature..."
 codesign --verify --deep --strict --verbose=1 "$APP_PATH" 2>&1 | tail -5
 echo ""
 
-# Step 3: Stage DMG contents
+# Step 3: Optional notarization of the app (before packaging into DMG)
+if [ "$NOTARIZE" -eq 1 ]; then
+    echo ""
+    echo "Creating zip for notarization..."
+    NOTARIZE_DIR=$(mktemp -d)
+    cp -R "$APP_PATH" "$NOTARIZE_DIR/"
+    ZIP_PATH="$NOTARIZE_DIR/app.zip"
+    cd "$NOTARIZE_DIR"
+    ditto -c -k --keepParent "$APP_NAME.app" "$ZIP_PATH"
+    cd "$PROJECT_DIR"
+
+    echo "Submitting app to Apple for notarization (this can take a few minutes)..."
+    xcrun notarytool submit "$ZIP_PATH" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --wait
+
+    echo "Stapling notarization ticket to app..."
+    xcrun stapler staple "$NOTARIZE_DIR/$APP_NAME.app"
+    xcrun stapler validate "$NOTARIZE_DIR/$APP_NAME.app"
+
+    APP_PATH="$NOTARIZE_DIR/$APP_NAME.app"
+    trap "rm -rf '$NOTARIZE_DIR'" EXIT
+fi
+
+# Step 4: Stage DMG contents from the (now notarized) app
 mkdir -p "$DMG_DIR"
 STAGING_DIR=$(mktemp -d)
 trap "rm -rf '$STAGING_DIR'" EXIT
@@ -94,9 +118,6 @@ CT Transcriber — Audio & Video Transcription for macOS
 INSTALLATION:
   Drag "CT Transcriber" to the Applications folder, then launch it.
 
-The app is signed with a Developer ID certificate and uses Hardened
-Runtime. On first launch it will be checked by Gatekeeper.
-
 REQUIREMENTS:
   - macOS 14.0+ (Sonoma)
   - Apple Silicon (M1/M2/M3/M4)
@@ -104,7 +125,7 @@ REQUIREMENTS:
   - ffmpeg in PATH (optional — only required for WebM files)
 EOF
 
-# Step 4: Create DMG
+# Step 5: Create DMG
 rm -f "$DMG_DIR/$DMG_NAME"
 echo "Creating DMG..."
 hdiutil create \
@@ -114,23 +135,10 @@ hdiutil create \
     -format UDZO \
     "$DMG_DIR/$DMG_NAME" >/dev/null
 
-# Step 5: Sign the DMG
+# Step 6: Sign the DMG
 echo "Signing DMG..."
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG_DIR/$DMG_NAME"
 codesign --verify --verbose=1 "$DMG_DIR/$DMG_NAME" 2>&1 | tail -3
-
-# Step 6: Optional notarization + stapling
-if [ "$NOTARIZE" -eq 1 ]; then
-    echo ""
-    echo "Submitting to Apple for notarization (this can take a few minutes)..."
-    xcrun notarytool submit "$DMG_DIR/$DMG_NAME" \
-        --keychain-profile "$NOTARY_PROFILE" \
-        --wait
-
-    echo "Stapling notarization ticket..."
-    xcrun stapler staple "$DMG_DIR/$DMG_NAME"
-    xcrun stapler validate "$DMG_DIR/$DMG_NAME"
-fi
 
 echo ""
 echo "=== Done ==="

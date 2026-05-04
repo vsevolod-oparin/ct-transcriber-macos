@@ -2,14 +2,8 @@ import Foundation
 import UniformTypeIdentifiers
 
 enum FileStorage {
-    private static let appDirectoryName = "CTTranscriber"
-    private static let filesDirectoryName = "files"
-
     static var filesDirectory: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let appDir = appSupport.appendingPathComponent(appDirectoryName, isDirectory: true)
-        return appDir.appendingPathComponent(filesDirectoryName, isDirectory: true)
+        AppPaths.filesDirectory
     }
 
     /// Copies a file to app storage, returning the UUID-based stored filename.

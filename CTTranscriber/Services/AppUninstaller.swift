@@ -4,19 +4,15 @@ import AppKit
 enum AppUninstaller {
     @MainActor
     static func run() {
-        let home = NSHomeDirectory()
         let appPath = Bundle.main.bundlePath
         let pid = ProcessInfo.processInfo.processIdentifier
 
         let paths = [
-            home + "/Library/Application Support/CTTranscriber",
-            home + "/Library/Application Support/CT Transcriber",
-            home + "/.ct-transcriber",
-            home + "/.config/ct-transcriber",
-            home + "/Library/Preferences/com.branch.ct-transcriber.plist",
-            home + "/Library/Application Support/default.store",
-            home + "/Library/Application Support/default.store-shm",
-            home + "/Library/Application Support/default.store-wal",
+            AppPaths.storageRoot.path,
+            NSHomeDirectory() + "/Library/Caches/MetalWhisper",
+            NSHomeDirectory() + "/.config/ct-transcriber",
+            NSHomeDirectory() + "/.ct-transcriber",
+            AppPaths.preferencesPlist,
             appPath,
         ]
 

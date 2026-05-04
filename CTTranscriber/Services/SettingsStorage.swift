@@ -1,32 +1,13 @@
 import Foundation
 
 enum SettingsStorage {
-    private static let configDirectoryName = "ct-transcriber"
     private static let settingsFileName = "settings.json"
     private static let bundledDefaultsFileName = "default-settings"
 
-    static var configDirectory: URL {
-        // Prefer ~/.config/ct-transcriber if ~/.config is writable.
-        // Fall back to ~/Library/Application Support/CTTranscriber.
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let xdgConfig = home.appendingPathComponent(".config", isDirectory: true)
-
-        if FileManager.default.isWritableFile(atPath: xdgConfig.path) {
-            return xdgConfig.appendingPathComponent(configDirectoryName, isDirectory: true)
-        }
-
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return appSupport.appendingPathComponent("CTTranscriber", isDirectory: true)
-    }
-
     static var settingsFileURL: URL {
-        configDirectory.appendingPathComponent(settingsFileName)
+        AppPaths.settingsURL
     }
 
-    /// Loads settings from ~/.config/ct-transcriber/settings.json.
-    /// On first launch (no file exists), copies the bundled default-settings.json
-    /// to the config directory so the user has a shareable/editable file immediately.
     static func load() -> AppSettings {
         let url = settingsFileURL
 
@@ -37,7 +18,9 @@ enum SettingsStorage {
             settings = loadBundledDefaults()
         }
 
-        if migrateAutoTitleModels(&settings) {
+        var changed = migrateAutoTitleModels(&settings)
+        changed = migrateWhisperRepoIDs(&settings) || changed
+        if changed {
             save(settings)
         }
         return settings
@@ -84,8 +67,38 @@ enum SettingsStorage {
         return nil
     }
 
+    /// Corrects huggingFaceID values that point to PyTorch repos instead of
+    /// pre-converted CTranslate2 repos. PyTorch repos (e.g. openai/whisper-*)
+    /// don't contain model.bin, so downloads fail with HTTP 404.
+    @discardableResult
+    private static func migrateWhisperRepoIDs(_ settings: inout AppSettings) -> Bool {
+        let corrections: [String: String] = [
+            "openai/whisper-large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+            "openai/whisper-large-v3": "Systran/faster-whisper-large-v3",
+            "openai/whisper-large-v2": "Systran/faster-whisper-large-v2",
+            "openai/whisper-large-v1": "Systran/faster-whisper-large-v1",
+            "openai/whisper-medium": "Systran/faster-whisper-medium",
+            "openai/whisper-medium.en": "Systran/faster-whisper-medium.en",
+            "openai/whisper-small": "Systran/faster-whisper-small",
+            "openai/whisper-small.en": "Systran/faster-whisper-small.en",
+            "openai/whisper-base": "Systran/faster-whisper-base",
+            "openai/whisper-base.en": "Systran/faster-whisper-base.en",
+            "openai/whisper-tiny": "Systran/faster-whisper-tiny",
+            "openai/whisper-tiny.en": "Systran/faster-whisper-tiny.en",
+        ]
+
+        var changed = false
+        for i in settings.transcription.models.indices {
+            if let correct = corrections[settings.transcription.models[i].huggingFaceID] {
+                settings.transcription.models[i].huggingFaceID = correct
+                changed = true
+            }
+        }
+        return changed
+    }
+
     static func save(_ settings: AppSettings) {
-        let directory = configDirectory
+        let directory = AppPaths.storageRoot
 
         do {
             if !FileManager.default.fileExists(atPath: directory.path) {
