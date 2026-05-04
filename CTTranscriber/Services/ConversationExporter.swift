@@ -320,6 +320,10 @@ enum ConversationExporter {
             let safeName = conversation.title
                 .replacingOccurrences(of: "/", with: "-")
                 .replacingOccurrences(of: ":", with: "-")
+                .replacingOccurrences(of: "\\", with: "-")
+                .components(separatedBy: .controlCharacters).joined()
+                .replacingOccurrences(of: "..", with: "_")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
                 .prefix(50)
             let fileName = "\(safeName).json"
             try data.write(to: tempDir.appendingPathComponent(fileName))

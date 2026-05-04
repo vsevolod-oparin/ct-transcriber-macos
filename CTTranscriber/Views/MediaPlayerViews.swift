@@ -76,7 +76,7 @@ struct AudioPlayerView: View {
                 .frame(minWidth: sp(80))
 
                 // Time display: current / duration
-                Text("\(formatTime(currentTime)) / \(formatTime(duration))")
+                Text("\(TimeFormatting.formatTime(currentTime)) / \(TimeFormatting.formatTime(duration))")
                     .font(sf.caption2)
                     .monospacedDigit()
                     .foregroundStyle(.primary)
@@ -413,12 +413,6 @@ struct AudioPlayerView: View {
         }
     }
 
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     /// Generates a thumbnail from the first frame of a video file.
     private static func generateThumbnail(url: URL) async -> NSImage? {
         let asset = AVAsset(url: url)
@@ -663,12 +657,6 @@ struct VideoPlayerView: View {
     private func persistPosition() {
         attachment.playbackPosition = currentTime
     }
-
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
 }
 
 /// NSViewRepresentable wrapping AVPlayerView for native macOS video rendering.
@@ -764,7 +752,7 @@ struct MiniPlayerBar: View {
             ), in: 0...1)
             .controlSize(.small)
 
-            Text(formatTime(manager.currentTime))
+            Text(TimeFormatting.formatTime(manager.currentTime))
                 .font(sf.caption2)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -773,11 +761,5 @@ struct MiniPlayerBar: View {
         .padding(.horizontal, sp(12))
         .padding(.vertical, sp(4))
         .background(Color(nsColor: .controlBackgroundColor))
-    }
-
-    private func formatTime(_ time: TimeInterval) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }

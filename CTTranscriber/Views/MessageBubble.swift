@@ -534,21 +534,7 @@ struct MessageBubble: View {
         let afterBracket = text[bracketRange.upperBound...]
         guard let arrowRange = afterBracket.range(of: " \u{2192}") ?? afterBracket.range(of: "\u{2192}") else { return nil }
         let timeStr = String(afterBracket[..<arrowRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-        return parseTimestamp(timeStr)
-    }
-
-    /// Parses a timestamp string like "0.00", "1:23", "1:23.45" into seconds.
-    private func parseTimestamp(_ str: String) -> TimeInterval? {
-        let parts = str.split(separator: ":")
-        if parts.count == 2 {
-            // MM:SS or MM:SS.ss
-            guard let min = Double(parts[0]), let sec = Double(parts[1]) else { return nil }
-            return min * 60 + sec
-        } else if parts.count == 1 {
-            // SS.ss
-            return Double(parts[0])
-        }
-        return nil
+        return TimeFormatting.parseTimestamp(timeStr)
     }
 
     /// Finds the storedName of an audio/video attachment from the message before this one.
@@ -628,7 +614,7 @@ struct TranscriptTextView: NSViewRepresentable {
             guard str.hasPrefix("["),
                   let arrowRange = str.range(of: " \u{2192} ") ?? str.range(of: "\u{2192}") else { continue }
             let timeStr = String(str[str.index(after: str.startIndex)..<arrowRange.lowerBound])
-            if let time = parseTimestamp(timeStr) {
+            if let time = TimeFormatting.parseTimestamp(timeStr) {
                 result[i] = time
             }
         }
@@ -663,18 +649,6 @@ struct TranscriptTextView: NSViewRepresentable {
             }
         }
         return result
-    }
-
-    private func parseTimestamp(_ str: String) -> TimeInterval? {
-        let trimmed = str.trimmingCharacters(in: .whitespaces)
-        let parts = trimmed.split(separator: ":")
-        if parts.count == 2 {
-            guard let min = Double(parts[0]), let sec = Double(parts[1]) else { return nil }
-            return min * 60 + sec
-        } else if parts.count == 1 {
-            return Double(trimmed)
-        }
-        return nil
     }
 
     @MainActor

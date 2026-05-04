@@ -53,7 +53,7 @@ struct ConversationListView: View {
                             // can steal first responder, so reclaim it.
                             DispatchQueue.main.async {
                                 if let window = NSApp.keyWindow,
-                                   let sidebarView = Self.findOutlineView(in: window.contentView) {
+                                   let sidebarView = ViewUtils.findOutlineView(in: window.contentView) {
                                     window.makeFirstResponder(sidebarView)
                                 }
                             }
@@ -220,17 +220,6 @@ struct ConversationListView: View {
         let anchorIdx = min(viewModel.highlightCursor, viewModel.conversations.count - 1)
         let range = min(anchorIdx, targetIdx)...max(anchorIdx, targetIdx)
         viewModel.highlightedIDs = Set(viewModel.conversations[range].map(\.id))
-    }
-
-    // MARK: - Focus Helper
-
-    static func findOutlineView(in view: NSView?) -> NSView? {
-        guard let view else { return nil }
-        if view is NSOutlineView { return view }
-        for subview in view.subviews {
-            if let found = findOutlineView(in: subview) { return found }
-        }
-        return nil
     }
 
     // MARK: - Rename

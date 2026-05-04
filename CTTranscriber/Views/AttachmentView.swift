@@ -27,7 +27,7 @@ struct AttachmentView: View {
                     AudioPlayerView(attachment: attachment, seekRequest: $seekRequest)
                 case .video:
                     if isUnsupportedVideo && attachment.convertedName == nil {
-                        UnsupportedVideoView(attachment: attachment, isConverting: true)
+                        UnsupportedVideoView(attachment: attachment, isConverting: false)
                     } else {
                         let playName = attachment.convertedName ?? attachment.storedName
                         let url = FileStorage.url(for: playName)

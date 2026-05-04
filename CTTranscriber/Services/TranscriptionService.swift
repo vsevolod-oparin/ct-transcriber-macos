@@ -20,8 +20,8 @@ enum TranscriptionService {
         /// Formatted transcript with timestamps.
         var formattedTranscript: String {
             segments.map { seg in
-                let startStr = formatTimestamp(seg.start)
-                let endStr = formatTimestamp(seg.end)
+                let startStr = TimeFormatting.formatTime(seg.start)
+                let endStr = TimeFormatting.formatTime(seg.end)
                 return "[\(startStr) → \(endStr)] \(seg.text)"
             }.joined(separator: "\n")
         }
@@ -29,12 +29,6 @@ enum TranscriptionService {
         /// Plain text without timestamps.
         var plainText: String {
             segments.map(\.text).joined(separator: " ")
-        }
-
-        private func formatTimestamp(_ seconds: Double) -> String {
-            let mins = Int(seconds) / 60
-            let secs = Int(seconds) % 60
-            return String(format: "%d:%02d", mins, secs)
         }
     }
 

@@ -68,7 +68,7 @@ struct ContentView: View {
             let isInputFocused = window.firstResponder is NSTextView
 
             if isInputFocused {
-                if let sidebarView = findSidebarListView(in: window.contentView) {
+                if let sidebarView = ViewUtils.findOutlineView(in: window.contentView) {
                     window.makeFirstResponder(sidebarView)
                 }
             } else {
@@ -135,20 +135,6 @@ struct ContentView: View {
         appDelegate.pendingOpenURLs.removeAll()
         viewModel.openFiles(urls: urls)
         AppLogger.info("Processed \(urls.count) file(s) from Finder/Dock", category: "app")
-    }
-
-    /// Finds the sidebar's NSOutlineView (SwiftUI List is backed by NSOutlineView on macOS).
-    private func findSidebarListView(in view: NSView?) -> NSView? {
-        guard let view else { return nil }
-        if view is NSOutlineView {
-            return view
-        }
-        for subview in view.subviews {
-            if let found = findSidebarListView(in: subview) {
-                return found
-            }
-        }
-        return nil
     }
 }
 
