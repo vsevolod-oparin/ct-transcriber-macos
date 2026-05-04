@@ -7,8 +7,7 @@ struct CTTranscriberApp: App {
     private let isUITesting = CommandLine.arguments.contains("--uitesting")
     private let modelContainer: ModelContainer
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var settingsManager = SettingsManager()
-    @State private var modelManager: ModelManager?
+    private let settingsManager = SettingsManager.shared
     @State private var showAbout = false
     @State private var showOpenPanel = false
     @State private var showUninstallConfirm = false
@@ -19,11 +18,12 @@ struct CTTranscriberApp: App {
         AppPaths.migrateIfNeeded()
         AppPaths.ensureDirectories()
         self.modelContainer = Self.makeModelContainer(inMemory: inMemory)
+        _ = ModelManager.shared
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(modelManager: $modelManager, appDelegate: appDelegate)
+            ContentView(appDelegate: appDelegate)
                 .environment(settingsManager)
                 .environment(\.fontScale, settingsManager.fontScale)
                 .preferredColorScheme(settingsManager.colorScheme)
@@ -131,7 +131,9 @@ struct CTTranscriberApp: App {
                 }
                 Divider()
                 Button("GitHub Repository...") {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos")!)
+                    if let url = URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos") {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
                 Divider()
                 Button("Uninstall CT Transcriber...") {
@@ -141,7 +143,7 @@ struct CTTranscriberApp: App {
         }
 
         Settings {
-            SettingsView(settingsManager: settingsManager, modelManager: modelManager ?? ModelManager(settingsManager: settingsManager))
+            SettingsView(settingsManager: settingsManager, modelManager: ModelManager.shared)
                 .environment(\.fontScale, settingsManager.fontScale)
                 .font(.system(size: CGFloat(NSFont.systemFontSize) * CGFloat(settingsManager.fontScale)))
         }

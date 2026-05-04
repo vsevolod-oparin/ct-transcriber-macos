@@ -86,19 +86,19 @@ enum AppLogger {
 
         // Delete the oldest rotated file
         let oldestPath = "\(basePath).\(maxLogFiles)"
-        try? fm.removeItem(atPath: oldestPath)
+        do { try fm.removeItem(atPath: oldestPath) } catch { print("[AppLogger] Rotation error: \(error)") }
 
         // Shift existing rotated files: .2 → .3, .1 → .2, etc.
         for i in stride(from: maxLogFiles - 1, through: 1, by: -1) {
             let src = "\(basePath).\(i)"
             let dst = "\(basePath).\(i + 1)"
             if fm.fileExists(atPath: src) {
-                try? fm.moveItem(atPath: src, toPath: dst)
+                do { try fm.moveItem(atPath: src, toPath: dst) } catch { print("[AppLogger] Rotation error: \(error)") }
             }
         }
 
         // Move current log to .1
-        try? fm.moveItem(atPath: basePath, toPath: "\(basePath).1")
+        do { try fm.moveItem(atPath: basePath, toPath: "\(basePath).1") } catch { print("[AppLogger] Rotation error: \(error)") }
     }
 
     /// Returns the log file path for display in UI.

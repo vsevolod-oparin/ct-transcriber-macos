@@ -37,17 +37,13 @@ extension View {
     }
 }
 
-/// A property wrapper-style helper for use inside View bodies.
-/// Usage: `@Environment(\.fontScale) private var fontScale` then `ScaledFont(scale: fontScale).headline`
-extension Font {
-    static func scaled(_ style: @escaping (ScaledFont) -> Font, scale: Double) -> Font {
-        ScaledFont(scale: scale).body // placeholder — use ScaledFont directly instead
-    }
-}
+
 
 @MainActor
 @Observable
 final class SettingsManager {
+    static let shared = SettingsManager()
+
     var settings: AppSettings {
         didSet {
             if settings != oldValue {

@@ -313,7 +313,7 @@ enum ConversationExporter {
     static func exportBulkZIP(conversations: [Conversation]) async throws -> Data {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        defer { do { try FileManager.default.removeItem(at: tempDir) } catch { AppLogger.error("Failed to clean temp file: \(error)") } }
 
         for conversation in conversations {
             let data = try exportJSON(conversation: conversation)
@@ -331,7 +331,7 @@ enum ConversationExporter {
 
         // Create ZIP using ditto (built-in macOS tool)
         let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).zip")
-        defer { try? FileManager.default.removeItem(at: zipURL) }
+        defer { do { try FileManager.default.removeItem(at: zipURL) } catch { AppLogger.error("Failed to clean temp file: \(error)") } }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = ["-c", "-k", "--sequesterRsrc", tempDir.path, zipURL.path]

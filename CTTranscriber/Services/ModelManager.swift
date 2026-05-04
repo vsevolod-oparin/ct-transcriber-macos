@@ -4,6 +4,8 @@ import Foundation
 @Observable
 @MainActor
 final class ModelManager {
+    static let shared = ModelManager()
+
     /// Status of each model keyed by model ID.
     private(set) var modelStatuses: [String: ModelStatus] = [:]
     private var activeTasks: [String: Task<Void, Never>] = [:]
@@ -17,14 +19,12 @@ final class ModelManager {
 
     let settingsManager: SettingsManager
 
-    init(settingsManager: SettingsManager) {
-        self.settingsManager = settingsManager
-        MWModelManager.shared().cacheDirectory = AppPaths.modelsDirectory.path
+    private init() {
+        self.settingsManager = SettingsManager.shared
+        let modelsDir = AppPaths.modelsDirectory.path
+        MWModelManager.shared().cacheDirectory = modelsDir
+        AppLogger.info("ModelManager initialized, cacheDirectory=\(modelsDir)", category: "model")
         refreshStatuses()
-    }
-
-    nonisolated deinit {
-        AppLogger.debug("ModelManager deinit", category: "lifecycle")
     }
 
     // MARK: - Public
@@ -35,6 +35,7 @@ final class ModelManager {
     func refreshStatuses() {
         let settings = settingsManager.settings.transcription
         let modelsDir = resolvedModelsDirectory(settings: settings)
+        AppLogger.info("Refreshing model statuses, modelsDir=\(modelsDir)", category: "model")
 
         for model in settings.models {
             guard case .downloading = modelStatuses[model.id] else {
@@ -56,10 +57,16 @@ final class ModelManager {
                     }
                 } else {
                     modelStatuses[model.id] = .notDownloaded
+                    let sanitizedHFID = model.huggingFaceID.replacingOccurrences(of: "/", with: "--")
+                    let candidatePath = (modelsDir as NSString).appendingPathComponent(sanitizedHFID)
+                    let fm = FileManager.default
+                    if fm.fileExists(atPath: candidatePath) {
+                        let contents = (try? fm.contentsOfDirectory(atPath: candidatePath)) ?? []
+                        AppLogger.error("Model \(model.id) directory exists but invalid at \(candidatePath). Contents: \(contents.joined(separator: ", "))", category: "model")
+                    }
                 }
                 continue
             }
-            // Keep in-progress downloading status.
         }
     }
 
@@ -86,20 +93,25 @@ final class ModelManager {
             atPath: modelsDir, withIntermediateDirectories: true)
 
         MWModelManager.shared().cacheDirectory = modelsDir
+        AppLogger.info("Downloading model \(modelID) to cacheDirectory=\(modelsDir)", category: "model")
 
         let result = await fetchModelPath(hfID: hfID, modelID: modelID)
 
-        await MainActor.run {
-            guard activeTasks[modelID] != nil else { return }
-            switch result {
-            case .success(let path):
-                let size = Self.directorySize(path: path)
-                self.modelStatuses[modelID] = .ready(path: path, sizeMB: size)
-            case .failure(let error):
-                self.modelStatuses[modelID] = .error(error.localizedDescription)
-            }
-            self.activeTasks.removeValue(forKey: modelID)
+        guard activeTasks[modelID] != nil else {
+            AppLogger.info("Model \(modelID) download task was cancelled, skipping status update", category: "model")
+            return
         }
+
+        switch result {
+        case .success(let path):
+            let size = Self.directorySize(path: path)
+            self.modelStatuses[modelID] = .ready(path: path, sizeMB: size)
+            AppLogger.info("Model \(modelID) downloaded successfully at \(path) (\(size) MB)", category: "model")
+        case .failure(let error):
+            self.modelStatuses[modelID] = .error(error.localizedDescription)
+            AppLogger.error("Model \(modelID) download failed: \(error.localizedDescription)", category: "model")
+        }
+        self.activeTasks.removeValue(forKey: modelID)
     }
 
     private func fetchModelPath(hfID: String, modelID: String) async -> Result<String, Error> {
@@ -142,16 +154,23 @@ final class ModelManager {
         let settings = settingsManager.settings.transcription
         let modelsDir = resolvedModelsDirectory(settings: settings)
 
-        modelStatuses[model.id] = .notDownloaded
-
-        // Delete whichever path exists (legacy id-based or MWModelManager sanitized path).
         let pathsToTry = [
             (modelsDir as NSString).appendingPathComponent(model.id),
             (modelsDir as NSString).appendingPathComponent(model.huggingFaceID.replacingOccurrences(of: "/", with: "--")),
         ]
-        Task.detached {
+        let modelID = model.id
+        Task { [weak self] in
+            var deleted = false
             for path in pathsToTry {
-                try? FileManager.default.removeItem(atPath: path)
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                    deleted = true
+                } catch {
+                    AppLogger.error("Failed to delete model at \(path): \(error)", category: "model")
+                }
+            }
+            if deleted {
+                self?.modelStatuses[modelID] = .notDownloaded
             }
         }
     }
@@ -187,8 +206,12 @@ final class ModelManager {
     private func isValidModel(at path: String) -> Bool {
         let fm = FileManager.default
         guard fm.fileExists(atPath: path) else { return false }
-        let requiredFiles = ["model.bin", "tokenizer.json", "preprocessor_config.json"]
-        return requiredFiles.allSatisfy { fm.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }
+        let requiredFiles = ["model.bin", "tokenizer.json", "config.json"]
+        guard requiredFiles.allSatisfy({ fm.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }) else {
+            return false
+        }
+        let vocabFiles = ["vocabulary.json", "vocabulary.txt"]
+        return vocabFiles.contains { fm.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }
     }
 
     private nonisolated static func directorySize(path: String) -> Int {

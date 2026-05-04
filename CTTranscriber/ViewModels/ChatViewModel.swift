@@ -15,7 +15,7 @@ enum ConversationActivity {
 final class ChatViewModel {
     private static let llmErrorPrefix = "⚠ [LLM] "
     private static let transcriptionErrorPrefix = "⚠ [Transcription] "
-    private var userStoppedStreaming = false
+    private var userStoppedConversations: Set<UUID> = []
     var selectedConversationID: UUID?
     /// Conversations highlighted in the sidebar (for multi-select and delete). Arrow keys move this.
     var highlightedIDs: Set<UUID> = []
@@ -387,7 +387,7 @@ final class ChatViewModel {
     func stopStreaming() {
         guard let convoID = selectedConversationID,
               case .streaming(let task) = activities[convoID] else { return }
-        userStoppedStreaming = true
+        userStoppedConversations.insert(convoID)
         task.cancel()
         activities.removeValue(forKey: convoID)
         if let conversation = selectedConversation,
@@ -462,10 +462,10 @@ final class ChatViewModel {
                 await MainActor.run {
                     assistantMessage.lifecycle = .complete
                     self.finalizeStreaming(for: convoID)
-                    if !self.userStoppedStreaming {
+                    if !self.userStoppedConversations.contains(convoID) {
                         self.autoNameIfFirstResponse(conversation, provider: provider)
                     }
-                    self.userStoppedStreaming = false
+                    self.userStoppedConversations.remove(convoID)
                 }
             } catch is CancellationError {
                 guard let self else { return }

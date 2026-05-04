@@ -716,7 +716,7 @@ class TranscriptNSTextView: NSTextView {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
+        addCursorRect(bounds, cursor: .iBeam)
     }
 }
 

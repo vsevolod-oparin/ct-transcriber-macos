@@ -6,8 +6,6 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(SettingsManager.self) private var settingsManager
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
-    @Binding var modelManager: ModelManager?
-    /// AppDelegate receives file-open events from macOS and queues URLs here.
     @ObservedObject var appDelegate: AppDelegate
     @State private var viewModel: ChatViewModel?
     @State private var taskManager: TaskManager?
@@ -19,7 +17,6 @@ struct ContentView: View {
             .modifier(ContentViewModifiers(
                 viewModel: $viewModel,
                 taskManager: $taskManager,
-                modelManager: $modelManager,
                 appDelegate: appDelegate,
                 showTaskManager: $showTaskManager,
                 settingsManager: settingsManager,
@@ -143,7 +140,6 @@ struct ContentView: View {
 private struct ContentViewModifiers: ViewModifier {
     @Binding var viewModel: ChatViewModel?
     @Binding var taskManager: TaskManager?
-    @Binding var modelManager: ModelManager?
     @ObservedObject var appDelegate: AppDelegate
     @Binding var showTaskManager: Bool
     let settingsManager: SettingsManager
@@ -164,10 +160,7 @@ private struct ContentViewModifiers: ViewModifier {
             .task {
                 AppLogger.info("ContentView.task starting", category: "app")
 
-                if modelManager == nil {
-                    modelManager = ModelManager(settingsManager: settingsManager)
-                    AppLogger.info("ModelManager created", category: "app")
-                }
+                let modelManager = ModelManager.shared
 
                 if taskManager == nil {
                     taskManager = TaskManager(modelContext: modelContext)
@@ -177,7 +170,7 @@ private struct ContentViewModifiers: ViewModifier {
                 if viewModel == nil {
                     let vm = ChatViewModel(modelContext: modelContext,
                                            settingsManager: settingsManager,
-                                           modelManager: modelManager!)
+                                           modelManager: modelManager)
                     vm.taskManager = taskManager
                     vm.conversations = conversations
                     viewModel = vm
@@ -243,9 +236,8 @@ private struct ExportImportNotifications: ViewModifier {
 }
 
 #Preview {
-    @Previewable @State var mm: ModelManager? = nil
-    let sm = SettingsManager()
-    ContentView(modelManager: $mm, appDelegate: AppDelegate())
+    let sm = SettingsManager.shared
+    ContentView(appDelegate: AppDelegate())
         .modelContainer(CTTranscriberApp.makeModelContainer(inMemory: true))
         .environment(sm)
 }

@@ -88,6 +88,7 @@ enum TranscriptionService {
                     let language: String? = settings.language.isEmpty ? nil : settings.language
 
                     var segments: [TranscriptionResult.Segment] = []
+                    let segmentsLock = NSLock()
                     var segmentIndex = 0
                     var outInfo: MWTranscriptionInfo? = nil
                     let t0 = Date()
@@ -108,7 +109,9 @@ enum TranscriptionService {
 
                             let start = Double(segment.start)
                             let end = Double(segment.end)
+                            segmentsLock.lock()
                             segments.append(.init(start: start, end: end, text: text))
+                            segmentsLock.unlock()
                             segmentIndex += 1
 
                             let progress = duration > 0 ? min(1.0, end / duration) : 0
@@ -126,12 +129,14 @@ enum TranscriptionService {
                     let lang = outInfo?.language ?? "unknown"
                     let actualDuration = outInfo.map { Double($0.duration) } ?? duration
 
+                    segmentsLock.lock()
                     let result = TranscriptionResult(
                         language: lang,
                         duration: actualDuration,
                         segments: segments,
                         elapsed: elapsed
                     )
+                    segmentsLock.unlock()
                     continuation.yield(.completed(result))
                     continuation.finish()
 

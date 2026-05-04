@@ -50,7 +50,9 @@ struct AboutView: View {
             }
 
             Button {
-                NSWorkspace.shared.open(URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos")!)
+                if let url = URL(string: "https://github.com/vsevolod-oparin/ct-transcriber-macos") {
+                    NSWorkspace.shared.open(url)
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "link")

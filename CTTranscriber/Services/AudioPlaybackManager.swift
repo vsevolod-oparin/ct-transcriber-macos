@@ -70,7 +70,7 @@ final class AudioPlaybackManager {
     /// Called when an audio is paused or stopped.
     func didStopPlaying(storedName: String) {
         if currentlyPlayingID == storedName {
-            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? currentTime
+            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? getCurrentTimeCallback?() ?? currentTime
             if pos > 0 { lastPositions[storedName] = pos }
             isPlaying = false
             stopMiniPlayerTimer()
@@ -98,7 +98,7 @@ final class AudioPlaybackManager {
     /// Stops all playback and clears state (e.g., on conversation switch).
     func stopAll() {
         if let id = currentlyPlayingID {
-            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? currentTime
+            let pos = (activePlayer as? AVAudioPlayer)?.currentTime ?? getCurrentTimeCallback?() ?? currentTime
             if pos > 0 { lastPositions[id] = pos }
         }
         pauseCallback?()

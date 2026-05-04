@@ -142,19 +142,19 @@ enum SyntaxHighlighter {
     }()
 
     private final class CacheKeyWrapper: NSObject {
-        let codeHash: Int
+        let code: String
         let fontSize: CGFloat
         let isDark: Bool
-        init(codeHash: Int, fontSize: CGFloat, isDark: Bool) {
-            self.codeHash = codeHash
+        init(code: String, fontSize: CGFloat, isDark: Bool) {
+            self.code = code
             self.fontSize = fontSize
             self.isDark = isDark
             super.init()
         }
-        override var hash: Int { codeHash ^ fontSize.hashValue ^ isDark.hashValue }
+        override var hash: Int { code.hashValue ^ fontSize.hashValue ^ isDark.hashValue }
         override func isEqual(_ object: Any?) -> Bool {
             guard let other = object as? CacheKeyWrapper else { return false }
-            return codeHash == other.codeHash && fontSize == other.fontSize && isDark == other.isDark
+            return code == other.code && fontSize == other.fontSize && isDark == other.isDark
         }
     }
 
@@ -166,7 +166,7 @@ enum SyntaxHighlighter {
     // MARK: - Public API
 
     static func highlight(_ code: String, language: String?, fontSize: CGFloat, isDark: Bool) -> AttributedString {
-        let key = CacheKeyWrapper(codeHash: code.hashValue, fontSize: fontSize, isDark: isDark)
+        let key = CacheKeyWrapper(code: code, fontSize: fontSize, isDark: isDark)
         if let cached = cache.object(forKey: key) {
             return cached.value
         }

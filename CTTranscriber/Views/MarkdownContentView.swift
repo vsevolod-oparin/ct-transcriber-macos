@@ -245,7 +245,7 @@ struct MarkdownContentView: View {
                 }
             }
         }
-        .task(id: content.count) {
+        .task(id: content) {
             if cachedSegments == nil || content.count != cachedContentLength {
                 cachedSegments = parseMarkdown(content)
                 cachedContentLength = content.count

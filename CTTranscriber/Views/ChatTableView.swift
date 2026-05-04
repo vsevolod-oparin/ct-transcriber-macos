@@ -21,7 +21,13 @@ struct ChatTableView: NSViewRepresentable {
     /// model objects may have been deleted from the context between body evaluation and updateNSView.
     static func messageHash(_ msg: Message) -> Int {
         guard !msg.isDeleted, msg.modelContext != nil else { return 0 }
-        return msg.content.count
+        var hasher = Hasher()
+        hasher.combine(msg.content)
+        for att in msg.attachments where !att.isDeleted {
+            hasher.combine(att.storedName)
+            hasher.combine(att.convertedName)
+        }
+        return hasher.finalize()
     }
 
     /// Returns a string encoding the video layout state for a message's attachments.
@@ -539,19 +545,19 @@ struct ChatTableView: NSViewRepresentable {
                 expandedMessages.insert(messageID)
             }
 
-            guard let tableView else { return }
+            guard let tableView, let scrollView else { return }
 
             heightCache.removeValue(forKey: messageID)
 
-            let savedOrigin = scrollView?.contentView.bounds.origin ?? .zero
+            let savedOrigin = scrollView.contentView.bounds.origin
 
             tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
             tableView.reloadData(forRowIndexes: IndexSet(integer: row),
                                  columnIndexes: IndexSet(integer: 0))
 
             // Restore exact scroll position — no visible jump
-            scrollView?.contentView.setBoundsOrigin(savedOrigin)
-            scrollView?.reflectScrolledClipView(scrollView!.contentView)
+            scrollView.contentView.setBoundsOrigin(savedOrigin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
 
         // MARK: - Scrolling

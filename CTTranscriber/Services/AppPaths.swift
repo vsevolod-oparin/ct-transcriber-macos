@@ -52,24 +52,49 @@ enum AppPaths {
 
         ensureDirectories()
 
-        migrateSwiftDataStore(fm: fm)
+        let migrationOk = migrateSwiftDataStore(fm: fm)
         migrateSettingsFromXDG(fm: fm)
         migrateModelsFromMetalWhisperCache(fm: fm)
 
-        fm.createFile(atPath: marker.path, contents: nil)
+        if migrationOk {
+            fm.createFile(atPath: marker.path, contents: nil)
+        }
     }
 
-    private static func migrateSwiftDataStore(fm: FileManager) {
+    private static func migrateSwiftDataStore(fm: FileManager) -> Bool {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+
+        var migrationFailed = false
+        var copiedSources: [URL] = []
 
         for ext in ["", "-shm", "-wal"] {
             let src = appSupport.appendingPathComponent("default.store\(ext)")
             let dst = dataDirectory.appendingPathComponent("default.store\(ext)")
             if fm.fileExists(atPath: src.path) && !fm.fileExists(atPath: dst.path) {
-                try? fm.moveItem(at: src, to: dst)
+                do {
+                    try fm.copyItem(at: src, to: dst)
+                    copiedSources.append(src)
+                } catch {
+                    AppLogger.error("Migration failed: could not copy \(src.path) -> \(dst.path): \(error)")
+                    migrationFailed = true
+                    break
+                }
             }
         }
+
+        if !migrationFailed {
+            for src in copiedSources {
+                do {
+                    try fm.removeItem(at: src)
+                } catch {
+                    AppLogger.error("Migration failed: could not remove original \(src.path): \(error)")
+                    migrationFailed = true
+                }
+            }
+        }
+
+        return !migrationFailed
     }
 
     private static func migrateSettingsFromXDG(fm: FileManager) {
