@@ -1,56 +1,37 @@
-# CT Transcriber 0.5.4 Release Notes
+# CT Transcriber 0.5.5 Release Notes
 
-## Data Consolidation
+## Bug Fixes
 
-All app data now lives in a single directory: `~/Library/Application Support/CTTranscriber/`. This makes it easy to find, back up, and cleanly uninstall.
+- **Fixed Whisper model downloads not persisting across app restarts** — the most critical fix in this release. Models would show as "Ready" after downloading, but appear as "Not downloaded" after quitting and reopening the app.
 
-```
-~/Library/Application Support/CTTranscriber/
-├── settings.json        ← Settings
-├── ct-transcriber.log   ← Logs
-├── data/                ← SwiftData database
-├── files/               ← Attachments
-└── models/              ← Whisper models
-```
+## What Changed
 
-On first launch, existing data is automatically migrated from the old scattered locations (XDG config, Caches, root Application Support).
+### Model Download Persistence
 
-## Code Quality
+The root cause was multiple interacting bugs:
 
-- **Round 3 review**: 20 findings audited, 15 confirmed already fixed from prior rounds, 5 new fixes applied
-- Removed 6 duplicate time formatting functions — consolidated into `TimeFormatting` utility
-- Removed 2 duplicate view search functions — consolidated into `ViewUtils` utility
-- Fixed `safeName` in bulk export to strip `..`, backslashes, and control characters
-- Fixed unsupported video files showing "Converting..." instead of "Playback not supported"
+1. **Dual ModelManager instances** — the Settings window created a separate throwaway `ModelManager` instead of sharing the app's instance. When Settings closed, the download's background task was cancelled, leaving incomplete model files on disk. Fixed by making `ModelManager` a singleton (`ModelManager.shared`).
 
-## Full Changelog (0.5.1 → 0.5.4)
+2. **Download to Caches directory** — `MWModelManager`'s default cache directory is `~/Library/Caches/`, which macOS can purge at any time. If the directory wasn't set before a download started, models could land in a temporary location. Fixed by eagerly initializing the cache directory before any download can begin.
+
+3. **Validation mismatch** — the startup scan checked for `preprocessor_config.json` (which some models don't include) but ignored `config.json` and vocabulary files (which are required). This meant even successfully downloaded models could fail the scan on next launch. Fixed to match the download validation exactly.
+
+### Other Fixes
+
+- Fixed cancelled downloads overwriting status back to "Ready"
+- Added diagnostic logging for model download paths and incomplete model detection
+
+## Full Changelog (0.5.4 → 0.5.5)
 
 ### Bug Fixes
-- Fixed whisper model download not persisting status when navigating away from settings
-- Fixed search cache not invalidating when query text changed
-- Fixed video conversion continuing after conversation deletion
-- Fixed `highlightCursor` out-of-bounds crash after deleting highlighted conversations
-- Fixed export functions failing silently — now show error alerts
-- Fixed `findMessage` using O(C×M) scan when conversation ID was available
-- Fixed `ModelManager.cancelDownload` race condition
-- Fixed temp ZIP/ditto cleanup on cancellation and error
-- Fixed Anthropic API calls missing `anthropic-version` header
-- Fixed API keys leaking into error logs via `LLMError.redactSensitiveInfo()`
-- Fixed `autoTitleModel` force-unwrap crash when provider has no model set
-- Fixed `attachFile` retain cycle from `[self]` capture in MainActor.run
-- Fixed auto-title running after user manually stopped streaming
-- Fixed `UnsupportedVideoView` showing false "Converting..." label
-- Fixed video converter and ditto processes not terminating on task cancellation
-- Fixed `AppLogger.logFileURL` and `SettingsStorage` force unwraps with fallbacks
-- Fixed conversation deletion not updating `selectedConversationID`
-- Fixed `saveAttachment` overwriting existing files without warning
-- Fixed `ConversationExporter.importJSON` restoring attachment metadata
+- Fixed Whisper model downloads not persisting across app restarts
+- Fixed `isValidModel` validation not matching `MWModelManager`'s requirements
+- Fixed Settings window using a separate `ModelManager` instance whose downloads were cancelled on window close
+- Fixed download potentially writing to `~/Library/Caches/` instead of Application Support
+- Fixed cancelled downloads incorrectly marking models as "Ready"
 
-### Improvements
-- All app data consolidated under `~/Library/Application Support/CTTranscriber/`
-- Automatic one-time migration from old data locations
-- `@MainActor` annotation added to `SettingsManager`
-- Duplicate code extracted into shared `TimeFormatting` and `ViewUtils` utilities
-- `AppUninstaller` cleans up all consolidated + legacy paths
-- SRT timestamps now type-safe (parsed `TimeInterval` instead of raw strings)
-- Export/import handles attachment metadata properly
+### Architecture
+- `ModelManager` is now a singleton (`ModelManager.shared`) — one instance for the entire app lifecycle
+- `ModelManager` is eagerly initialized in `CTTranscriberApp.init()` to prevent race conditions
+- `ContentView` simplified — no longer passes `ModelManager` as a binding
+- Added diagnostic logging for model download path, success/failure, and incomplete model detection
